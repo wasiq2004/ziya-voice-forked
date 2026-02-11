@@ -14,11 +14,12 @@ Ziya-Voice is a voice-related service deployed on **Vercel**, designed to handle
 
 ### 1. Clone Repository
 ```bash
-git clone <repo-url>
+git clone https://github.com/aspiren-tech/ziya-voice.git
+
 cd Ziya-Voice
 ```
 
-### 2.Install Dependencies
+### 2. Install Dependencies
 ```bash
 npm install
 ```
