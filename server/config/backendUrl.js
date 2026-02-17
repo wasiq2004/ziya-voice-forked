@@ -5,7 +5,7 @@
  */
 
 const getBackendUrl = () => {
-    return process.env.BASE_URL || 'https://ziyavoice-production-5e44.up.railway.app';
+    return process.env.BASE_URL;
 };
 
 module.exports = {
