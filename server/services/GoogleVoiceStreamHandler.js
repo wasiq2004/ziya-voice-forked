@@ -20,7 +20,7 @@ class GoogleVoiceStreamHandler {
         let isProcessing = false;
 
         // Configuration
-        const googleApiKey = process.env.GOOGLE_GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+        const googleApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
         const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY;
 
         // Query params
@@ -218,7 +218,7 @@ class GoogleVoiceStreamHandler {
         // OR we specifically check against known Sarvam names.
 
         const sarvamSpeakers = [
-            'anushka', 'abhilash', 'chitra', 'meera', 'arvind',
+            'anushka', 'abhilash', 'chitra', 'arvind',
             'manisha', 'vidya', 'arya', 'karun', 'hitesh'
         ];
 

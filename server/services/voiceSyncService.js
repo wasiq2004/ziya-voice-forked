@@ -70,7 +70,7 @@ class VoiceSyncService {
         console.log('[VoiceSync] Fetching ElevenLabs voices...');
 
         try {
-            const apiKey = process.env.ELEVENLABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
+            const apiKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
 
             if (!apiKey) {
                 return {
@@ -147,7 +147,6 @@ class VoiceSyncService {
                 { speaker: 'anushka', language: 'en-IN', gender: 'female' },
                 { speaker: 'abhilash', language: 'en-IN', gender: 'male' },
                 { speaker: 'chitra', language: 'ta-IN', gender: 'female' },
-                { speaker: 'meera', language: 'hi-IN', gender: 'female' },
                 { speaker: 'arvind', language: 'hi-IN', gender: 'male' },
                 { speaker: 'manisha', language: 'hi-IN', gender: 'female' },
                 { speaker: 'vidya', language: 'en-IN', gender: 'female' },

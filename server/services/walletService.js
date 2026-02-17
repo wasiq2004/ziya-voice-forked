@@ -356,6 +356,8 @@ class WalletService {
       'deepgram': 'seconds',
       'gemini': 'tokens',
       'sarvam': 'characters',
+      'sarvam_tts': 'characters',
+      'sarvam_stt': 'seconds',
       'twilio': 'minutes'
     };
     return units[serviceType] || 'units';

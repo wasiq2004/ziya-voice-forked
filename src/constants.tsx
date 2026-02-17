@@ -23,6 +23,7 @@ import {
     CheckIcon,
     PencilIcon,
     ClipboardDocumentListIcon,
+    CalendarIcon,
 } from '@heroicons/react/24/outline';
 // FIX: Add missing icon import
 import { PhoneIcon as SolidPhoneIcon, MicrophoneIcon } from '@heroicons/react/24/solid';
@@ -47,6 +48,8 @@ export const WebhookIcon = ArrowUpRightIcon;
 export const PlayIcon = SolidPlayIcon;
 export { CheckIcon, MicrophoneIcon, ArrowUpRightIcon }; // Exporting directly
 
+export const APP_VERSION = '1.2';
+
 
 interface SidebarItem {
     id: Page;
@@ -58,7 +61,8 @@ export const SIDEBAR_ITEMS: SidebarItem[] = [
     { id: Page.Agent, icon: UserGroupIcon },
     { id: Page.PhoneNo, icon: OutlinePhoneIcon },
     { id: Page.Campaigns, icon: ChartBarIcon },
-    { id: Page.CallHistory, icon: ClipboardDocumentListIcon },
+    { id: Page.Schedule, icon: CalendarIcon },
+    { id: Page.Reports, icon: ClipboardDocumentListIcon },
     { id: Page.Settings, icon: CogIcon },
     // { id: Page.API, icon: CodeBracketIcon },
     { id: Page.Credits, icon: CreditCardIcon },
@@ -152,6 +156,41 @@ export const INITIAL_AGENTS: VoiceAgent[] = [
             preActionPhrases: ["Just a moment", "I'll look that up"],
             tools: [],
             knowledgeDocIds: [],
+        },
+    },
+    {
+        id: 'agent-sarah',
+        name: 'Sarah - Customer Support',
+        identity: 'You are Sarah, a professional customer support agent for ZiyaVoice. You are friendly, helpful, and empathetic. Your goal is to assist users with their inquiries about the platform.',
+        createdDate: new Date().toISOString(),
+        status: VoiceAgentStatus.Active,
+        model: 'gemini-2.0-flash',
+        voiceId: 'eleven-rachel',
+        language: 'ENGLISH',
+        settings: {
+            userStartsFirst: false,
+            greetingLine: 'Hello! This is Sarah from ZiyaVoice. How can I help you today?',
+            responseDelay: false,
+            inactivityHandling: true,
+            agentCanTerminateCall: false,
+            voicemailDetection: true,
+            callTransfer: true,
+            dtmfDial: false,
+            agentTimezone: 'America/New_York',
+            voiceDetectionConfidenceThreshold: 0.5,
+            overrideVAD: false,
+            backgroundAmbientSound: 'None',
+            callRecording: true,
+            sessionTimeoutFixedDuration: 3600,
+            sessionTimeoutNoVoiceActivity: 300,
+            sessionTimeoutEndMessage: 'Thank you for calling ZiyaVoice. Goodbye!',
+            dataPrivacyOptOut: false,
+            doNotCallDetection: true,
+            prefetchDataWebhook: '',
+            endOfCallWebhook: '',
+            preActionPhrases: [],
+            tools: [],
+            knowledgeDocIds: []
         },
     },
 ];
@@ -261,15 +300,15 @@ export const OpenAIIcon = (props: React.SVGProps<SVGSVGElement>) => (
 // FIX: Add missing data exports required by AgentDetailPage
 export const AVAILABLE_MODELS = [
     // Gemini Models
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', description: 'Latest Gemini model, fast and efficient', icon: GoogleIcon, provider: 'gemini' },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', description: 'Previous generation, reliable and cost-effective', icon: GoogleIcon, provider: 'gemini' },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', description: 'More capable, better for complex tasks', icon: GoogleIcon, provider: 'gemini' },
+    { id: 'gemini-2.0-flash', name: 'Ziya-2.0-flash', description: 'Latest Gemini model, fast and efficient', icon: GoogleIcon, provider: 'gemini' },
+    { id: 'gemini-1.5-flash', name: 'Ziya-LLM', description: 'Previous generation, reliable and cost-effective', icon: GoogleIcon, provider: 'gemini' },
+    { id: 'gemini-1.5-pro', name: 'Salman-LLM(Highly Efficient)', description: 'More capable, better for complex tasks', icon: GoogleIcon, provider: 'gemini' },
 
-    // OpenAI Models
-    { id: 'gpt-4o', name: 'GPT-4o', description: 'Most capable OpenAI model, best quality', icon: OpenAIIcon, provider: 'openai' },
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and affordable, great for most tasks', icon: OpenAIIcon, provider: 'openai' },
-    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'Previous generation flagship model', icon: OpenAIIcon, provider: 'openai' },
-    { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Most cost-effective OpenAI model', icon: OpenAIIcon, provider: 'openai' },
+    //     // OpenAI Models
+    //     { id: 'gpt-4o', name: 'GPT-4o', description: 'Most capable OpenAI model, best quality', icon: OpenAIIcon, provider: 'openai' },
+    //     { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and affordable, great for most tasks', icon: OpenAIIcon, provider: 'openai' },
+    //     { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'Previous generation flagship model', icon: OpenAIIcon, provider: 'openai' },
+    //     { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Most cost-effective OpenAI model', icon: OpenAIIcon, provider: 'openai' },
 ];
 
 export const AVAILABLE_LANGUAGES = [

@@ -159,50 +159,11 @@ const AdminUserDetailPage: React.FC = () => {
     }
   };
 
-  // In the JSX:
-  <div className="bg-white rounded-lg shadow p-6 mb-6">
-    <h3 className="text-lg font-semibold mb-4">Wallet Management</h3>
-    <div className="mb-4">
-      <label className="block text-sm font-medium mb-2">Current Balance</label>
-      <div className="text-3xl font-bold text-emerald-600">
-        ${user.wallet_balance || '0.00'}
-      </div>
-    </div>
-    <div className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium mb-2">Add Credits</label>
-        <input
-          type="number"
-          step="0.01"
-          value={creditAmount}
-          onChange={(e) => setCreditAmount(e.target.value)}
-          placeholder="Amount ($)"
-          className="w-full border rounded px-3 py-2"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium mb-2">Description</label>
-        <input
-          type="text"
-          value={creditDescription}
-          onChange={(e) => setCreditDescription(e.target.value)}
-          placeholder="Reason for credit adjustment"
-          className="w-full border rounded px-3 py-2"
-        />
-      </div>
-      <button
-        onClick={handleAddCredits}
-        className="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700"
-      >
-        Add Credits
-      </button>
-    </div>
-  </div>
   return (
     <div className="min-h-screen bg-gray-900">
       {/* Header */}
       <div className="bg-gray-800 border-b border-gray-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="container-wrapper">
           <div className="flex justify-between items-center py-4">
             <div>
               <button
@@ -218,7 +179,7 @@ const AdminUserDetailPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="container-wrapper py-8">
         {/* Success Message */}
         {successMessage && (
           <div className="mb-6 p-4 bg-green-500/10 border border-green-500/50 rounded-lg">
@@ -249,6 +210,48 @@ const AdminUserDetailPage: React.FC = () => {
               <p className="text-gray-400 text-sm">Joined</p>
               <p className="text-white font-medium">{formatDate(user.created_at)}</p>
             </div>
+          </div>
+        </div>
+
+        {/* Wallet Management */}
+        <div className="bg-gray-800 rounded-lg shadow p-6 mb-8 border border-gray-700">
+          <h3 className="text-xl font-bold text-white mb-4">Wallet Management</h3>
+          <div className="mb-4 bg-gray-700/50 p-4 rounded-lg">
+            <label className="block text-sm font-medium text-gray-400 mb-1">Current Balance</label>
+            <div className="text-3xl font-bold text-emerald-400">
+              {formatCurrency(parseFloat(user.wallet_balance || '0'))}
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Add Credits ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={creditAmount}
+                  onChange={(e) => setCreditAmount(e.target.value)}
+                  placeholder="Amount"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
+                <input
+                  type="text"
+                  value={creditDescription}
+                  onChange={(e) => setCreditDescription(e.target.value)}
+                  placeholder="Reason for adjustment"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <button
+              onClick={handleAddCredits}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-lg transition font-medium"
+            >
+              Add Credits
+            </button>
           </div>
         </div>
 
