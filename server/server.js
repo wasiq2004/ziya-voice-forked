@@ -7,11 +7,7 @@ const nodeFetch = require('node-fetch');
 const expressWs = require('express-ws');
 const { v4: uuidv4 } = require('uuid');
 const twilio = require('twilio');
-// Load environment variables
 const fs = require('fs');
-
-// Load environment variables
-// Priority: .env.local (root) -> .env (root) -> .env (server dir)
 const rootEnvLocal = path.resolve(__dirname, '../.env.local');
 const rootEnv = path.resolve(__dirname, '../.env');
 const serverEnv = path.resolve(__dirname, '.env');
@@ -134,17 +130,16 @@ if (deepgramApiKey) {
 
 // Initialize BrowserVoiceHandler for production-level browser voice interactions
 const { BrowserVoiceHandler } = require('./services/BrowserVoiceHandler.js');
-const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
+const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY;
 const sarvamApiKey = process.env.SARVAM_API_KEY;
 
 let browserVoiceHandler;
-// Initialize if either Deepgram OR Sarvam is available, or just try to initialize and let the handler complain if both are missing
-if (deepgramApiKey || sarvamApiKey) {
+// Initialize if Sarvam API key is available
+if (sarvamApiKey) {
   try {
     browserVoiceHandler = new BrowserVoiceHandler(
-      deepgramApiKey,
       geminiApiKey,
-      openaiApiKey, // Add OpenAI API key
+      openaiApiKey,
       elevenLabsApiKey,
       sarvamApiKey,
       mysqlPool
@@ -153,16 +148,15 @@ if (deepgramApiKey || sarvamApiKey) {
       browserVoiceHandler.handleConnection(ws, req);
     });
     console.log('✅ Browser Voice Handler initialized at /browser-voice-stream');
-    console.log('   - Deepgram STT: ' + (deepgramApiKey ? '✅' : '❌'));
+    console.log('   - Sarvam STT: ✅');
     console.log('   - Gemini LLM: ' + (geminiApiKey ? '✅' : '❌'));
     console.log('   - OpenAI LLM: ' + (openaiApiKey ? '✅' : '❌'));
     console.log('   - ElevenLabs TTS: ' + (elevenLabsApiKey ? '✅' : '❌'));
-    console.log('   - Sarvam TTS/STT: ' + (sarvamApiKey ? '✅' : '❌'));
   } catch (error) {
     console.error('Failed to initialize BrowserVoiceHandler:', error.message);
   }
 } else {
-  console.warn('⚠️ BrowserVoiceHandler not initialized (missing STT API keys)');
+  console.warn('⚠️ BrowserVoiceHandler not initialized (missing SARVAM_API_KEY)');
 }
 
 // === ADD THIS BLOCK ===
@@ -558,11 +552,12 @@ app.get('/api/voice-config-check', (req, res) => {
   const config = {
     timestamp: new Date().toISOString(),
     checks: {
-      deepgram: {
-        configured: !!process.env.DEEPGRAM_API_KEY,
-        keyPreview: process.env.DEEPGRAM_API_KEY
-          ? process.env.DEEPGRAM_API_KEY.substring(0, 8) + '...'
-          : 'NOT SET'
+      sarvam: {
+        configured: !!process.env.SARVAM_API_KEY,
+        keyPreview: process.env.SARVAM_API_KEY
+          ? process.env.SARVAM_API_KEY.substring(0, 8) + '...'
+          : 'NOT SET',
+        note: 'Used for STT in phone call pipeline'
       },
       gemini: {
         configured: !!process.env.GEMINI_API_KEY,
@@ -571,9 +566,9 @@ app.get('/api/voice-config-check', (req, res) => {
           : 'NOT SET'
       },
       elevenlabs: {
-        configured: !!(process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY),
-        keyPreview: (process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY)
-          ? (process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY).substring(0, 8) + '...'
+        configured: !!process.env.ELEVEN_LABS_API_KEY,
+        keyPreview: process.env.ELEVEN_LABS_API_KEY
+          ? process.env.ELEVEN_LABS_API_KEY.substring(0, 8) + '...'
           : 'NOT SET'
       },
       appUrl: {
@@ -726,7 +721,7 @@ app.get('/api/voice-config-check', (req, res) => {
   });
   // Determine overall status
   const allConfigured =
-    config.checks.deepgram.configured &&
+    config.checks.sarvam.configured &&
     config.checks.gemini.configured &&
     config.checks.elevenlabs.configured &&
     config.checks.appUrl.configured &&
@@ -738,9 +733,9 @@ app.get('/api/voice-config-check', (req, res) => {
 
   // Add missing items
   const missing = [];
-  if (!config.checks.deepgram.configured) missing.push('DEEPGRAM_API_KEY');
+  if (!config.checks.sarvam.configured) missing.push('SARVAM_API_KEY (required for phone call STT)');
   if (!config.checks.gemini.configured) missing.push('GEMINI_API_KEY');
-  if (!config.checks.elevenlabs.configured) missing.push('ELEVEN_LABS_API_KEY or ELEVEN_LABS_API_KEY');
+  if (!config.checks.elevenlabs.configured) missing.push('ELEVEN_LABS_API_KEY');
   if (!config.checks.appUrl.configured) missing.push('APP_URL');
   if (config.checks.appUrl.configured && !config.checks.appUrl.isPublic) {
     missing.push('APP_URL must be public (not localhost)');
@@ -782,10 +777,11 @@ app.get('/api/test-voice-pipeline', async (req, res) => {
     }
   }
 
-  // Test 2: Check Deepgram
-  results.tests.deepgram = {
-    configured: !!process.env.DEEPGRAM_API_KEY,
-    keyLength: process.env.DEEPGRAM_API_KEY ? process.env.DEEPGRAM_API_KEY.length : 0
+  // Test 2: Check Sarvam STT (phone call pipeline)
+  results.tests.sarvam = {
+    configured: !!process.env.SARVAM_API_KEY,
+    keyLength: process.env.SARVAM_API_KEY ? process.env.SARVAM_API_KEY.length : 0,
+    note: 'Sarvam STT is used for phone call transcription'
   };
 
   // Test 3: Check Gemini
@@ -835,7 +831,7 @@ app.get('/api/test-voice-pipeline', async (req, res) => {
   // Overall assessment
   const allPassed =
     results.tests.mediaStreamHandler.exists &&
-    results.tests.deepgram.configured &&
+    results.tests.sarvam.configured &&
     results.tests.gemini.configured &&
     results.tests.elevenlabs.configured &&
     (!results.tests.elevenlabs.apiWorking || results.tests.elevenlabs.apiWorking === true);
@@ -3171,18 +3167,17 @@ app.post('/api/voices/elevenlabs/preview', async (req, res) => {
   }
 });
 
-if ((process.env.DEEPGRAM_API_KEY || process.env.SARVAM_API_KEY) && process.env.GEMINI_API_KEY) {
+if (process.env.SARVAM_API_KEY && process.env.GEMINI_API_KEY) {
   mediaStreamHandler = new MediaStreamHandler(
-    process.env.DEEPGRAM_API_KEY,
     process.env.GEMINI_API_KEY,
     process.env.OPENAI_API_KEY,
     campaignService,
     mysqlPool,
     process.env.SARVAM_API_KEY
   );
-  console.log("MediaStreamHandler initialized with STT + Gemini + OpenAI + Cost Tracking");
+  console.log("✅ MediaStreamHandler initialized with Sarvam STT + Gemini + OpenAI + Cost Tracking");
 } else {
-  console.warn("Voice call feature disabled — missing STT or Gemini API keys");
+  console.warn("⚠️ Voice call feature disabled — missing SARVAM_API_KEY or GEMINI_API_KEY");
 }
 // WebSocket endpoint for ElevenLabs STT
 app.ws('/api/stt', function (ws, req) {
