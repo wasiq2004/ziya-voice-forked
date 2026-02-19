@@ -1,19 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import AppLayout from '../components/AppLayout';
-import KPICard from '../components/KPICard';
-import ProgressBar from '../components/ProgressBar';
-import LeadsTable from '../components/LeadsTable';
-import AddLeadModal from '../components/AddLeadModal';
-import ImportLeadsModal from '../components/ImportLeadsModal';
-import { fetchCampaign, startCampaign, stopCampaign, deleteRecord, addRecord } from '../utils/api';
-import { useAuth } from '../contexts/AuthContext';
 import {
   PlayIcon,
   StopIcon,
-  Cog6ToothIcon,
   ChevronLeftIcon
 } from '@heroicons/react/24/outline';
+import AppLayout from '../components/AppLayout';
+import KPICard from '../components/KPICard';
+import LeadsTable from '../components/LeadsTable';
+import AddLeadModal from '../components/AddLeadModal';
+import ImportLeadsModal from '../components/ImportLeadsModal';
+import { fetchCampaign, startCampaign, stopCampaign, deleteRecord, addRecord, getApiBaseUrl, importCSV, updateCampaign } from '../utils/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const CampaignDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -22,6 +20,7 @@ const CampaignDetailPage: React.FC = () => {
 
   const [campaign, setCampaign] = useState<any>(null);
   const [leads, setLeads] = useState<any[]>([]);
+  const [agents, setAgents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -32,6 +31,7 @@ const CampaignDetailPage: React.FC = () => {
       if (!id || !user?.id) return;
       try {
         setLoading(true);
+        // Load Campaign
         const response = await fetchCampaign(id, user.id);
         if (response.success && response.data) {
           setCampaign(response.data.campaign);
@@ -45,6 +45,23 @@ const CampaignDetailPage: React.FC = () => {
           }));
           setLeads(mappedLeads);
         }
+
+        // Load Agents
+        const agentsUrl = `${getApiBaseUrl()}/api/agents?userId=${user.id}`;
+        console.log('Fetching agents from:', agentsUrl);
+        const agentsRes = await fetch(agentsUrl);
+        if (agentsRes.ok) {
+          const agentsData = await agentsRes.json();
+          console.log('Agents data received:', agentsData);
+          if (agentsData.success && Array.isArray(agentsData.agents)) {
+            setAgents(agentsData.agents);
+          } else {
+            console.warn('Agents fetch successful but data format invalid:', agentsData);
+          }
+        } else {
+          console.error('Agents fetch failed:', agentsRes.status);
+        }
+
       } catch (error) {
         console.error('Error loading campaign details:', error);
       } finally {
@@ -54,6 +71,18 @@ const CampaignDetailPage: React.FC = () => {
 
     loadData();
   }, [id, user?.id]);
+
+  const handleAgentChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (!id || !user?.id) return;
+    const newAgentId = e.target.value;
+    try {
+      await updateCampaign(id, user.id, { agent_id: newAgentId });
+      setCampaign({ ...campaign, agent_id: newAgentId });
+    } catch (error) {
+      console.error('Failed to update agent:', error);
+      alert('Failed to update assigned agent');
+    }
+  };
 
   const handleToggleCampaign = async () => {
     if (!id || !user?.id || !campaign) return;
@@ -67,7 +96,7 @@ const CampaignDetailPage: React.FC = () => {
       if (response.success) {
         // Refresh data
         const refreshResponse = await fetchCampaign(id, user.id);
-        if (refreshResponse.success) {
+        if (refreshResponse.success && refreshResponse.data) {
           setCampaign(refreshResponse.data.campaign);
         }
       }
@@ -85,8 +114,17 @@ const CampaignDetailPage: React.FC = () => {
       if (response.success) {
         // Refresh data
         const refreshResponse = await fetchCampaign(id, user.id);
-        if (refreshResponse.success) {
-          setLeads(refreshResponse.data.records || []);
+        // DEFENSIVE CHECK: Ensure data exists before accessing records
+        if (refreshResponse.success && refreshResponse.data) {
+          const mappedLeads = (refreshResponse.data.records || []).map((r: any) => ({
+            id: r.id,
+            name: r.name || 'Unknown', // Safe fallback
+            phone: r.phone_number,
+            email: r.email || 'N/A',
+            status: r.status ? r.status.charAt(0).toUpperCase() + r.status.slice(1) : 'Pending',
+            attempts: r.attempts || 0
+          }));
+          setLeads(mappedLeads);
         }
         setIsAddLeadModalOpen(false);
       }
@@ -113,20 +151,39 @@ const CampaignDetailPage: React.FC = () => {
     if (!id || !user?.id) return;
     try {
       console.log('Importing leads from:', file.name);
-      // Logic for CSV parsing or direct upload to API would go here
-      // For now, we simulate success
-      alert(`Simulation: Successfully imported leads from ${file.name}`);
-      setIsImportModalOpen(false);
+      const text = await file.text();
 
-      // Refresh leads list
-      const refreshResponse = await fetchCampaign(id, user.id);
-      if (refreshResponse.success) {
-        setLeads(refreshResponse.data.records || []);
+      const response = await importCSV(id, user.id, text);
+
+      if (response.success) {
+        alert(`Successfully imported ${response.count} leads.`);
+        setIsImportModalOpen(false);
+
+        // Refresh leads list
+        const refreshResponse = await fetchCampaign(id, user.id);
+        if (refreshResponse.success && refreshResponse.data) {
+          setLeads((refreshResponse.data.records || []).map((r: any) => ({
+            id: r.id,
+            name: r.name || 'Unknown',
+            phone: r.phone_number,
+            email: r.email || 'N/A',
+            status: r.status ? r.status.charAt(0).toUpperCase() + r.status.slice(1) : 'Pending',
+            attempts: r.attempts || 0
+          })));
+        }
+      } else {
+        alert('Import failed: ' + (response.error || 'Unknown error'));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error importing leads:', error);
-      alert('Failed to import leads. Please check your CSV format.');
+      alert('Failed to import leads: ' + error.message);
     }
+  };
+
+  const handleExport = () => {
+    if (!id || !user?.id) return;
+    const apiUrl = getApiBaseUrl();
+    window.location.href = `${apiUrl}/api/campaigns/${id}/export?userId=${user.id}`;
   };
 
   if (loading) {
@@ -175,33 +232,58 @@ const CampaignDetailPage: React.FC = () => {
   };
 
   const actionButtons = (
-    <div className="flex items-center space-x-3">
-      <button
-        onClick={() => navigate('/campaigns')}
-        className="p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all font-bold group"
-      >
-        <ChevronLeftIcon className="h-5 w-5 group-hover:-translate-x-1 transition-transform" />
-      </button>
-      <button
-        disabled={isProcessing}
-        onClick={handleToggleCampaign}
-        className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl font-black transition-all shadow-lg uppercase tracking-wider text-xs ${campaign.status === 'running'
-          ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/25'
-          : 'bg-green-500 hover:bg-green-600 text-white shadow-green-500/25'
-          } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
-      >
-        {campaign.status === 'running' ? (
-          <>
-            <StopIcon className="h-4 w-4" />
-            <span>Stop Campaign</span>
-          </>
-        ) : (
-          <>
-            <PlayIcon className="h-4 w-4" />
-            <span>Start Campaign</span>
-          </>
-        )}
-      </button>
+    <div className="flex flex-col items-end gap-3">
+      <div className="flex items-center space-x-3">
+        <button
+          onClick={() => navigate('/campaigns')}
+          className="p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all font-bold group"
+        >
+          <ChevronLeftIcon className="h-5 w-5 group-hover:-translate-x-1 transition-transform" />
+        </button>
+        <button
+          disabled={isProcessing}
+          onClick={handleToggleCampaign}
+          className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl font-black transition-all shadow-lg uppercase tracking-wider text-xs ${campaign.status === 'running'
+            ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/25'
+            : 'bg-green-500 hover:bg-green-600 text-white shadow-green-500/25'
+            } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          {campaign.status === 'running' ? (
+            <>
+              <StopIcon className="h-4 w-4" />
+              <span>Stop Campaign</span>
+            </>
+          ) : (
+            <>
+              <PlayIcon className="h-4 w-4" />
+              <span>Start Campaign</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/50 rounded-lg">
+          <div className="w-1 h-1 rounded-full bg-green-500"></div>
+          <span className="text-[8px] uppercase font-black text-slate-500 dark:text-slate-400 tracking-wider">Active</span>
+          <span className="text-xs font-black text-green-600 dark:text-green-400">{campaignStats.successful}</span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 rounded-lg">
+          <div className="w-1 h-1 rounded-full bg-red-500"></div>
+          <span className="text-[8px] uppercase font-black text-slate-500 dark:text-slate-400 tracking-wider">Failed</span>
+          <span className="text-xs font-black text-red-600 dark:text-red-400">{campaignStats.failed}</span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/50 rounded-lg">
+          <div className="w-1 h-1 rounded-full bg-amber-500"></div>
+          <span className="text-[8px] uppercase font-black text-slate-500 dark:text-slate-400 tracking-wider">Rejected</span>
+          <span className="text-xs font-black text-amber-600 dark:text-amber-400">0</span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/50 rounded-lg">
+          <div className="w-1 h-1 rounded-full bg-blue-500"></div>
+          <span className="text-[8px] uppercase font-black text-slate-500 dark:text-slate-400 tracking-wider">1 to 1 Scheduled</span>
+          <span className="text-xs font-black text-blue-600 dark:text-blue-400">0</span>
+        </div>
+      </div>
     </div>
   );
 
@@ -217,24 +299,41 @@ const CampaignDetailPage: React.FC = () => {
       primaryAction={actionButtons}
     >
       <div className="py-6 space-y-8">
-        {/* KPI Section */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 stagger-children">
-          <KPICard title="Total Leads" value={campaignStats.total} color="blue" />
-          <KPICard title="Pending" value={campaignStats.pending} color="gray" />
-          <KPICard title="Successful" value={campaignStats.successful} color="green" />
-          <KPICard title="Completed" value={campaignStats.completed} color="green" />
-          <KPICard title="Failed" value={campaignStats.failed} color="red" />
+        {/* Configuration Section */}
+        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 mb-6">
+          <h3 className="text-lg font-black text-slate-900 dark:text-white mb-4">Configuration</h3>
+          <div className="max-w-md">
+            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+              Assigned Agent
+            </label>
+            <div className="relative">
+              <select
+                value={campaign.agent_id || ''}
+                onChange={handleAgentChange}
+                className="w-full appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all cursor-pointer"
+              >
+                <option value="">Select an Agent</option>
+                {Array.isArray(agents) && agents.map((agent: any) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                </svg>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Progress Bar Section */}
-        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 shadow-sm">
-          <ProgressBar
-            completed={campaignStats.completed}
-            failed={campaignStats.failed}
-            inProgress={0} // Not tracked individually in current schema
-            pending={campaignStats.pending}
-            total={campaignStats.total}
-          />
+        {/* KPI Section */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <KPICard title="Active" value={campaignStats.successful} color="green" />
+          <KPICard title="Failed" value={campaignStats.failed} color="red" />
+          <KPICard title="Rejected" value={0} color="gray" />
+          <KPICard title="1 to 1 Scheduled" value={0} color="blue" />
         </div>
 
         {/* Leads Table Section */}
@@ -242,8 +341,15 @@ const CampaignDetailPage: React.FC = () => {
           leads={leads}
           onAddLead={() => setIsAddLeadModalOpen(true)}
           onImportLeads={() => setIsImportModalOpen(true)}
+          onExport={handleExport}
           onEditLead={(lead) => console.log('Edit', lead)}
           onDeleteLead={handleDeleteLead}
+          stats={{
+            completed: campaignStats.completed,
+            failed: campaignStats.failed,
+            inProgress: 0,
+            pending: campaignStats.pending
+          }}
         />
       </div>
 

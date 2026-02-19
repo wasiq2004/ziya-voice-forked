@@ -14,15 +14,15 @@ class CampaignService {
     /**
      * Create a new campaign
      */
-    async createCampaign(userId, agentId = null, name, description = '', phoneNumberId = null) {
+    async createCampaign(userId, agentId = null, name, description = '', phoneNumberId = null, concurrentCalls = 1, retryAttempts = 0) {
         try {
             const campaignId = uuidv4();
 
-            // Insert campaign with only existing columns
+            // Insert campaign with all columns
             await this.mysqlPool.execute(
-                `INSERT INTO campaigns (id, user_id, agent_id, name, status)
-         VALUES (?, ?, ?, ?, 'draft')`,
-                [campaignId, userId, agentId, name]
+                `INSERT INTO campaigns (id, user_id, agent_id, name, description, status, phone_number_id, concurrent_calls, retry_attempts)
+         VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?)`,
+                [campaignId, userId, agentId, name, description, phoneNumberId, concurrentCalls, retryAttempts]
             );
 
             // Create default settings
@@ -741,7 +741,7 @@ class CampaignService {
             const updates = [];
             const values = [];
 
-            if (campaignData.name) {
+            if (campaignData.name !== undefined) {
                 updates.push('name = ?');
                 values.push(campaignData.name);
             }
@@ -749,17 +749,26 @@ class CampaignService {
                 updates.push('description = ?');
                 values.push(campaignData.description);
             }
-            if (campaignData.agent_id) {
+            if (campaignData.agent_id !== undefined) {
                 updates.push('agent_id = ?');
-                values.push(campaignData.agent_id);
+                values.push(campaignData.agent_id === '' ? null : campaignData.agent_id);
             }
-            if (campaignData.phone_number_id) {
+            if (campaignData.phone_number_id !== undefined) {
                 updates.push('phone_number_id = ?');
-                values.push(campaignData.phone_number_id);
+                values.push(campaignData.phone_number_id === '' ? null : campaignData.phone_number_id);
+            }
+            if (campaignData.concurrent_calls !== undefined) {
+                updates.push('concurrent_calls = ?');
+                values.push(campaignData.concurrent_calls);
+            }
+            if (campaignData.retry_attempts !== undefined) {
+                updates.push('retry_attempts = ?');
+                values.push(campaignData.retry_attempts);
             }
 
             if (updates.length === 0) {
-                throw new Error('No fields to update');
+                // If no fields to update, return current campaign without error
+                return this.getCampaign(campaignId);
             }
 
             values.push(campaignId, userId);

@@ -879,13 +879,7 @@ Please check that:
             pageDescription="Manage your virtual phone numbers and assign voice agents."
             primaryAction={
                 <div className="flex items-center space-x-3">
-                    <button
-                        onClick={() => setImportModalOpen(true)}
-                        className="flex items-center px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-white font-bold text-sm shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
-                    >
-                        <ArrowPathIcon className="h-4 w-4 mr-2" />
-                        Import
-                    </button>
+
                     <button
                         onClick={() => setAddTwilioModalOpen(true)}
                         className="flex items-center px-5 py-2.5 rounded-xl bg-primary text-white font-bold text-sm shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all group"
@@ -923,14 +917,14 @@ Please check that:
                             trend: 'Last 30 Days'
                         }
                     ].map((stat, i) => (
-                        <div key={i} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 p-8 rounded-3xl shadow-sm hover:shadow-md transition-all group">
+                        <div key={i} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 p-5 rounded-3xl shadow-sm hover:shadow-md transition-all group">
                             <div className="flex items-center justify-between mb-4">
-                                <div className={`p-4 rounded-2xl bg-${stat.color}-50 dark:bg-${stat.color}-900/20 text-${stat.color}-500 group-hover:scale-110 transition-transform duration-300`}>
-                                    <stat.icon className="h-6 w-6" />
+                                <div className={`p-3 rounded-xl bg-${stat.color}-50 dark:bg-${stat.color}-900/20 text-${stat.color}-500 group-hover:scale-110 transition-transform duration-300`}>
+                                    <stat.icon className="h-5 w-5" />
                                 </div>
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{stat.trend}</span>
                             </div>
-                            <h3 className="text-3xl font-black text-slate-900 dark:text-white mb-1">{stat.value}</h3>
+                            <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-1">{stat.value}</h3>
                             <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-[10px]">{stat.label}</p>
                         </div>
                     ))}

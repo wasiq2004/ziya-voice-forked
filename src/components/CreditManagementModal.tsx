@@ -40,6 +40,10 @@ const CreditManagementModal: React.FC<CreditManagementModalProps> = ({
             await addCredits(userId, amountNum, description || 'Admin credit adjustment', admin.id);
 
             setSuccess(`Successfully added $${amountNum.toFixed(2)} to ${userEmail}`);
+
+            // Notify sidebar to refresh the credit balance immediately
+            window.dispatchEvent(new Event('wallet_updated'));
+
             setTimeout(() => {
                 onSuccess();
                 onClose();
@@ -103,8 +107,8 @@ const CreditManagementModal: React.FC<CreditManagementModalProps> = ({
                                     type="button"
                                     onClick={() => setAmount(quickAmount.toString())}
                                     className={`py-2 px-3 rounded-lg text-sm font-semibold transition-all ${amount === quickAmount.toString()
-                                            ? 'bg-emerald-600 text-white'
-                                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                        ? 'bg-emerald-600 text-white'
+                                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                                         }`}
                                 >
                                     ${quickAmount}

@@ -366,14 +366,15 @@ app.get('/api/wallet/pricing', async (req, res) => {
 // ==================== ADMIN WALLET ENDPOINTS ====================
 
 // Add credits to user wallet (admin only)
+// Accepts amount in INR; converts to Credits internally
 app.post('/api/admin/wallet/add-credits', async (req, res) => {
   try {
-    const { userId, amount, description, adminId } = req.body;
+    const { userId, amount, description, adminId } = req.body; // amount is in INR
 
     if (!userId || !amount || !adminId) {
       return res.status(400).json({
         success: false,
-        message: 'User ID, amount, and admin ID are required'
+        message: 'User ID, amount (INR), and admin ID are required'
       });
     }
 
@@ -384,25 +385,28 @@ app.post('/api/admin/wallet/add-credits', async (req, res) => {
       });
     }
 
+    // walletService.addCredits now accepts INR and converts to Credits
     const result = await walletService.addCredits(
       userId,
       amount,
-      description || 'Admin credit adjustment',
+      description || `Admin added ₹${amount} INR`,
       adminId
     );
 
-    // Log admin activity
+    // Log admin activity with INR + credits info
     await adminService.logActivity(
       adminId,
       'add_wallet_credits',
       userId,
-      `Added $${amount} to wallet. Reason: ${description || 'N/A'}`,
+      `Added ₹${amount} INR (≈${result.creditsAdded} Credits) to wallet. Reason: ${description || 'N/A'}`,
       req.ip
     );
 
     res.json({
       success: true,
       newBalance: result.newBalance,
+      creditsAdded: result.creditsAdded,
+      inrAmount: parseFloat(amount),
       transaction: result.transaction
     });
   } catch (error) {
@@ -2887,13 +2891,22 @@ app.get('/api/campaigns/:id', async (req, res) => {
 // Create a new campaign
 app.post('/api/campaigns', async (req, res) => {
   try {
-    const { userId, agentId, phoneNumberId, name, description, contacts } = req.body;
+    const { userId, agentId, phoneNumberId, name, description, contacts, concurrentCalls, retryAttempts } = req.body;
     if (!userId || !name) {
       return res.status(400).json({ success: false, message: 'User ID and campaign name are required' });
     }
 
     // Create the campaign (agentId and phoneNumberId can be null)
-    const result = await campaignService.createCampaign(userId, agentId || null, name, description || '', phoneNumberId || null);
+    // pass concurrentCalls and retryAttempts
+    const result = await campaignService.createCampaign(
+      userId,
+      agentId || null,
+      name,
+      description || '',
+      phoneNumberId || null,
+      concurrentCalls || 1,
+      retryAttempts || 0
+    );
 
     // Add contacts if provided
     if (contacts && contacts.length > 0) {
@@ -3913,6 +3926,171 @@ async function processCampaignCalls(campaignId, userId, campaign, records) {
 
   console.log(`Campaign ${campaignId} processing complete`);
 }
+
+// Schema Migration Endpoint
+app.get('/api/admin/migrate-schema', async (req, res) => {
+  try {
+    const checkColumn = async (table, column) => {
+      const [rows] = await mysqlPool.execute(
+        `SHOW COLUMNS FROM ${table} LIKE '${column}'`
+      );
+      return rows.length > 0;
+    };
+
+    const [tables] = await mysqlPool.execute("SHOW TABLES LIKE 'campaigns'");
+    if (tables.length === 0) return res.status(404).json({ message: 'campaigns table not found' });
+
+    const alterQueries = [];
+
+    // Check campaigns table columns
+    if (!(await checkColumn('campaigns', 'agent_id'))) {
+      alterQueries.push("ALTER TABLE campaigns ADD COLUMN agent_id VARCHAR(50) NULL");
+    }
+    if (!(await checkColumn('campaigns', 'concurrent_calls'))) {
+      alterQueries.push("ALTER TABLE campaigns ADD COLUMN concurrent_calls INT DEFAULT 1");
+    }
+    if (!(await checkColumn('campaigns', 'retry_attempts'))) {
+      alterQueries.push("ALTER TABLE campaigns ADD COLUMN retry_attempts INT DEFAULT 3");
+    }
+
+    const results = [];
+    for (const query of alterQueries) {
+      await mysqlPool.execute(query);
+      results.push(`Executed: ${query}`);
+    }
+
+    res.json({ success: true, changes: results, message: results.length ? 'Schema updated' : 'Schema already up to date' });
+  } catch (error) {
+    console.error('Migration error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Import CSV Endpoint
+app.post('/api/campaigns/:id/import-csv', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, csvContent } = req.body;
+    // require csvParser here to ensure it uses the latest version
+    const csvParser = require('./csvParser');
+
+    const records = csvParser.parseCSV(csvContent);
+    let successCount = 0;
+
+    // Insert into DB
+    for (const record of records) {
+      if (!record.phone_number) continue;
+
+      try {
+        await mysqlPool.execute(
+          `INSERT INTO campaign_contacts 
+           (id, campaign_id, phone_number, name, email, status, created_at, updated_at) 
+           VALUES (UUID(), ?, ?, ?, ?, 'pending', NOW(), NOW())`,
+          [id, record.phone_number, record.name || '', record.email || '']
+        );
+        successCount++;
+      } catch (err) {
+        console.error('Insert error for record:', record, err);
+      }
+    }
+
+    res.json({ success: true, count: successCount });
+  } catch (error) {
+    console.error('Import CSV error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update Campaign Endpoint (for Agent Assignment etc.)
+app.put('/api/campaigns/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, ...updateData } = req.body;
+
+    // Instantiate services locally to ensure availability
+    const WalletService = require('./services/walletService.js');
+    const CostCalculator = require('./services/costCalculator.js');
+    const CampaignService = require('./services/campaignService.js');
+
+    // Check if classes or instances are exported
+    const walletService = new WalletService(mysqlPool);
+    const costCalculator = new CostCalculator(mysqlPool);
+    const campaignService = new CampaignService(mysqlPool, walletService, costCalculator);
+
+    const result = await campaignService.updateCampaign(id, userId, updateData);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Update Campaign error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get User Agents (for campaign creation)
+app.get('/api/agents', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ success: false, message: 'User ID required' });
+
+    const [agents] = await mysqlPool.execute(
+      'SELECT id, name FROM agents WHERE user_id = ? ORDER BY created_at DESC',
+      [userId]
+    );
+    res.json({ success: true, agents });
+  } catch (error) {
+    console.error('Error fetching agents:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Export Campaign Leads to CSV
+app.get('/api/campaigns/:id/export', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.query;
+
+    if (!userId) return res.status(400).json({ success: false, message: 'User ID required' });
+
+    // Verify ownership
+    const [campaigns] = await mysqlPool.execute('SELECT name FROM campaigns WHERE id = ? AND user_id = ?', [id, userId]);
+    if (campaigns.length === 0) return res.status(404).json({ success: false, message: 'Campaign not found' });
+
+    const campaignName = campaigns[0].name;
+
+    // Get contacts
+    const [contacts] = await mysqlPool.execute(
+      'SELECT name, phone_number, email, status, attempts, created_at, call_duration, call_cost FROM campaign_contacts WHERE campaign_id = ? ORDER BY created_at ASC',
+      [id]
+    );
+
+    // Convert to CSV
+    const headers = ['Name', 'Phone', 'Email', 'Status', 'Attempts', 'Call Duration (s)', 'Cost ($)', 'Date Added'];
+    const csvRows = [headers.join(',')];
+
+    contacts.forEach(c => {
+      const row = [
+        c.name ? `"${c.name.replace(/"/g, '""')}"` : '',
+        `"${c.phone_number}"`,
+        c.email ? `"${c.email}"` : '',
+        c.status || 'pending',
+        c.attempts || 0,
+        c.call_duration || 0,
+        c.call_cost || 0,
+        c.created_at ? new Date(c.created_at).toLocaleDateString() : ''
+      ];
+      csvRows.push(row.join(','));
+    });
+
+    const csvString = csvRows.join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${campaignName.replace(/[^a-z0-9]/gi, '_')}_leads.csv"`);
+    res.send(csvString);
+
+  } catch (error) {
+    console.error('Error exporting campaign:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 app.get("/db-conn-status", async (req, res) => {
   try {

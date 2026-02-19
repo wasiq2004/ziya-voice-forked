@@ -143,10 +143,11 @@ router.post('/:id/preview', async (req, res) => {
 
         // Configure format based on provider for web browser compatibility
         if (voice.provider === 'sarvam') {
-            // Sarvam: Request MP3 format for browser playback
+            // Sarvam bulbul:v2 only accepts 'en-IN' as target_language_code.
+            // Passing hi-IN / kn-IN / ta-IN causes a 400 Bad Request.
             ttsOptions.format = 'mp3';
             ttsOptions.speaker = voice.provider_voice_id;
-            ttsOptions.language = voice.language_code;
+            ttsOptions.target_language_code = 'en-IN';  // always en-IN for bulbul:v2
         } else {
             // ElevenLabs: Request MP3 format for browser playback
             ttsOptions.output_format = 'mp3_44100_128'; // Standard MP3 for browser

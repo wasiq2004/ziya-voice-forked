@@ -15,6 +15,8 @@ import {
     ArrowPathIcon,
     ClockIcon
 } from '@heroicons/react/24/outline';
+import { fetchCampaigns } from '../utils/api';
+import KPICard from '../components/KPICard';
 
 const DashboardPage: React.FC = () => {
     const navigate = useNavigate();
@@ -22,6 +24,13 @@ const DashboardPage: React.FC = () => {
     const [phoneNumberCount, setPhoneNumberCount] = useState(0);
     const [activeCalls, setActiveCalls] = useState(0);
     const [credits, setCredits] = useState<number | string>('--');
+    const [stats, setStats] = useState({
+        totalCampaigns: 0,
+        activeCampaigns: 0,
+        totalCalls: 0,
+        conversionRate: 0,
+        totalLeads: 0
+    });
     const [loading, setLoading] = useState(true);
     const [isAdmin, setIsAdmin] = useState(false);
     const { user } = useAuth();
@@ -51,6 +60,26 @@ const DashboardPage: React.FC = () => {
             // TODO: Fetch active calls from API when endpoint is available
             // For now, we'll use a placeholder value
             setActiveCalls(0);
+
+            // Fetch campaigns for analytics
+            const campaignRes = await fetchCampaigns(user!.id);
+            if (campaignRes.success && campaignRes.data) {
+                const camps = campaignRes.data;
+                const totalCampaigns = camps.length;
+                const activeCampaigns = camps.filter((c: any) => c.status === 'running').length;
+                const totalLeads = camps.reduce((sum: number, c: any) => sum + (c.total_contacts || 0), 0);
+                const totalCalls = camps.reduce((sum: number, c: any) => sum + (c.completed_calls || 0), 0);
+                // Mock conversion rate for now (completed calls / leads * 100) or 0
+                const conversionRate = totalLeads > 0 ? Math.round((totalCalls / totalLeads) * 100) : 0;
+
+                setStats({
+                    totalCampaigns,
+                    activeCampaigns,
+                    totalCalls,
+                    conversionRate,
+                    totalLeads
+                });
+            }
 
 
         } catch (error) {
@@ -133,26 +162,23 @@ const DashboardPage: React.FC = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 stagger-children">
                 <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6">
-                    <h2 className="text-lg md:text-xl font-bold text-slate-800 dark:text-white mb-6">Recent Activity</h2>
-                    <div className="space-y-4">
-                        <div className="flex items-start">
-                            <div className="flex-shrink-0">
-                                <div className="h-2.5 w-2.5 rounded-full bg-green-500 mt-2"></div>
-                            </div>
-                            <div className="ml-4">
-                                <p className="text-sm font-bold text-slate-800 dark:text-white">Dashboard synchronized</p>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Just now</p>
-                            </div>
+                    <h2 className="text-lg md:text-xl font-bold text-slate-800 dark:text-white mb-6">Overall Analytics</h2>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-1">
+                            <KPICard title="Total Campaigns" value={stats.totalCampaigns} color="blue" />
                         </div>
-                        <div className="flex items-start">
-                            <div className="flex-shrink-0">
-                                <div className="h-2.5 w-2.5 rounded-full bg-blue-500 mt-2"></div>
-                            </div>
-                            <div className="ml-4">
-                                <p className="text-sm font-bold text-slate-800 dark:text-white">Agent performance data updated</p>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">2 minutes ago</p>
-                            </div>
+                        <div className="col-span-1">
+                            <KPICard title="Active Campaigns" value={stats.activeCampaigns} color="green" />
                         </div>
+                        <div className="col-span-1">
+                            <KPICard title="Total Calls" value={stats.totalCalls} color="gray" />
+                        </div>
+                        <div className="col-span-1">
+                            <KPICard title="Total Leads" value={stats.totalLeads} color="purple" />
+                        </div>
+                    </div>
+                    <div className="mt-4">
+                        <KPICard title="Conversion Rate" value={`${stats.conversionRate}%`} color="red" />
                     </div>
                 </div>
 

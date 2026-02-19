@@ -38,7 +38,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                 const data = await response.json();
 
                 if (data.success) {
-                    setCredits(Math.round(data.balance || 0));
+                    setCredits(data.balance || 0); // Show exact balance, no rounding
                 } else {
                     setCredits(0);
                 }
@@ -51,9 +51,28 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
         };
 
         fetchCredits();
-        // Refresh credits every 30 seconds
-        const interval = setInterval(fetchCredits, 30000);
-        return () => clearInterval(interval);
+        // Credits refresh is now event-driven (see wallet_updated listener below)
+    }, [user?.id]);
+
+    // Listen for wallet_updated events (dispatched when a call ends or credits are added)
+    useEffect(() => {
+        if (!user?.id) return;
+
+        const handleWalletUpdate = async () => {
+            try {
+                const apiUrl = getApiBaseUrl();
+                const response = await fetch(`${apiUrl}/api/wallet/balance/${user.id}`);
+                const data = await response.json();
+                if (data.success) {
+                    setCredits(data.balance || 0);
+                }
+            } catch (error) {
+                console.error('Error refreshing credits:', error);
+            }
+        };
+
+        window.addEventListener('wallet_updated', handleWalletUpdate);
+        return () => window.removeEventListener('wallet_updated', handleWalletUpdate);
     }, [user?.id]);
 
     const handleLogout = async () => {
@@ -93,28 +112,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
 
     const getCurrentPage = (): Page => {
         const path = location.pathname;
-        switch (path) {
-            case '/dashboard':
-                return Page.Dashboard;
-            case '/campaigns':
-                return Page.Campaigns;
-            case '/agents':
-                return Page.Agent;
-            case '/phone-numbers':
-                return Page.PhoneNo;
-            case '/settings':
-                return Page.Settings;
-            case '/api':
-                return Page.API;
-            case '/credits':
-                return Page.Credits;
-            case '/reports':
-                return Page.Reports;
-            case '/schedule':
-                return Page.Schedule;
-            default:
-                return Page.Dashboard;
-        }
+        if (path === '/dashboard' || path === '/') return Page.Dashboard;
+        if (path.startsWith('/campaigns')) return Page.Campaigns;
+        if (path.startsWith('/agents')) return Page.Agent;
+        if (path.startsWith('/phone-numbers')) return Page.PhoneNo;
+        if (path.startsWith('/settings')) return Page.Settings;
+        if (path.startsWith('/api')) return Page.API;
+        if (path.startsWith('/credits')) return Page.Credits;
+        if (path.startsWith('/reports')) return Page.Reports;
+        if (path.startsWith('/schedule')) return Page.Schedule;
+
+        return Page.Dashboard;
     };
 
     const activePage = getCurrentPage();

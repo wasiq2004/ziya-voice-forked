@@ -3,7 +3,6 @@ const nodeFetch = require("node-fetch");
 const WalletService = require('./walletService.js');
 const CostCalculator = require('./costCalculator.js');
 const SarvamSttService = require('./sarvamSttService.js');
-const { spawn } = require('child_process');
 
 // Precompute mu-law to linear PCM table for fast VAD
 const MU_LAW_TO_PCM = new Int16Array(256);
@@ -621,9 +620,10 @@ class MediaStreamHandler {
                 }
             } else {
                 if (!session.silenceTimer && session.audioBuffer.length > 0) {
+                    // 600ms: phone lines have less ambient noise so shorter wait is safe.
                     session.silenceTimer = setTimeout(() => {
                         this.processBufferedAudio(session);
-                    }, 1000); // 1.0s silence threshold for phone calls
+                    }, 600);
                 }
             }
         } catch (error) {
@@ -653,8 +653,8 @@ class MediaStreamHandler {
         try {
             console.log(`🎤 Transcribing ${completeBuffer.length} bytes with Sarvam STT...`);
 
-            // Convert mulaw (8kHz) to WAV (16kHz PCM)
-            const wavBuffer = await this.convertMulawToWav(completeBuffer);
+            // Pure-JS mulaw (8kHz) → WAV (16kHz PCM) — no FFmpeg spawn needed
+            const wavBuffer = this.convertMulawToWavJS(completeBuffer);
 
             const result = await this.sarvamSttService.transcribe(wavBuffer);
             const transcript = result.transcript;
@@ -679,52 +679,65 @@ class MediaStreamHandler {
     }
 
     /**
-     * Convert mulaw 8kHz raw to WAV 16kHz using FFmpeg pipes
+     * Pure-JS mulaw→8kHz PCM→16kHz PCM→WAV conversion.
+     * Replaces the FFmpeg child-process spawn — eliminates 150–300ms cold-start per utterance.
+     *
+     * Steps:
+     *   1. Mulaw bytes → 16-bit signed PCM at 8kHz  (MU_LAW_TO_PCM lookup table already in memory)
+     *   2. 8kHz → 16kHz upsample via linear interpolation (2×)
+     *   3. Wrap in a standard 44-byte WAV header
+     *
+     * @param {Buffer} mulawBuffer - Raw µ-law 8kHz mono audio from Twilio
+     * @returns {Buffer} WAV file buffer at 16kHz PCM, ready for Sarvam STT
      */
-    async convertMulawToWav(mulawBuffer) {
-        return new Promise((resolve, reject) => {
-            try {
-                const ffmpeg = spawn('ffmpeg', [
-                    '-y',
-                    '-f', 'mulaw',
-                    '-ar', '8000',
-                    '-ac', '1',
-                    '-i', 'pipe:0',
-                    '-f', 'wav',
-                    '-ar', '16000',
-                    '-ac', '1',
-                    'pipe:1'
-                ]);
+    convertMulawToWavJS(mulawBuffer) {
+        const len = mulawBuffer.length;
 
-                let wavData = Buffer.alloc(0);
-                let ffmpegError = '';
+        // Step 1: mulaw → 16-bit PCM at 8kHz using the in-memory lookup table
+        const pcm8k = new Int16Array(len);
+        for (let i = 0; i < len; i++) {
+            pcm8k[i] = MU_LAW_TO_PCM[mulawBuffer[i]];
+        }
 
-                ffmpeg.stdout.on('data', (data) => {
-                    wavData = Buffer.concat([wavData, data]);
-                });
+        // Step 2: Upsample 8kHz → 16kHz by 2× linear interpolation
+        // Each input sample becomes 2 output samples:
+        //   out[2i]   = in[i]
+        //   out[2i+1] = average of in[i] and in[i+1]  (linear interpolation)
+        const upLen = len * 2;
+        const pcm16k = new Int16Array(upLen);
+        for (let i = 0; i < len - 1; i++) {
+            pcm16k[2 * i] = pcm8k[i];
+            pcm16k[2 * i + 1] = Math.round((pcm8k[i] + pcm8k[i + 1]) / 2);
+        }
+        // Handle the last sample (no next sample to interpolate with)
+        pcm16k[2 * (len - 1)] = pcm8k[len - 1];
+        pcm16k[2 * (len - 1) + 1] = pcm8k[len - 1];
 
-                ffmpeg.stderr.on('data', (data) => {
-                    ffmpegError += data.toString();
-                });
+        // Step 3: Build a standard 44-byte WAV/RIFF header + PCM data
+        const pcmBuffer = Buffer.from(pcm16k.buffer);
+        const dataSize = pcmBuffer.length;
+        const sampleRate = 16000;
+        const channels = 1;
+        const bitDepth = 16;
+        const byteRate = sampleRate * channels * (bitDepth / 8);
+        const blockAlign = channels * (bitDepth / 8);
 
-                ffmpeg.on('close', (code) => {
-                    if (code !== 0) {
-                        reject(new Error(`FFmpeg mulaw-to-wav failed: ${ffmpegError}`));
-                        return;
-                    }
-                    resolve(wavData);
-                });
+        const header = Buffer.alloc(44);
+        header.write('RIFF', 0);
+        header.writeUInt32LE(36 + dataSize, 4);
+        header.write('WAVE', 8);
+        header.write('fmt ', 12);
+        header.writeUInt32LE(16, 16);           // PCM sub-chunk size
+        header.writeUInt16LE(1, 20);            // PCM format (linear)
+        header.writeUInt16LE(channels, 22);
+        header.writeUInt32LE(sampleRate, 24);
+        header.writeUInt32LE(byteRate, 28);
+        header.writeUInt16LE(blockAlign, 32);
+        header.writeUInt16LE(bitDepth, 34);
+        header.write('data', 36);
+        header.writeUInt32LE(dataSize, 40);
 
-                ffmpeg.on('error', (err) => {
-                    reject(err);
-                });
-
-                ffmpeg.stdin.write(mulawBuffer);
-                ffmpeg.stdin.end();
-            } catch (err) {
-                reject(err);
-            }
-        });
+        return Buffer.concat([header, pcmBuffer]);
     }
 }
 

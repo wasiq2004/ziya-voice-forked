@@ -131,31 +131,28 @@ class VoiceSyncService {
         console.log('[VoiceSync] Fetching Sarvam voices...');
 
         try {
-            const apiKey = process.env.SARVAM_API_KEY;
+            // VERIFIED: These are the ONLY 7 speakers supported by Sarvam bulbul:v2.
+            // Confirmed from the API: "Available speakers for bulbul:v2 are: anushka, abhilash, manisha, vidya, arya, karun, hitesh"
+            const validSpeakers = ['anushka', 'manisha', 'vidya', 'arya', 'abhilash', 'karun', 'hitesh'];
 
-            if (!apiKey) {
-                console.log('[VoiceSync] Sarvam API key not configured, skipping...');
-                return {
-                    success: true,
-                    count: 0
-                };
-            }
+            // Purge any old/invalid Sarvam voices that are no longer supported
+            await this.pool.execute(
+                `DELETE FROM voices WHERE provider = 'sarvam' AND provider_voice_id NOT IN (${validSpeakers.map(() => '?').join(',')})`,
+                validSpeakers
+            );
+            console.log('[VoiceSync] Purged invalid Sarvam voices from DB');
 
-            // Note: Sarvam may not have a voices list API
-            // For now, we'll create voices based on known speakers
             const sarvamVoices = [
                 { speaker: 'anushka', language: 'en-IN', gender: 'female' },
-                { speaker: 'abhilash', language: 'en-IN', gender: 'male' },
-                { speaker: 'chitra', language: 'ta-IN', gender: 'female' },
-                { speaker: 'arvind', language: 'hi-IN', gender: 'male' },
-                { speaker: 'manisha', language: 'hi-IN', gender: 'female' },
+                { speaker: 'manisha', language: 'en-IN', gender: 'female' },
                 { speaker: 'vidya', language: 'en-IN', gender: 'female' },
                 { speaker: 'arya', language: 'en-IN', gender: 'female' },
+                { speaker: 'abhilash', language: 'en-IN', gender: 'male' },
                 { speaker: 'karun', language: 'en-IN', gender: 'male' },
-                { speaker: 'hitesh', language: 'en-IN', gender: 'male' }
+                { speaker: 'hitesh', language: 'en-IN', gender: 'male' },
             ];
 
-            console.log(`[VoiceSync] Creating ${sarvamVoices.length} Sarvam voices from known speakers`);
+            console.log(`[VoiceSync] Upserting ${sarvamVoices.length} Sarvam voices`);
 
             let syncedCount = 0;
             for (const rawVoice of sarvamVoices) {
@@ -214,18 +211,25 @@ class VoiceSyncService {
      * @returns {VoiceDTO}
      */
     normalizeSarvamVoice(rawVoice) {
+        const firstName = rawVoice.speaker.charAt(0).toUpperCase() + rawVoice.speaker.slice(1);
+        const genderLabel = rawVoice.gender
+            ? ` (${rawVoice.gender.charAt(0).toUpperCase() + rawVoice.gender.slice(1)})`
+            : '';
         return {
             provider: 'sarvam',
             providerVoiceId: rawVoice.speaker,
-            displayName: rawVoice.speaker.charAt(0).toUpperCase() + rawVoice.speaker.slice(1),
-            languageCode: rawVoice.language || 'en-IN',
+            displayName: `${firstName}${genderLabel}`,
+            // bulbul:v2 always uses en-IN as the API target_language_code.
+            // The gender/accent origin is informational only.
+            languageCode: 'en-IN',
             gender: rawVoice.gender || null,
             sampleRate: null,
-            locale: rawVoice.language || 'en-IN',
+            locale: 'en-IN',
             isPreviewAvailable: true,
             meta: {
                 speaker: rawVoice.speaker,
-                supportedLanguages: [rawVoice.language]
+                accentOrigin: rawVoice.language,
+                supportedLanguages: ['en-IN']
             }
         };
     }
@@ -290,9 +294,21 @@ class VoiceSyncService {
             }
 
             // Fetch from database
-            const [rows] = await this.pool.execute(
+            let [rows] = await this.pool.execute(
                 'SELECT * FROM voices ORDER BY provider, display_name'
             );
+
+            // Auto-seed Sarvam voices if DB has none
+            // This ensures the first page load always shows voices without needing a manual /sync call.
+            const hasSarvam = rows.some(r => r.provider === 'sarvam');
+            if (!hasSarvam) {
+                console.log('[VoiceSync] No Sarvam voices found in DB — auto-seeding...');
+                await this.syncSarvamVoices();
+                // Re-fetch after seeding
+                [rows] = await this.pool.execute(
+                    'SELECT * FROM voices ORDER BY provider, display_name'
+                );
+            }
 
             // Parse meta JSON (MySQL might return it as object or string depending on driver)
             const voices = rows.map(row => ({
