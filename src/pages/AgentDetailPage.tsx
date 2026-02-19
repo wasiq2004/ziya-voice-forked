@@ -24,7 +24,7 @@ import {
     getVoiceProviderById,
     AVAILABLE_LANGUAGES_BY_PROVIDER
 } from '../constants';
-import { PlusIcon, ArrowUpTrayIcon, DocumentTextIcon, XMarkIcon, StopIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, ArrowUpTrayIcon, DocumentTextIcon, XMarkIcon, StopIcon, PencilIcon } from '@heroicons/react/24/outline';
 import Modal from '../components/Modal';
 import { GoogleGenAI, Chat, Modality, LiveServerMessage, type Blob } from '@google/genai';
 import { LLMService } from '../services/llmService';
@@ -44,10 +44,13 @@ interface AgentDetailPageProps {
 }
 
 const SettingsCard: React.FC<{ title: string; children: React.ReactNode; }> = ({ title, children }) => (
-    <div className="bg-white dark:bg-darkbg-light rounded-lg shadow-sm">
-        <div className="p-6">
-            <h3 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-6">{title}</h3>
-            <div className="space-y-6">{children}</div>
+    <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden card-animate group/card">
+        <div className="p-8">
+            <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 mb-8 uppercase tracking-[0.2em] flex items-center gap-2">
+                <div className="w-1 h-4 bg-primary rounded-full" />
+                {title}
+            </h3>
+            <div className="space-y-8">{children}</div>
         </div>
     </div>
 );
@@ -64,21 +67,27 @@ interface SettingsToggleProps {
 }
 
 const SettingsToggle: React.FC<SettingsToggleProps> = ({ label, description, checked, onChange, name, isBeta, warning }) => (
-    <div className="flex items-start justify-between">
-        <div>
-            <label htmlFor={name} className="font-medium text-slate-700 dark:text-slate-200 flex items-center">
-                {label}
-                {isBeta && <span className="ml-2 text-xs font-semibold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Beta</span>}
+    <div className="flex items-start justify-between group/toggle p-5 -mx-5 rounded-2xl transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-900/20">
+        <div className="flex-1 pr-8">
+            <label htmlFor={name} className="flex items-center gap-2 cursor-pointer">
+                <span className="text-sm font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest">{label}</span>
+                {isBeta && (
+                    <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ring-1 ring-blue-200 dark:ring-blue-800">
+                        Beta
+                    </span>
+                )}
             </label>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{description}</p>
-            {warning && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Warning: {warning}</p>}
+            <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-1.5 leading-relaxed">{description}</p>
+            {warning && (
+                <div className="flex items-center gap-1.5 mt-2 text-amber-500">
+                    <div className="w-1 h-1 rounded-full bg-current" />
+                    <p className="text-[10px] font-black uppercase tracking-widest">Warning: {warning}</p>
+                </div>
+            )}
         </div>
-        <label className="flex items-center cursor-pointer">
-            <div className="relative">
-                <input type="checkbox" id={name} name={name} className="sr-only" checked={checked} onChange={onChange} />
-                <div className={`block w-11 h-6 rounded-full transition ${checked ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
-                <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${checked ? 'translate-x-5' : ''}`}></div>
-            </div>
+        <label className="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id={name} name={name} className="sr-only peer" checked={checked} onChange={onChange} />
+            <div className="w-12 h-7 bg-slate-200 dark:bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary shadow-inner"></div>
         </label>
     </div>
 );
@@ -108,73 +117,106 @@ const VoiceSelectionModal: React.FC<{
 
     return (
         <Modal isOpen={true} onClose={onClose} title="Select Voice">
-            <div className="space-y-4">
-                <div className="border-b border-slate-200 dark:border-slate-700">
-                    <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-                        {AVAILABLE_VOICE_PROVIDERS.map(provider => (
-                            <button
-                                key={provider.id}
-                                type="button"
-                                onClick={() => setSelectedProvider(provider.id)}
-                                className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors ${selectedProvider === provider.id
-                                    ? 'border-primary text-primary'
-                                    : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600'
-                                    }`}
-                            >
-                                {provider.name}
-                            </button>
-                        ))}
-                    </nav>
+            <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+                {/* Provider Tabs */}
+                <div className="flex bg-slate-100 dark:bg-slate-900/50 p-1 rounded-2xl">
+                    {AVAILABLE_VOICE_PROVIDERS.map(provider => (
+                        <button
+                            key={provider.id}
+                            onClick={() => setSelectedProvider(provider.id)}
+                            className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${selectedProvider === provider.id
+                                ? 'bg-white dark:bg-slate-800 text-primary shadow-lg shadow-primary/5'
+                                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                                }`}
+                        >
+                            {provider.name}
+                        </button>
+                    ))}
                 </div>
-                <div>
-                    <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 mt-4">
-                        My Voices {loadingVoices && <span className="text-xs text-slate-500">(Loading...)</span>}
-                    </h4>
+
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between px-1">
+                        <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                            Available Voices
+                        </h4>
+                        {loadingVoices && (
+                            <div className="flex items-center gap-2">
+                                <div className="animate-spin rounded-full h-3 w-3 border-2 border-primary border-b-transparent" />
+                                <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Syncing...</span>
+                            </div>
+                        )}
+                    </div>
+
                     {loadingVoices ? (
-                        <div className="flex justify-center items-center h-32">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                        <div className="py-20 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-100 dark:border-slate-800">
+                            <div className="animate-spin rounded-full h-10 w-10 border-4 border-primary border-b-transparent mb-4" />
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading Voice Library</p>
                         </div>
                     ) : (
-                        <div className="space-y-2 max-h-64 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-md p-2">
+                        <div className="grid gap-3">
                             {(voicesToDisplay[selectedProvider] || []).length === 0 ? (
-                                <div className="text-center py-8 text-slate-500">
-                                    <p>No voices found</p>
-                                    <p className="text-xs mt-2">Check your ElevenLabs API key configuration</p>
+                                <div className="py-16 text-center bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-100 dark:border-slate-800">
+                                    <VoiceIcon className="h-12 w-12 text-slate-200 dark:text-slate-800 mx-auto mb-3" />
+                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No voices found</p>
+                                    <p className="text-[9px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-wider mt-1">Check your API configuration</p>
                                 </div>
                             ) : (
                                 (voicesToDisplay[selectedProvider] || []).map(voice => (
                                     <div
                                         key={voice.id}
                                         onClick={() => setSelectedVoice(voice.id)}
-                                        className={`flex items-center p-2 rounded-md cursor-pointer transition-colors ${selectedVoice === voice.id
-                                            ? 'bg-emerald-100 dark:bg-emerald-900/50'
-                                            : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                                        className={`group relative p-4 rounded-2xl border transition-all cursor-pointer flex items-center gap-4 ${selectedVoice === voice.id
+                                            ? 'bg-primary/5 border-primary/30 shadow-sm'
+                                            : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700'
                                             }`}
                                     >
-                                        <div className="w-8 h-8 rounded-md bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-slate-500 mr-3">
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm transition-colors ${selectedVoice === voice.id
+                                            ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-400 group-hover:bg-slate-200 dark:group-hover:bg-slate-700'
+                                            }`}>
                                             {voice.name.charAt(0)}
                                         </div>
-                                        <span className="flex-grow font-medium">{voice.name}</span>
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                if (playingVoiceId === voice.id) {
-                                                    onStopPreview();
-                                                } else {
-                                                    onPlayPreview(voice.id);
-                                                }
-                                            }}
-                                            className="p-1 text-slate-500 hover:text-primary-dark dark:hover:text-primary-light"
 
-                                        >
-                                            {playingVoiceId === voice.id ? (
-                                                <StopIcon className="w-5 h-5" />
-                                            ) : (
-                                                <PlayIcon className="w-5 h-5" />
-                                            )}
-                                        </button>
+                                        <div className="flex-1 min-w-0">
+                                            <h5 className={`text-sm font-black truncate transition-colors ${selectedVoice === voice.id ? 'text-primary' : 'text-slate-700 dark:text-slate-200'}`}>
+                                                {voice.name}
+                                            </h5>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                                                {selectedProvider === 'eleven-labs' ? 'High Fidelity' : 'Standard'}
+                                            </p>
+                                        </div>
+
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    if (playingVoiceId === voice.id) {
+                                                        onStopPreview();
+                                                    } else {
+                                                        onPlayPreview(voice.id);
+                                                    }
+                                                }}
+                                                className={`p-2.5 rounded-xl transition-all ${playingVoiceId === voice.id
+                                                    ? 'bg-primary text-white scale-110 shadow-lg shadow-primary/25'
+                                                    : 'bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-primary hover:bg-primary/10'
+                                                    }`}
+                                            >
+                                                {playingVoiceId === voice.id ? (
+                                                    <StopIcon className="w-4 h-4" />
+                                                ) : (
+                                                    <PlayIcon className="w-4 h-4" />
+                                                )}
+                                            </button>
+
+                                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedVoice === voice.id
+                                                ? 'bg-primary border-primary scale-110'
+                                                : 'border-slate-200 dark:border-slate-700 opacity-0 group-hover:opacity-100'
+                                                }`}>
+                                                {selectedVoice === voice.id && <CheckIcon className="h-4 w-4 text-white" />}
+                                            </div>
+                                        </div>
                                     </div>
                                 ))
                             )}
@@ -182,20 +224,22 @@ const VoiceSelectionModal: React.FC<{
                     )}
                 </div>
             </div>
-            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
-                <button type="button" onClick={onClose} className="bg-slate-200 dark:bg-slate-600 px-4 py-2 rounded-md font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-300 dark:hover:bg-slate-500 transition-colors">
+
+            <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
+                <button
+                    type="button"
+                    onClick={onClose}
+                    className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+                >
                     Cancel
                 </button>
                 <button
                     type="button"
-                    onClick={() => {
-                        console.log('Saving voice ID:', selectedVoice);
-                        onSave(selectedVoice);
-                    }}
-                    className="bg-primary text-white px-4 py-2 rounded-md font-semibold hover:bg-primary-dark transition-colors"
+                    onClick={() => onSave(selectedVoice)}
                     disabled={!selectedVoice}
+                    className="bg-primary text-white px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-primary/25 hover:bg-primary-dark transition-all disabled:opacity-50"
                 >
-                    Save
+                    Save Voice
                 </button>
             </div>
         </Modal>
@@ -217,6 +261,7 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
 
     const [isToolsModalOpen, setToolsModalOpen] = useState(false);
     const [editingTool, setEditingTool] = useState<Tool | null>(null);
+    const [isGoogleSheetsSharingModalOpen, setGoogleSheetsSharingModalOpen] = useState(false);
 
     const [isKnowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
 
@@ -1428,6 +1473,11 @@ When you need to collect information from the user, ask for the required paramet
         setToolsModalOpen(false);
         setNewTool(initialNewToolState);
         setEditingTool(null);
+
+        // Show Google Sheets sharing instructions if this is a Google Sheets tool
+        if (newToolFunctionType === 'GoogleSheets' && finalTool.webhookUrl) {
+            setGoogleSheetsSharingModalOpen(true);
+        }
     };
 
     const handleNewToolChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setNewTool(p => ({ ...p, [e.target.name]: e.target.value }));
@@ -1639,40 +1689,57 @@ When you need to collect information from the user, ask for the required paramet
         const [selectedModel, setSelectedModel] = useState(currentModelId);
 
         return (
-            <Modal isOpen={true} onClose={onClose} title="Select Language Model">
-                <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-                    {AVAILABLE_MODELS.map(model => (
-                        <div
-                            key={model.id}
-                            onClick={() => setSelectedModel(model.id)}
-                            className={`p-4 border rounded-lg cursor-pointer transition-all ${selectedModel === model.id ? 'border-primary ring-2 ring-primary bg-primary/5' : 'border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500'}`}
-                        >
-                            <div className="flex items-center">
-                                <model.icon className="h-8 w-8 mr-4 text-slate-600 dark:text-slate-300 flex-shrink-0" />
-                                <div className="flex-grow">
-                                    <h4 className="font-semibold text-slate-800 dark:text-slate-100">{model.name}</h4>
-                                    <p className="text-sm text-slate-500 dark:text-slate-400">{model.description}</p>
+            <Modal isOpen={true} onClose={onClose} title="Select Intelligence">
+                <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+                    <div className="grid gap-3">
+                        {AVAILABLE_MODELS.map(model => (
+                            <div
+                                key={model.id}
+                                onClick={() => setSelectedModel(model.id)}
+                                className={`group p-5 rounded-3xl border transition-all cursor-pointer flex items-center gap-5 ${selectedModel === model.id
+                                    ? 'bg-primary/5 border-primary/30 shadow-sm'
+                                    : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700'
+                                    }`}
+                            >
+                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${selectedModel === model.id
+                                    ? 'bg-primary text-white shadow-xl shadow-primary/20'
+                                    : 'bg-slate-50 dark:bg-slate-800 text-slate-400 group-hover:bg-slate-100 dark:group-hover:bg-slate-700'
+                                    }`}>
+                                    <model.icon className="h-7 w-7" />
                                 </div>
-                                <div className="ml-4 flex items-center justify-center w-6 h-6">
-                                    {selectedModel === model.id && (
-                                        <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
-                                        </div>
-                                    )}
+
+                                <div className="flex-1 min-w-0">
+                                    <h4 className={`text-base font-black transition-colors ${selectedModel === model.id ? 'text-primary' : 'text-slate-800 dark:text-white'}`}>
+                                        {model.name}
+                                    </h4>
+                                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">
+                                        {model.description}
+                                    </p>
+                                </div>
+
+                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedModel === model.id
+                                    ? 'bg-primary border-primary scale-110'
+                                    : 'border-slate-200 dark:border-slate-700 opacity-30 group-hover:opacity-100'
+                                    }`}>
+                                    {selectedModel === model.id && <CheckIcon className="h-4 w-4 text-white" />}
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
-                <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
-                    <button onClick={onClose} className="bg-slate-200 dark:bg-slate-600 px-4 py-2 rounded-md font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-300 dark:hover:bg-slate-500 transition-colors">
+
+                <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
+                    <button
+                        onClick={onClose}
+                        className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+                    >
                         Cancel
                     </button>
                     <button
                         onClick={() => onSave(selectedModel)}
-                        className="bg-primary text-white px-4 py-2 rounded-md font-semibold hover:bg-primary-dark transition-colors"
+                        className="bg-primary text-white px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-primary/25 hover:bg-primary-dark transition-all"
                     >
-                        Save
+                        Set Intelligence
                     </button>
                 </div>
             </Modal>
@@ -1699,29 +1766,43 @@ When you need to collect information from the user, ask for the required paramet
 
         return (
             <Modal isOpen={true} onClose={onClose} title="Select Language">
-                <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
-                    {languagesToShow.map(lang => (
-                        <div
-                            key={lang.id}
-                            onClick={() => setSelectedLanguage(lang.id)}
-                            className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${selectedLanguage === lang.id ? 'bg-emerald-100 dark:bg-emerald-900/50' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-                        >
-                            <span className="font-medium">{lang.name}</span>
-                            {selectedLanguage === lang.id && (
-                                <CheckIcon className="h-5 w-5 text-primary" />
-                            )}
-                        </div>
-                    ))}
+                <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {languagesToShow.map(lang => (
+                            <div
+                                key={lang.id}
+                                onClick={() => setSelectedLanguage(lang.id)}
+                                className={`group p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${selectedLanguage === lang.id
+                                    ? 'bg-primary/5 border-primary/30'
+                                    : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700'
+                                    }`}
+                            >
+                                <span className={`text-sm font-black transition-colors ${selectedLanguage === lang.id ? 'text-primary' : 'text-slate-700 dark:text-slate-200'}`}>
+                                    {lang.name}
+                                </span>
+                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${selectedLanguage === lang.id
+                                    ? 'bg-primary border-primary scale-110'
+                                    : 'border-slate-200 dark:border-slate-700 opacity-0 group-hover:opacity-100'
+                                    }`}>
+                                    {selectedLanguage === lang.id && <CheckIcon className="h-3 w-3 text-white" />}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
-                <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
-                    <button onClick={onClose} className="bg-slate-200 dark:bg-slate-600 px-4 py-2 rounded-md font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-300 dark:hover:bg-slate-500 transition-colors">
+
+                <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
+                    <button
+                        onClick={onClose}
+                        className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+                    >
                         Cancel
                     </button>
                     <button
                         onClick={() => onSave(selectedLanguage)}
-                        className="bg-primary text-white px-4 py-2 rounded-md font-semibold hover:bg-primary-dark transition-colors"
+                        className="bg-primary text-white px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-primary/25 hover:bg-primary-dark transition-all"
                     >
-                        Save
+                        Save Language
                     </button>
                 </div>
             </Modal>
@@ -1745,10 +1826,6 @@ When you need to collect information from the user, ask for the required paramet
 
         useEffect(() => {
             if (isOpen && userId) {
-                if (!userId || userId.trim() === '') {
-                    setError('User authentication error. Please refresh the page and try again.');
-                    return;
-                }
                 setLocalSettings(JSON.parse(JSON.stringify(agent.settings)));
                 loadDocuments();
             }
@@ -1763,11 +1840,11 @@ When you need to collect information from the user, ask for the required paramet
                     id: doc.id,
                     name: doc.name,
                     size: 'Unknown',
-                    uploadedDate: new Date(doc.uploadedAt).toISOString().split('T')[0]
+                    uploadedDate: new Date(doc.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                 })));
             } catch (err) {
                 console.error('Error loading documents:', err);
-                setError('Failed to load documents: ' + (err instanceof Error ? err.message : 'Unknown error'));
+                setError('Failed to load documents');
             } finally {
                 setLoading(false);
             }
@@ -1779,32 +1856,20 @@ When you need to collect information from the user, ask for the required paramet
                     setLoading(true);
                     setError(null);
                     const files = Array.from(event.target.files) as File[];
-
-                    const uploadPromises = files.map(file =>
-                        documentService.uploadDocument(userId, file, agent.id)
-                    );
-
+                    const uploadPromises = files.map(file => documentService.uploadDocument(userId, file, agent.id));
                     const uploadedDocs = await Promise.all(uploadPromises);
                     const newDocs = uploadedDocs.map(doc => ({
                         id: doc.id,
                         name: doc.name,
                         size: 'Unknown',
-                        uploadedDate: new Date(doc.uploadedAt).toISOString().split('T')[0]
+                        uploadedDate: new Date(doc.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                     }));
-
                     setAvailableDocs(prev => [...prev, ...newDocs]);
-
-                    // Auto-select uploaded documents
                     const newDocIds = newDocs.map(d => d.id);
-                    setLocalSettings(prev => ({
-                        ...prev,
-                        knowledgeDocIds: [...(prev.knowledgeDocIds || []), ...newDocIds]
-                    }));
-
+                    setLocalSettings(prev => ({ ...prev, knowledgeDocIds: [...(prev.knowledgeDocIds || []), ...newDocIds] }));
                     event.target.value = '';
                 } catch (err) {
-                    console.error('Error uploading files:', err);
-                    setError(`Failed to upload files: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                    setError('Failed to upload files');
                 } finally {
                     setLoading(false);
                 }
@@ -1814,307 +1879,279 @@ When you need to collect information from the user, ask for the required paramet
         const toggleDocSelection = (docId: string) => {
             setLocalSettings(prev => {
                 const currentIds = prev.knowledgeDocIds || [];
-                if (currentIds.includes(docId)) {
-                    return { ...prev, knowledgeDocIds: currentIds.filter(id => id !== docId) };
-                } else {
-                    return { ...prev, knowledgeDocIds: [...currentIds, docId] };
-                }
+                return {
+                    ...prev,
+                    knowledgeDocIds: currentIds.includes(docId) ? currentIds.filter(id => id !== docId) : [...currentIds, docId]
+                };
             });
         };
 
-        const handleSave = () => {
-            onSave(localSettings);
-            onClose();
-        };
-
-        if (!isOpen) return null;
-
         return (
-            <div className="fixed inset-0 bg-black bg-opacity-80 z-50 flex justify-center items-center p-4">
-                <div className="bg-[#0F172A] text-slate-200 rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[85vh]">
-                    <div className="p-6 border-b border-slate-700 flex justify-between items-center">
-                        <div>
-                            <h2 className="text-xl font-semibold">Knowledge Base</h2>
-                            <p className="text-sm text-slate-400 mt-1">Upload documents for the agent to use as context.</p>
+            <Modal isOpen={isOpen} onClose={onClose} title="Knowledge Base">
+                <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+                    {/* Upload Section */}
+                    <div
+                        onClick={() => fileInputRef.current?.click()}
+                        className="group relative border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all card-animate"
+                    >
+                        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" multiple accept=".pdf,.doc,.docx,.txt,.md,.csv" />
+                        <div className="w-16 h-16 bg-slate-100 dark:bg-slate-900 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                            {loading ? <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-b-transparent" /> : <ArrowUpTrayIcon className="h-8 w-8 text-slate-400 group-hover:text-primary transition-colors" />}
                         </div>
-                        <button onClick={onClose} className="text-slate-400 hover:text-white">
-                            <XMarkIcon className="h-6 w-6" />
-                        </button>
+                        <h4 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white mb-2">Upload Documents</h4>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">PDF, DOCX, TXT, MD, CSV (Max 10MB)</p>
                     </div>
 
-                    <div className="p-6 overflow-y-auto flex-1 space-y-6">
-                        {error && (
-                            <div className="bg-red-900/50 border border-red-800 text-red-100 p-3 rounded-md text-sm">
-                                {error}
-                            </div>
-                        )}
+                    {error && <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/50 p-4 rounded-2xl text-xs font-bold text-red-500 uppercase tracking-wider">{error}</div>}
 
-                        <div className="flex items-center justify-between">
-                            <h3 className="font-medium">Documents</h3>
-                            <div className="flex gap-2">
-                                <input
-                                    type="file"
-                                    ref={fileInputRef}
-                                    onChange={handleFileChange}
-                                    className="hidden"
-                                    multiple
-                                    accept=".pdf,.doc,.docx,.txt,.md,.csv"
-                                />
-                                <button
-                                    onClick={() => fileInputRef.current?.click()}
-                                    disabled={loading}
-                                    className="bg-primary hover:bg-primary-dark text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {loading ? (
-                                        <span className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-b-transparent border-white mr-2"></span>
-                                    ) : (
-                                        <ArrowUpTrayIcon className="h-4 w-4 mr-2" />
-                                    )}
-                                    Upload New
-                                </button>
-                            </div>
-                        </div>
-
-                        {loading && availableDocs.length === 0 ? (
-                            <div className="space-y-3">
-                                {[1, 2, 3].map(i => (
-                                    <div key={i} className="h-12 bg-slate-800 rounded animate-pulse"></div>
-                                ))}
-                            </div>
-                        ) : availableDocs.length === 0 ? (
-                            <div className="text-center py-12 border-2 border-dashed border-slate-700 rounded-lg">
-                                <DocumentTextIcon className="h-12 w-12 text-slate-600 mx-auto mb-3" />
-                                <p className="text-slate-400">No documents found.</p>
-                                <button
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="text-primary hover:underline mt-2 text-sm"
-                                >
-                                    Upload your first document
-                                </button>
+                    {/* Document List */}
+                    <div className="space-y-3">
+                        <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Selected Documents</h4>
+                        {availableDocs.length === 0 && !loading ? (
+                            <div className="py-12 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-100 dark:border-slate-800 text-center">
+                                <DocumentTextIcon className="h-12 w-12 text-slate-200 dark:text-slate-800 mx-auto mb-3" />
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No documents found</p>
                             </div>
                         ) : (
-                            <div className="space-y-2">
+                            <div className="grid gap-3">
                                 {availableDocs.map(doc => {
                                     const isSelected = (localSettings.knowledgeDocIds || []).includes(doc.id);
                                     return (
                                         <div
                                             key={doc.id}
                                             onClick={() => toggleDocSelection(doc.id)}
-                                            className={`p-3 rounded-md border flex items-center justify-between cursor-pointer transition-all ${isSelected
-                                                ? 'bg-primary/10 border-primary/50'
-                                                : 'bg-slate-800 border-slate-700 hover:border-slate-600'
-                                                }`}
+                                            className={`group p-4 rounded-2xl border transition-all cursor-pointer flex items-center gap-4 ${isSelected ? 'bg-primary/5 border-primary/30 shadow-sm shadow-primary/5' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'}`}
                                         >
-                                            <div className="flex items-center gap-3 overflow-hidden">
-                                                <div className={`p-2 rounded-full ${isSelected ? 'bg-primary/20 text-primary' : 'bg-slate-700 text-slate-400'}`}>
-                                                    <DocumentTextIcon className="h-5 w-5" />
-                                                </div>
-                                                <div className="truncate">
-                                                    <p className={`font-medium truncate ${isSelected ? 'text-primary' : 'text-slate-200'}`}>{doc.name}</p>
-                                                    <p className="text-xs text-slate-500">{doc.uploadedDate}</p>
-                                                </div>
+                                            <div className={`p-3 rounded-xl transition-colors ${isSelected ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-slate-50 dark:bg-slate-800 text-slate-400 group-hover:bg-slate-100 dark:group-hover:bg-slate-700'}`}>
+                                                <DocumentTextIcon className="h-5 w-5" />
                                             </div>
-                                            <div className={`h-5 w-5 rounded-full border flex items-center justify-center transition-colors ${isSelected
-                                                ? 'bg-primary border-primary'
-                                                : 'border-slate-500'
-                                                }`}>
-                                                {isSelected && <CheckIcon className="h-3.5 w-3.5 text-white" />}
+                                            <div className="flex-1 min-w-0">
+                                                <h5 className={`text-sm font-black truncate ${isSelected ? 'text-primary' : 'text-slate-700 dark:text-slate-200'}`}>{doc.name}</h5>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">{doc.uploadedDate}</p>
+                                            </div>
+                                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-primary border-primary scale-110' : 'border-slate-200 dark:border-slate-700 group-hover:border-primary/50'}`}>
+                                                {isSelected && <CheckIcon className="h-4 w-4 text-white" />}
                                             </div>
                                         </div>
                                     );
                                 })}
                             </div>
                         )}
+                    </div>
 
-                        <div className="bg-slate-800/50 p-4 rounded-lg">
-                            <label className="block text-sm font-medium text-slate-300 mb-2">
-                                Pre-action Phrase (Optional)
-                            </label>
-                            <p className="text-xs text-slate-500 mb-3">
-                                The agent will say this while searching the knowledge base.
-                            </p>
-                            <input
-                                type="text"
-                                value={(localSettings.preActionPhrases || [])[0] || ''}
-                                onChange={e => {
-                                    const val = e.target.value;
-                                    setLocalSettings(prev => ({
-                                        ...prev,
-                                        preActionPhrases: val ? [val] : []
-                                    }));
-                                }}
-                                placeholder="e.g. Let me check the database for that..."
-                                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all placeholder:text-slate-600"
-                            />
+                    {/* Pre-action phrase */}
+                    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-3xl p-6 border border-slate-100 dark:border-slate-800">
+                        <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Searching Behavior</h4>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Search Phrase</label>
+                                <input
+                                    type="text"
+                                    value={(localSettings.preActionPhrases || [])[0] || ''}
+                                    onChange={e => setLocalSettings(p => ({ ...p, preActionPhrases: e.target.value ? [e.target.value] : [] }))}
+                                    placeholder="e.g. Let me check my records..."
+                                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-medium placeholder:text-slate-300 dark:placeholder:text-slate-600"
+                                />
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-3 leading-relaxed">The agent will say this while retrieving information from the documents.</p>
+                            </div>
                         </div>
                     </div>
-
-                    <div className="p-6 border-t border-slate-700 flex justify-end gap-3 bg-slate-900/50 rounded-b-lg">
-                        <button
-                            onClick={onClose}
-                            className="px-4 py-2 rounded-md text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            onClick={handleSave}
-                            className="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded-md text-sm font-medium transition-colors shadow-lg shadow-primary/20"
-                        >
-                            Save Changes
-                        </button>
-                    </div>
                 </div>
-            </div>
+
+                <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
+                    <button onClick={onClose} className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">Cancel</button>
+                    <button onClick={() => { onSave(localSettings); onClose(); }} className="bg-primary text-white px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-primary/25 hover:bg-primary-dark transition-all">Save Changes</button>
+                </div>
+            </Modal>
         );
     };
 
     const renderToolsModal = () => (
-        <div className={`fixed inset-0 bg-black bg-opacity-80 z-50 flex justify-center items-start py-10 ${isToolsModalOpen ? '' : 'hidden'}`} onClick={() => setToolsModalOpen(false)}>
-            <div className="bg-[#1A222C] text-white rounded-lg shadow-xl w-full max-w-2xl transform transition-all" onClick={e => e.stopPropagation()}>
-                <div className="px-6 py-4 border-b border-gray-700">
-                    <h3 className="text-xl font-semibold">{editingTool ? 'Edit Function' : 'Create Function'}</h3>
+        <Modal
+            isOpen={isToolsModalOpen}
+            onClose={() => { setToolsModalOpen(false); setNewTool(initialNewToolState); setEditingTool(null); }}
+            title={editingTool ? 'Edit Automation Tool' : 'New Automation Tool'}
+        >
+            <div className="space-y-8 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+                {/* Basic Info */}
+                <div className="grid gap-6">
+                    <div>
+                        <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 ml-1">Tool Name</label>
+                        <input
+                            type="text"
+                            name="name"
+                            value={newTool.name}
+                            onChange={handleNewToolChange}
+                            placeholder="e.g. Order Tracking"
+                            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-5 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-bold text-slate-800 dark:text-white"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 ml-1">Description</label>
+                        <textarea
+                            name="description"
+                            value={newTool.description}
+                            onChange={(e) => setNewTool(p => ({ ...p, description: e.target.value }))}
+                            placeholder="Tell the agent when and how to use this tool..."
+                            rows={3}
+                            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-5 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-medium text-slate-700 dark:text-slate-200 min-h-[100px]"
+                        />
+                    </div>
                 </div>
-                <div className="p-6 space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto">
-                    {/* Function Name & Description */}
-                    <div>
-                        <label className="block text-sm font-medium mb-1">Function Name</label>
-                        <input type="text" placeholder="Enter function name" name="name" value={newTool.name} onChange={handleNewToolChange} className="w-full bg-[#243140] border border-gray-600 rounded-md px-3 py-2 focus:ring-emerald-500 focus:border-emerald-500" />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium mb-1">Description</label>
-                        <textarea placeholder="Enter function description" name="description" value={newTool.description} onChange={(e) => setNewTool(p => ({ ...p, description: e.target.value }))} rows={4} className="w-full bg-[#243140] border border-gray-600 rounded-md px-3 py-2 focus:ring-emerald-500 focus:border-emerald-500"></textarea>
-                    </div>
 
-                    <div className="bg-[#243140] p-3 rounded-md">
-                        <p className="text-sm text-emerald-300">Tip: Use the "Required" checkbox for parameters that the agent must collect from the user during the conversation.</p>
-                    </div>
-
-                    {/* Function Type - HIDDEN and forced to GoogleSheets */}
-                    {/*
-                    <div>
-                        <label className="block text-sm font-medium mb-2">Select Function Type</label>
-                        <div className="flex bg-[#243140] p-1 rounded-md">
-                            {[{ value: 'Webhook', label: 'Webhook' }, { value: 'WebForm', label: 'Web Form' }, { value: 'GoogleSheets', label: 'Google Sheets' }].map((type) => (
-                                <button
-                                    key={type.value}
-                                    onClick={() => setNewToolFunctionType(type.value as 'Webhook' | 'WebForm' | 'GoogleSheets')}
-                                    className={`flex-1 py-1.5 rounded text-sm ${newToolFunctionType === type.value ? 'bg-emerald-600' : ''}`}
-                                >
-                                    {type.label}
-                                </button>
-                            ))}
+                {/* Google Sheets Integration Card */}
+                <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-3xl p-6 border border-emerald-100 dark:border-emerald-900/30">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2.5 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 rounded-xl">
+                            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M14.5 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V7.5L14.5 2zM14 8V3.5L18.5 8H14zM11 11h2v2h-2v-2zm-3 0h2v2H8v-2zm9 6H7v-1h10v1zm0-2H7v-1h10v1zm0-2H13v-1h4v1z" />
+                            </svg>
                         </div>
-                    </div>
-                    */}
-
-                    <div className="space-y-3">
-                        <div className="bg-[#243140] p-3 rounded-md mb-4 border border-emerald-900/50">
-                            <p className="text-sm text-emerald-300 font-medium">Google Sheets Integration</p>
-                            <p className="text-xs text-gray-400 mt-1">Save user data directly to your spreadsheet. The columns you define below will be auto-populated by the agent.</p>
-                        </div>
-
                         <div>
-                            <label className="block text-sm font-medium mb-1">Google Sheets URL</label>
+                            <h4 className="text-sm font-black text-emerald-900 dark:text-emerald-300 uppercase tracking-widest">Google Sheets</h4>
+                            <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500/80 uppercase tracking-wider">Direct Data Sync</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-6">
+                        <div>
+                            <label className="block text-[10px] font-bold text-emerald-800/60 dark:text-emerald-400/60 uppercase tracking-widest mb-2 ml-1">Spreadsheet URL</label>
                             <input
                                 type="text"
                                 name="webhookUrl"
                                 value={newTool.webhookUrl}
                                 onChange={handleNewToolChange}
-                                placeholder="Paste your Google Sheet link here..."
-                                className="w-full bg-[#243140] border border-gray-600 rounded-md px-3 py-2 text-sm focus:ring-emerald-500 focus:border-emerald-500"
+                                placeholder="https://docs.google.com/spreadsheets/d/..."
+                                className="w-full bg-white dark:bg-slate-900/50 border border-emerald-100 dark:border-emerald-900/50 rounded-2xl px-5 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all font-medium text-slate-800 dark:text-white"
                             />
-                            <p className="text-xs text-gray-400 mt-1">Make sure the sheet is accessible (e.g., 'Anyone with the link can edit').</p>
                         </div>
 
-                        <div className="border-t border-gray-700 pt-4 mt-4">
-                            <div className="flex justify-between items-center mb-2">
-                                <div>
-                                    <h4 className="text-sm font-medium">Sheet Columns</h4>
-                                    <p className="text-xs text-gray-400">Define the columns exactly as they appear in your sheet.</p>
-                                </div>
+                        <div className="pt-2">
+                            <div className="flex justify-between items-center mb-4 px-1">
+                                <h5 className="text-[10px] font-black text-emerald-800/60 dark:text-emerald-400/60 uppercase tracking-widest">Sheet Columns</h5>
+                                <button type="button" onClick={handleAddParameter} className="text-[10px] font-black text-emerald-600 uppercase tracking-widest hover:text-emerald-700 transition-colors flex items-center gap-1.5">
+                                    <PlusIcon className="h-3.5 w-3.5 border-2 border-emerald-600 rounded-md" /> Add Column
+                                </button>
                             </div>
 
                             <div className="space-y-3">
-                                <div className="grid grid-cols-[2fr_1fr_auto_auto] gap-x-4 items-center text-xs uppercase text-gray-500 font-semibold px-1">
-                                    <div>Column Name</div>
-                                    <div>Type</div>
-                                    <div className="text-center">Required</div>
-                                    <div></div>
-                                </div>
-
                                 {(newTool.parameters || []).map((param, index) => (
-                                    <div key={index} className="grid grid-cols-[2fr_1fr_auto_auto] gap-x-4 items-center">
-                                        <input type="text" value={param.name} onChange={e => handleParameterChange(index, 'name', e.target.value)} placeholder="e.g. Phone Number" className="w-full bg-[#243140] border border-gray-600 rounded-md px-3 py-2 text-sm focus:ring-emerald-500 focus:border-emerald-500" />
-
-                                        <select value={param.type} onChange={e => handleParameterChange(index, 'type', e.target.value)} className="w-full bg-[#243140] border border-gray-600 rounded-md px-3 py-2 text-sm focus:ring-emerald-500 focus:border-emerald-500">
-                                            {[
-                                                { value: 'string', label: 'Text' },
-                                                { value: 'number', label: 'Number' },
-                                                { value: 'boolean', label: 'Yes/No' }
-                                            ].map((type) => (
-                                                <option key={type.value} value={type.value}>{type.label}</option>
-                                            ))}
+                                    <div key={index} className="grid grid-cols-[1fr_auto_auto_auto] gap-3 items-center bg-white/60 dark:bg-slate-900/40 p-2.5 rounded-2xl border border-emerald-100/50 dark:border-emerald-900/20 group animate-slide-in">
+                                        <input
+                                            type="text"
+                                            value={param.name}
+                                            onChange={e => handleParameterChange(index, 'name', e.target.value)}
+                                            placeholder="Column Name"
+                                            className="bg-transparent border-none text-sm font-bold text-slate-800 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-700 focus:ring-0 px-2"
+                                        />
+                                        <select
+                                            value={param.type}
+                                            onChange={e => handleParameterChange(index, 'type', e.target.value)}
+                                            className="bg-emerald-50 dark:bg-slate-800 border-none rounded-xl text-[10px] font-black uppercase tracking-widest py-1.5 pl-3 pr-8 focus:ring-0 text-emerald-700 dark:text-emerald-400"
+                                        >
+                                            <option value="string">Text</option>
+                                            <option value="number">Num</option>
+                                            <option value="boolean">Yes/No</option>
                                         </select>
-
-                                        <div className="flex items-center justify-center">
-                                            <input type="checkbox" checked={param.required} onChange={e => handleParameterChange(index, 'required', e.target.checked)} className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-emerald-600 focus:ring-emerald-500" />
+                                        <div className="flex flex-col items-center gap-1 px-1">
+                                            <label className="text-[8px] font-black text-slate-400 uppercase">Req</label>
+                                            <input
+                                                type="checkbox"
+                                                checked={param.required}
+                                                onChange={e => handleParameterChange(index, 'required', e.target.checked)}
+                                                className="h-4 w-4 rounded-md border-emerald-200 dark:border-emerald-800 text-emerald-500 focus:ring-emerald-500/20 bg-white dark:bg-slate-900"
+                                            />
                                         </div>
-
-                                        <button type="button" onClick={() => handleDeleteParameter(index)} className="text-red-500 hover:text-red-400 p-1">
-                                            <TrashIcon className="w-5 h-5" />
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteParameter(index)}
+                                            className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                                        >
+                                            <TrashIcon className="w-4 h-4" />
                                         </button>
                                     </div>
                                 ))}
-
-                                <button type="button" onClick={handleAddParameter} className="flex items-center text-emerald-500 font-medium text-sm hover:text-emerald-400 transition-colors mt-2">
-                                    <div className="w-5 h-5 rounded border border-emerald-500 flex items-center justify-center mr-2 text-xs">+</div>
-                                    Add Column
-                                </button>
+                                {(!newTool.parameters || newTool.parameters.length === 0) && (
+                                    <div className="text-center py-6 bg-white/40 dark:bg-slate-900/20 rounded-2xl border-2 border-dashed border-emerald-100 dark:border-emerald-900/30">
+                                        <p className="text-[10px] font-black text-emerald-800/40 dark:text-emerald-400/40 uppercase tracking-widest">No columns defined yet</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <div className="space-y-4 !mt-8">
-                        <div className="p-4 border border-gray-700 rounded-md flex justify-between items-center">
-                            <div>
-                                <label className="font-medium">Run Function After Call</label>
-                                <p className="text-xs text-gray-400">Set the function to execute after the call ended.</p>
-                            </div>
-                            <label className="flex items-center cursor-pointer">
-                                <div className="relative">
-                                    <input type="checkbox" className="sr-only" checked={newTool.runAfterCall} onChange={(e) => setNewTool(p => ({ ...p, runAfterCall: e.target.checked }))} />
-                                    <div className={`block w-10 h-6 rounded-full transition ${newTool.runAfterCall ? 'bg-emerald-600' : 'bg-gray-600'}`}></div>
-                                    <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition ${newTool.runAfterCall ? 'translate-x-full' : ''}`}></div>
-                                </div>
-                            </label>
+                {/* Behavioral settings */}
+                <div className="bg-slate-50 dark:bg-slate-900/50 rounded-3xl p-6 border border-slate-100 dark:border-slate-800 space-y-8">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h4 className="text-[10px] font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest">Execution Mode</h4>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Run this tool after call ends</p>
                         </div>
+                        <label className="relative inline-flex items-center cursor-pointer group">
+                            <input
+                                type="checkbox"
+                                className="sr-only peer"
+                                checked={newTool.runAfterCall}
+                                onChange={(e) => setNewTool(p => ({ ...p, runAfterCall: e.target.checked }))}
+                            />
+                            <div className="w-12 h-7 bg-slate-200 dark:bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                        </label>
                     </div>
 
-
-                    {/* Pre-Action Phrases */}
-                    <div className="space-y-3">
-                        <label className="block font-medium">Pre-Action Phrases</label>
-                        <p className="text-sm text-gray-400">Define the phrases your agent will say before calling the function. If left blank, the agent will autonomously come up with phrases.</p>
-                        {preActionPhraseOptions.map(opt => (
-                            <div key={opt.id} className="flex items-start">
-                                <input type="radio" id={opt.id} name="preActionPhrasesMode" value={opt.id} checked={newTool.preActionPhrasesMode === opt.id} onChange={(e) => setNewTool(p => ({ ...p, preActionPhrasesMode: e.target.value as PreActionPhraseMode }))} className="mt-1 h-4 w-4 text-emerald-600 bg-gray-700 border-gray-600 focus:ring-emerald-500" />
-                                <div className="ml-3 text-sm">
-                                    <label htmlFor={opt.id} className="font-medium capitalize">{opt.label}</label>
-                                    <p className="text-gray-400">{opt.description}</p>
+                    <div className="space-y-4">
+                        <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Agent Announcement</label>
+                        <div className="grid gap-3">
+                            {preActionPhraseOptions.map(opt => (
+                                <div
+                                    key={opt.id}
+                                    onClick={() => setNewTool(p => ({ ...p, preActionPhrasesMode: opt.id }))}
+                                    className={`p-4 rounded-2xl border transition-all cursor-pointer ${newTool.preActionPhrasesMode === opt.id ? 'bg-primary/5 border-primary/30' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700'}`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${newTool.preActionPhrasesMode === opt.id ? 'bg-primary border-primary' : 'border-slate-200 dark:border-slate-700'}`}>
+                                            {newTool.preActionPhrasesMode === opt.id && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                                        </div>
+                                        <span className="text-xs font-black uppercase tracking-widest text-slate-700 dark:text-slate-200">{opt.label}</span>
+                                    </div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-2 ml-7 leading-relaxed">{opt.description}</p>
                                 </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
+
                         {(newTool.preActionPhrasesMode === 'flexible' || newTool.preActionPhrasesMode === 'strict') && (
-                            <input type="text" name="preActionPhrases" value={newTool.preActionPhrases} onChange={handleNewToolChange} placeholder="Enter phrases separated by commas" className="w-full bg-[#243140] border border-gray-600 rounded-md px-3 py-2 mt-2 focus:ring-emerald-500 focus:border-emerald-500" />
+                            <div className="mt-4 animate-slide-in">
+                                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 ml-1">Example Phrases</label>
+                                <input
+                                    type="text"
+                                    name="preActionPhrases"
+                                    value={newTool.preActionPhrases}
+                                    onChange={handleNewToolChange}
+                                    placeholder="e.g. Saving that now, Just a second..."
+                                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-medium"
+                                />
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-2 px-1">Separate multiple phrases with commas.</p>
+                            </div>
                         )}
                     </div>
                 </div>
-                <div className="px-6 py-4 bg-[#243140] flex justify-end space-x-3">
-                    <button onClick={() => { setToolsModalOpen(false); setNewTool(initialNewToolState); setEditingTool(null); }} className="text-white font-semibold py-2 px-4 rounded-lg">Cancel</button>
-                    <button onClick={handleSubmitTool} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg">{editingTool ? 'Update' : 'Create'}</button>
-                </div>
             </div>
-        </div>
+
+            <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
+                <button
+                    onClick={() => { setToolsModalOpen(false); setNewTool(initialNewToolState); setEditingTool(null); }}
+                    className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+                >
+                    Cancel
+                </button>
+                <button
+                    onClick={handleSubmitTool}
+                    className="bg-primary text-white px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-primary/25 hover:bg-primary-dark transition-all"
+                >
+                    {editingTool ? 'Update Tool' : 'Create Tool'}
+                </button>
+            </div>
+        </Modal>
     );
 
 
@@ -2166,6 +2203,84 @@ When you need to collect information from the user, ask for the required paramet
                     voiceProviderId={getVoiceProviderById(editedAgent.voiceId)}
                 />
             )}
+            {isGoogleSheetsSharingModalOpen && (
+                <Modal isOpen={true} onClose={() => setGoogleSheetsSharingModalOpen(false)} title="Google Sheets Setup">
+                    <div className="space-y-8 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-3xl p-6">
+                            <div className="flex items-center gap-4 mb-3">
+                                <div className="p-3 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 rounded-2xl">
+                                    <CheckIcon className="h-6 w-6" />
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-black text-emerald-900 dark:text-emerald-300 uppercase tracking-widest">Share Permission</h4>
+                                    <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500/70 uppercase tracking-wider">Required for Sync</p>
+                                </div>
+                            </div>
+                            <p className="text-xs font-medium text-emerald-800/80 dark:text-emerald-400/80 leading-relaxed">
+                                To allow your agent to save data, you must share your spreadsheet with our service account email as an <span className="font-black underline">Editor</span>.
+                            </p>
+                        </div>
+
+                        <div className="space-y-6">
+                            <h5 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Implementation Steps</h5>
+
+                            <div className="grid gap-4">
+                                {[
+                                    { step: 1, text: "Open your Google Sheet" },
+                                    { step: 2, text: 'Click the "Share" button at the top right' },
+                                    { step: 3, isEmail: true },
+                                    { step: 4, text: 'Set permission to "Editor"' },
+                                    { step: 5, text: 'Click "Send" or "Done"' },
+                                ].map((item, i) => (
+                                    <div key={i} className="flex gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
+                                        <div className="w-8 h-8 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center flex-shrink-0 text-xs font-black text-primary">
+                                            {item.step}
+                                        </div>
+                                        <div className="flex-1">
+                                            {item.isEmail ? (
+                                                <div className="space-y-3">
+                                                    <p className="text-xs font-black text-slate-700 dark:text-slate-200 uppercase tracking-wide">Add this service email</p>
+                                                    <div className="group relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 flex items-center justify-between hover:border-primary/50 transition-all">
+                                                        <code className="text-[10px] font-bold text-primary break-all pr-2">
+                                                            ziyavoice@stoked-brand-423611-i3.iam.gserviceaccount.com
+                                                        </code>
+                                                        <button
+                                                            onClick={() => {
+                                                                navigator.clipboard.writeText('ziyavoice@stoked-brand-423611-i3.iam.gserviceaccount.com');
+                                                            }}
+                                                            className="p-2 bg-primary/5 text-primary rounded-lg hover:bg-primary transition-colors hover:text-white"
+                                                        >
+                                                            <DocumentDuplicateIcon className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm font-bold text-slate-600 dark:text-slate-300 pt-1.5">{item.text}</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="p-5 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-3xl">
+                            <p className="text-[10px] font-bold text-amber-700/80 dark:text-amber-500/80 uppercase tracking-widest leading-relaxed">
+                                Note: This is an automated service account. It only accesses sheets you explicitly share with it.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
+                        <button
+                            type="button"
+                            onClick={() => setGoogleSheetsSharingModalOpen(false)}
+                            className="bg-primary text-white px-10 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-primary/25 hover:bg-primary-dark transition-all"
+                        >
+                            Got it!
+                        </button>
+                    </div>
+                </Modal>
+            )}
             {userId && (
                 <KnowledgeModal
                     isOpen={isKnowledgeModalOpen}
@@ -2188,238 +2303,377 @@ When you need to collect information from the user, ask for the required paramet
                     }}
                 />
             )}
-            {/* Header */}
-            <div className="flex items-center justify-between mb-6 flex-wrap gap-4 p-1 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-darkbg-light sticky top-0 z-10">
-                <div className="flex items-center">
-                    <button onClick={onBack} className="mr-2 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-darkbg"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg></button>
-                    <h2 className="text-2xl font-bold">{editedAgent.name}</h2>
-                    <div className="flex items-center gap-2 ml-4">
-                        <span className="px-2 py-0.5 text-xs font-medium rounded-full inline-flex items-center bg-green-100 text-green-800"><span className="h-2 w-2 rounded-full mr-1.5 bg-green-500"></span>Active</span>
-                        <div className="text-sm text-slate-500 flex items-center bg-slate-100 dark:bg-darkbg-light rounded-md px-2 py-1">
-                            <span>ID: {editedAgent.id}</span>
-                            <button onClick={() => copyToClipboard(editedAgent.id, 'ID')} className="ml-2 text-slate-400 hover:text-primary"><DocumentDuplicateIcon className="h-4 w-4" /></button>
-                        </div>
-                    </div>
-                </div>
-                <div className="relative" ref={actionsDropdownRef}>
-                    <button onClick={() => setActionsDropdownOpen(p => !p)} className="bg-primary hover:bg-primary-dark text-white font-bold py-2 px-4 rounded-lg flex items-center">Actions <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg></button>
-                    {isActionsDropdownOpen && (
-                        <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-darkbg-light border dark:border-slate-700 rounded-md shadow-lg z-20">
-                            <ul className="py-1">
-                                {[
-                                    { label: 'Duplicate', icon: DocumentDuplicateIcon, action: () => onDuplicate(editedAgent) },
-                                    { label: 'Delete', icon: TrashIcon, action: () => onDelete(editedAgent.id), isDestructive: true },
-                                ].map((item) => (
-                                    <li key={item.label}>
-                                        <button
-                                            type="button"
-                                            onClick={(e) => { e.stopPropagation(); item.action(); setActionsDropdownOpen(false); }}
-                                            className={`w-full text-left flex items-center gap-3 px-4 py-2 text-sm ${item.isDestructive ? 'text-red-600 dark:text-red-500' : 'text-slate-700 dark:text-slate-300'} hover:bg-slate-100 dark:hover:bg-darkbg`}
-                                        >
-                                            <item.icon className="h-5 w-5" />
-                                            {item.label}
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
-                </div>
-            </div>
-            <div className="border-b border-slate-200 dark:border-slate-800 px-1 bg-white dark:bg-darkbg-light">
-                <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-                    <a href="#" className="border-primary text-primary whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">General</a>
-                </nav>
-            </div>
-
             {/* Main Content */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 p-4 sm:p-6 lg:p-8">
                 {/* Left Column */}
                 <div className="lg:col-span-2 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-white dark:bg-darkbg-light rounded-lg shadow-sm">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {[
-                            { title: 'Model', value: AVAILABLE_MODELS.find(m => m.id === editedAgent.model)?.name || editedAgent.model, icon: ModelIcon, action: () => setModelModalOpen(true) },
+                            { title: 'Model', value: AVAILABLE_MODELS.find(m => m.id === editedAgent.model)?.name || editedAgent.model, icon: ModelIcon, action: () => setModelModalOpen(true), color: 'blue' },
                             {
                                 title: 'Voice',
                                 value: (() => {
-                                    // Try to get voice name from API-fetched voices first
                                     const allVoices = Object.values(availableVoices).flat() as { id: string, name: string }[];
                                     const apiVoice = allVoices.find(v => v.id === editedAgent.voiceId);
-                                    if (apiVoice) {
-                                        return apiVoice.name;
-                                    }
-                                    // Fallback to hardcoded voices
+                                    if (apiVoice) return apiVoice.name;
                                     const hardcodedName = getVoiceNameById(editedAgent.voiceId);
                                     return hardcodedName || editedAgent.voiceId;
                                 })(),
                                 icon: VoiceIcon,
-                                action: () => setVoiceModalOpen(true)
+                                action: () => setVoiceModalOpen(true),
+                                color: 'purple'
                             },
-                            { title: 'Language', value: AVAILABLE_LANGUAGES.find(l => l.id === editedAgent.language)?.name || editedAgent.language, icon: LanguageIcon, action: () => setLanguageModalOpen(true) },
+                            { title: 'Language', value: AVAILABLE_LANGUAGES.find(l => l.id === editedAgent.language)?.name || editedAgent.language, icon: LanguageIcon, action: () => setLanguageModalOpen(true), color: 'emerald' },
                         ].map(item => (
-                            <button onClick={item.action} key={item.title} className="flex items-center p-2 text-left w-full hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors">
-                                <item.icon className="h-6 w-6 mr-4 text-slate-500 dark:text-slate-400" />
-                                <div>
-                                    <h4 className="text-sm text-slate-500 dark:text-slate-400">{item.title}</h4>
-                                    <p className="font-semibold">{item.value}</p>
+                            <button
+                                onClick={item.action}
+                                key={item.title}
+                                className="relative overflow-hidden group p-6 bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all text-left"
+                            >
+                                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                                    <item.icon className="h-16 w-16" />
                                 </div>
+                                <div className="relative z-10">
+                                    <div className={`w-10 h-10 rounded-xl mb-4 flex items-center justify-center ${item.color === 'blue' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-500' :
+                                        item.color === 'purple' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-500' :
+                                            'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500'
+                                        }`}>
+                                        <item.icon className="h-5 w-5" />
+                                    </div>
+                                    <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">{item.title}</h4>
+                                    <p className="font-bold text-slate-800 dark:text-white truncate">{item.value}</p>
+                                </div>
+                                <div className="absolute bottom-0 left-0 h-1 bg-primary w-0 group-hover:w-full transition-all duration-300"></div>
                             </button>
                         ))}
                     </div>
 
-                    <div className="bg-white dark:bg-darkbg-light rounded-lg shadow-sm">
-                        <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
-                            <h3 className="text-xl font-semibold">Agent Prompt</h3>
+                    <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden card-animate">
+                        <div className="p-8 border-b border-slate-100 dark:border-slate-800/50 flex justify-between items-center bg-slate-50/30 dark:bg-slate-900/10">
+                            <div>
+                                <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                    <EditIcon className="h-4 w-4" /> Agent Persona
+                                </h3>
+                                <p className="text-[10px] text-slate-400 font-bold mt-1 tracking-wider">Define personality, goals, and constraints</p>
+                            </div>
                             {!isEditingPrompt ? (
-                                <button onClick={() => setIsEditingPrompt(true)} className="flex items-center text-sm font-semibold text-primary hover:text-primary-dark"><EditIcon className="h-4 w-4 mr-1.5" /> Edit</button>
+                                <button onClick={() => setIsEditingPrompt(true)} className="flex items-center text-[10px] font-black uppercase tracking-widest text-primary hover:text-primary-dark transition-colors px-4 py-2 bg-primary/5 rounded-xl border border-primary/10">Edit Persona</button>
                             ) : (
-                                <div className="space-x-2">
-                                    <button onClick={handleCancelPrompt} className="text-sm font-semibold px-3 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-darkbg">Cancel</button>
-                                    <button onClick={handleSavePrompt} className="text-sm font-semibold text-white bg-primary px-3 py-1 rounded-md">Save</button>
+                                <div className="flex gap-2">
+                                    <button onClick={handleCancelPrompt} className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-500">Cancel</button>
+                                    <button onClick={handleSavePrompt} className="text-[10px] font-black uppercase tracking-widest text-white bg-primary px-4 py-2 rounded-xl shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all">Save Changes</button>
                                 </div>
                             )}
                         </div>
-                        <div className="p-6">
+                        <div className="p-8">
                             {isEditingPrompt ? (
-                                <textarea name="identity" value={editedAgent.identity} onChange={handleSettingsChange} className="w-full h-64 p-3 font-mono text-sm bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md focus:ring-primary focus:border-primary" />
+                                <textarea
+                                    name="identity"
+                                    value={editedAgent.identity}
+                                    onChange={handleSettingsChange}
+                                    className="w-full h-96 p-6 font-mono text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl focus:ring-4 focus:ring-primary/10 focus:border-primary focus:outline-none transition-all resize-none shadow-inner"
+                                    placeholder="You are a helpful customer support agent..."
+                                />
                             ) : (
-                                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600 dark:text-slate-300">{editedAgent.identity}</p>
+                                <div className="space-y-4">
+                                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600 dark:text-slate-300 font-medium selection:bg-primary/20">
+                                        {editedAgent.identity}
+                                    </p>
+                                </div>
                             )}
                         </div>
                     </div>
 
                     <SettingsCard title="Conversation Configuration">
                         <SettingsToggle label="User starts first" description="Agent will wait for user to start first." name="settings.userStartsFirst" checked={editedAgent.settings.userStartsFirst} onChange={handleSettingsChange} />
-                        <div>
-                            <label htmlFor="greetingLine" className="block text-sm font-medium text-slate-700 dark:text-slate-200">Greeting Line</label>
-                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Set the first message the agent says to start the conversation. Leave blank to disable.</p>
-                            <input type="text" id="greetingLine" name="settings.greetingLine" value={editedAgent.settings.greetingLine} onChange={handleSettingsChange} className="mt-2 w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-primary focus:border-primary sm:text-sm" />
+
+                        <div className="p-5 -mx-5 rounded-2xl bg-slate-50/50 dark:bg-slate-900/20 border border-slate-100 dark:border-slate-800">
+                            <label htmlFor="greetingLine" className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 ml-1">Greeting Line</label>
+                            <input
+                                type="text"
+                                id="greetingLine"
+                                name="settings.greetingLine"
+                                value={editedAgent.settings.greetingLine}
+                                onChange={handleSettingsChange}
+                                placeholder="e.g. Hello! How can I help you today?"
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-5 py-3.5 text-sm focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white"
+                            />
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-3 ml-1">The first message the agent says. Leave blank to disable.</p>
                         </div>
 
-                        <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4">
-                            <h4 className="font-medium text-slate-700 dark:text-slate-200 mb-2">Session Timeout</h4>
-                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Set the session to automatically end after a fixed duration or following a period of no voice activity.</p>
-                            <div className="space-y-4">
+                        <div className="pt-4 mt-2">
+                            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-6 py-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                                Session Timeout
+                                <span className="text-[8px] px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-full font-black">Advanced</span>
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                 <div>
-                                    <label htmlFor="sessionTimeoutFixedDuration" className="text-sm text-slate-600 dark:text-slate-300">Fixed Duration (Seconds):</label>
-                                    <input type="number" id="sessionTimeoutFixedDuration" name="settings.sessionTimeoutFixedDuration" value={editedAgent.settings.sessionTimeoutFixedDuration} onChange={handleSettingsChange} min="0" max="86400" className="mt-1 w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md" placeholder="e.g. 300 for 5 minutes" />
+                                    <label htmlFor="sessionTimeoutFixedDuration" className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 ml-1">Fixed Duration (Seconds)</label>
+                                    <input
+                                        type="number"
+                                        id="sessionTimeoutFixedDuration"
+                                        name="settings.sessionTimeoutFixedDuration"
+                                        value={editedAgent.settings.sessionTimeoutFixedDuration}
+                                        onChange={handleSettingsChange}
+                                        min="0" max="86400"
+                                        className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white"
+                                        placeholder="e.g. 300"
+                                    />
                                 </div>
                                 <div>
-                                    <label htmlFor="sessionTimeoutEndMessage" className="text-sm text-slate-600 dark:text-slate-300">End-of-Session Message:</label>
-                                    <input type="text" id="sessionTimeoutEndMessage" name="settings.sessionTimeoutEndMessage" value={editedAgent.settings.sessionTimeoutEndMessage} onChange={handleSettingsChange} className="mt-1 w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md" placeholder="e.g. The session has ended. Goodbye." />
+                                    <label htmlFor="sessionTimeoutEndMessage" className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 ml-1">End-of-Session Message</label>
+                                    <input
+                                        type="text"
+                                        id="sessionTimeoutEndMessage"
+                                        name="settings.sessionTimeoutEndMessage"
+                                        value={editedAgent.settings.sessionTimeoutEndMessage}
+                                        onChange={handleSettingsChange}
+                                        className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white text-ellipsis"
+                                        placeholder="e.g. Goodbye!"
+                                    />
                                 </div>
                             </div>
                         </div>
+                    </SettingsCard>
+
+                    <SettingsCard title="Webhook Integration">
+                        <SettingsToggle
+                            label="Enable Webhook Delivery"
+                            description="Send extracted structured data to your endpoint after each call."
+                            name="settings.webhookEnabled"
+                            checked={editedAgent.settings.webhookEnabled || false}
+                            onChange={handleSettingsChange}
+                        />
+
+                        {editedAgent.settings.webhookEnabled && (
+                            <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                                <div>
+                                    <label htmlFor="webhookUrl" className="block text-sm font-medium text-slate-700 dark:text-slate-200">Webhook URL</label>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">HTTPS endpoint to receive POST requests.</p>
+                                    <input
+                                        type="text"
+                                        id="webhookUrl"
+                                        name="settings.webhookUrl"
+                                        value={editedAgent.settings.webhookUrl || ''}
+                                        onChange={handleSettingsChange}
+                                        placeholder="https://api.yourdomain.com/webhook"
+                                        className="mt-2 w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label htmlFor="webhookSecret" className="block text-sm font-medium text-slate-700 dark:text-slate-200">Webhook Secret</label>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Secret key used to sign the payload (HMAC SHA256).</p>
+                                    <input
+                                        type="password"
+                                        id="webhookSecret"
+                                        name="settings.webhookSecret"
+                                        value={editedAgent.settings.webhookSecret || ''}
+                                        onChange={handleSettingsChange}
+                                        placeholder="Enter a strong secret key"
+                                        className="mt-2 w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label htmlFor="webhookRetryAttempts" className="block text-sm font-medium text-slate-700 dark:text-slate-200">Retry Attempts</label>
+                                    <input
+                                        type="number"
+                                        id="webhookRetryAttempts"
+                                        name="settings.webhookRetryAttempts"
+                                        value={editedAgent.settings.webhookRetryAttempts || 3}
+                                        onChange={handleSettingsChange}
+                                        min="0"
+                                        max="10"
+                                        className="mt-2 w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                                    />
+                                </div>
+                            </div>
+                        )}
                     </SettingsCard>
 
                 </div>
                 {/* Right Column */}
                 <div className="lg:col-span-1">
                     <div className="sticky top-28 space-y-6">
-                        <details className="bg-white dark:bg-darkbg-light rounded-lg shadow-sm" open>
-                            <summary className="flex justify-between items-center p-4 cursor-pointer font-semibold">
-                                <span className="flex items-center gap-2"><SipPhoneIcon className="h-5 w-5 text-primary" /> Call Agent</span>
-                                <svg className="w-5 h-5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                            </summary>
-                            <div className="px-4 pb-4 border-t border-slate-200 dark:border-slate-700">
-                                <div className="border-b border-slate-200 dark:border-slate-700">
-                                    <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-                                        <button onClick={() => setCallAgentTab('web')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${callAgentTab === 'web' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600'}`}>
-                                            Web
-                                        </button>
-                                        <button onClick={() => setCallAgentTab('chat')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${callAgentTab === 'chat' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600'}`}>
-                                            Chat
-                                        </button>
-                                    </nav>
+                        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden card-animate">
+                            <div className="p-6 border-b border-slate-100 dark:border-slate-800/50 flex justify-between items-center">
+                                <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                    <SipPhoneIcon className="h-4 w-4" /> Simulator
+                                </h3>
+                                <div className="flex bg-slate-100 dark:bg-slate-900/50 p-1 rounded-xl">
+                                    <button onClick={() => setCallAgentTab('web')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${callAgentTab === 'web' ? 'bg-white dark:bg-slate-800 text-primary shadow-sm' : 'text-slate-500 hover:text-primary'}`}>Web</button>
+                                    <button onClick={() => setCallAgentTab('chat')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${callAgentTab === 'chat' ? 'bg-white dark:bg-slate-800 text-primary shadow-sm' : 'text-slate-500 hover:text-primary'}`}>Chat</button>
                                 </div>
+                            </div>
+                            <div className="p-6">
                                 {callAgentTab === 'web' ? (
                                     <div className="text-center py-8">
-                                        <button onClick={isCallActive ? stopCall : startCall} className={`mx-auto w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 ${isCallActive ? 'bg-red-500 hover:bg-red-600 shadow-lg animate-pulse' : 'bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 dark:hover:bg-slate-600'}`}>
-                                            <MicrophoneIcon className="h-10 w-10 text-white" />
-                                        </button>
-                                        <p className="mt-4 font-semibold text-slate-700 dark:text-slate-200">{isCallActive ? 'Stop' : 'Start'}</p>
+                                        <div className="relative inline-block">
+                                            {isCallActive && (
+                                                <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping"></div>
+                                            )}
+                                            <button
+                                                onClick={isCallActive ? stopCall : startCall}
+                                                className={`relative z-10 w-28 h-28 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl ${isCallActive
+                                                    ? 'bg-red-500 hover:bg-red-600 shadow-red-500/30'
+                                                    : 'bg-primary hover:bg-primary-dark shadow-primary/30'
+                                                    }`}
+                                            >
+                                                {isCallActive ? (
+                                                    <StopIcon className="h-10 w-10 text-white" />
+                                                ) : (
+                                                    <MicrophoneIcon className="h-10 w-10 text-white" />
+                                                )}
+                                            </button>
+                                        </div>
+                                        <div className="mt-6">
+                                            <p className="font-black text-slate-800 dark:text-white uppercase tracking-wider">{isCallActive ? 'Call in Progress' : 'Ready to Test'}</p>
+                                            <p className="text-xs text-slate-500 mt-1">{isCallActive ? 'Agent is listening...' : 'Click to start a voice conversation'}</p>
+                                        </div>
                                     </div>
                                 ) : (
-                                    <div className="pt-4 flex flex-col h-96">
-                                        <div ref={chatContainerRef} className="flex-1 space-y-3 overflow-y-auto p-2">
+                                    <div className="flex flex-col h-[450px]">
+                                        <div ref={chatContainerRef} className="flex-1 space-y-4 overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
+                                            {chatMessages.length === 0 && (
+                                                <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
+                                                    <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center mb-4">
+                                                        <EmbedIcon className="h-8 w-8 text-slate-400" />
+                                                    </div>
+                                                    <p className="text-xs font-bold uppercase tracking-widest text-slate-500">No Messages Yet</p>
+                                                </div>
+                                            )}
                                             {chatMessages.map((msg, index) => (
                                                 <div key={index} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                                    <div className={`max-w-xs lg:max-w-md px-3 py-2 rounded-lg ${msg.sender === 'user' ? 'bg-primary text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100'}`}>
+                                                    <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm ${msg.sender === 'user'
+                                                        ? 'bg-primary text-white shadow-lg shadow-primary/20 rounded-tr-none'
+                                                        : 'bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 rounded-tl-none border border-slate-200 dark:border-slate-800'
+                                                        }`}>
                                                         {msg.text}
                                                     </div>
                                                 </div>
                                             ))}
                                             {isAgentReplying && (
                                                 <div className="flex justify-start">
-                                                    <div className="px-3 py-2 rounded-lg bg-slate-200 dark:bg-slate-700">
-                                                        <div className="flex items-center space-x-1">
-                                                            <span className="h-1.5 w-1.5 bg-slate-500 rounded-full animate-pulse [animation-delay:-0.3s]"></span>
-                                                            <span className="h-1.5 w-1.5 bg-slate-500 rounded-full animate-pulse [animation-delay:-0.15s]"></span>
-                                                            <span className="h-1.5 w-1.5 bg-slate-500 rounded-full animate-pulse"></span>
+                                                    <div className="px-5 py-3 rounded-2xl bg-slate-100 dark:bg-slate-900 rounded-tl-none border border-slate-200 dark:border-slate-800">
+                                                        <div className="flex items-center space-x-1.5">
+                                                            <div className="h-1.5 w-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                                            <div className="h-1.5 w-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                                            <div className="h-1.5 w-1.5 bg-primary rounded-full animate-bounce"></div>
                                                         </div>
                                                     </div>
                                                 </div>
                                             )}
                                         </div>
-                                        <form onSubmit={handleSendMessage} className="mt-2 flex items-center">
-                                            <input type="text" value={currentMessage} onChange={(e) => setCurrentMessage(e.target.value)} placeholder="Type your message" className="flex-1 w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-l-md focus:outline-none focus:ring-primary focus:border-primary text-sm" />
-                                            <button type="submit" className="px-4 py-2 bg-primary text-white rounded-r-md hover:bg-primary-dark disabled:bg-primary/50" disabled={isAgentReplying || !API_KEY}>
-                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                                        <form onSubmit={handleSendMessage} className="mt-4 flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={currentMessage}
+                                                onChange={(e) => setCurrentMessage(e.target.value)}
+                                                placeholder="Ask something..."
+                                                className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-medium"
+                                            />
+                                            <button
+                                                type="submit"
+                                                className="p-3 bg-primary text-white rounded-xl hover:bg-primary-dark shadow-lg shadow-primary/20 disabled:opacity-50 transition-all"
+                                                disabled={isAgentReplying || !API_KEY}
+                                            >
+                                                <svg className="w-5 h-5 -rotate-45" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                                                </svg>
                                             </button>
                                         </form>
                                     </div>
                                 )}
                             </div>
-                        </details>
-
-                        <div className="bg-white dark:bg-darkbg-light rounded-lg shadow-sm p-4 space-y-3">
-                            <div className="flex justify-between items-center">
-                                <h3 className="font-semibold flex items-center gap-2"><KnowledgeIcon className="h-5 w-5 text-slate-500" /> Knowledge</h3>
-                                <button onClick={() => setKnowledgeModalOpen(true)} className="text-sm font-semibold text-primary hover:text-primary-dark">Edit</button>
-                            </div>
-                            <p className="text-sm text-slate-500">Upload documents to enrich your voice agent's knowledge base. {editedAgent.settings.knowledgeDocIds?.length || 0} document(s) added.</p>
-
-                            {/* Display user documents if any are selected */}
-                            {editedAgent.settings.knowledgeDocIds && editedAgent.settings.knowledgeDocIds.length > 0 && userDocuments.length > 0 && (
-                                <div className="space-y-2 max-h-40 overflow-y-auto mb-2 pr-1 custom-scrollbar">
-                                    {userDocuments
-                                        .filter(doc => (editedAgent.settings.knowledgeDocIds || []).includes(doc.id))
-                                        .map(doc => (
-                                            <div key={doc.id} className="flex items-center p-2 bg-slate-50 dark:bg-slate-800 rounded-md text-sm border border-slate-200 dark:border-slate-700">
-                                                <DocumentTextIcon className="h-4 w-4 text-slate-400 mr-2 flex-shrink-0" />
-                                                <span className="truncate flex-1" title={doc.name}>{doc.name}</span>
-                                            </div>
-                                        ))
-                                    }
-                                </div>
-                            )}
-
-                            <button onClick={() => setKnowledgeModalOpen(true)} className="w-full text-center py-2 px-4 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg hover:border-primary text-slate-600 dark:text-slate-300 hover:text-primary font-semibold transition">+ Add Document</button>
                         </div>
 
-                        <div className="bg-white dark:bg-darkbg-light rounded-lg shadow-sm p-4 space-y-3">
-                            <h3 className="font-semibold flex items-center gap-2"><ToolsIcon className="h-5 w-5 text-slate-500" /> Tools</h3>
-                            <p className="text-sm text-slate-500">Define tools to collect user data during conversations. When a parameter is marked as required, the AI agent will compulsorily ask the user for that information. {editedAgent.settings.tools.length} tool(s) configured.</p>
+                        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-8 space-y-6 card-animate">
+                            <div className="flex justify-between items-center">
+                                <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                    <KnowledgeIcon className="h-4 w-4" /> Knowledge
+                                </h3>
+                                <button onClick={() => setKnowledgeModalOpen(true)} className="text-[10px] font-black uppercase tracking-wider text-primary hover:text-primary-dark transition-colors">Manage</button>
+                            </div>
 
-                            <button onClick={() => { setEditingTool(null); setNewTool(initialNewToolState); setNewToolFunctionType('GoogleSheets'); setToolsModalOpen(true); }} className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-2 px-4 rounded-lg">+ Add Custom Tool</button>
-                            {editedAgent.settings.tools.length > 0 && (
-                                <div className="space-y-2 pt-2">
-                                    {editedAgent.settings.tools.map(tool => (
-                                        <div key={tool.id} className="text-sm p-2 rounded-md border border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                                            <div>
-                                                <span className="font-medium">{tool.name}</span>
-                                                <span className="text-xs ml-2 px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded-full">
-                                                    Google Sheets
-                                                </span>
+                            <div className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-800">
+                                <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                                    Agent has access to <span className="text-primary font-bold">{editedAgent.settings.knowledgeDocIds?.length || 0}</span> documents for context.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                                {editedAgent.settings.knowledgeDocIds && editedAgent.settings.knowledgeDocIds.length > 0 && userDocuments.length > 0 ? (
+                                    userDocuments
+                                        .filter(doc => (editedAgent.settings.knowledgeDocIds || []).includes(doc.id))
+                                        .map(doc => (
+                                            <div key={doc.id} className="group flex items-center p-3 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl hover:border-primary/30 transition-all">
+                                                <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-900 text-slate-400 group-hover:text-primary transition-colors mr-3">
+                                                    <DocumentTextIcon className="h-4 w-4" />
+                                                </div>
+                                                <span className="truncate flex-1 text-xs font-bold text-slate-700 dark:text-slate-200" title={doc.name}>{doc.name}</span>
                                             </div>
-                                            <div className="flex items-center gap-1">
-                                                <button onClick={() => handleEditTool(tool)} className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-600"><EditIcon className="h-4 w-4" /></button>
-                                                <button onClick={() => handleDeleteTool(tool.id)} className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-600 text-red-500"><TrashIcon className="h-4 w-4" /></button>
+                                        ))
+                                ) : (
+                                    <button onClick={() => setKnowledgeModalOpen(true)} className="w-full py-8 border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-2xl text-slate-400 hover:text-primary hover:border-primary/50 transition-all flex flex-col items-center gap-2">
+                                        <PlusIcon className="h-6 w-6" />
+                                        <span className="text-xs font-black uppercase tracking-wider">Add Knowledge</span>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-8 space-y-6 card-animate">
+                            <div className="flex justify-between items-center">
+                                <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                    <ToolsIcon className="h-4 w-4" /> Automation Tools
+                                </h3>
+                                <button
+                                    onClick={() => { setEditingTool(null); setNewTool(initialNewToolState); setNewToolFunctionType('GoogleSheets'); setToolsModalOpen(true); }}
+                                    className="text-[10px] font-black uppercase tracking-wider text-primary hover:text-primary-dark transition-colors"
+                                >
+                                    New Tool
+                                </button>
+                            </div>
+
+                            <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl p-4 border border-emerald-100 dark:border-emerald-900/50">
+                                <p className="text-xs text-emerald-700 dark:text-emerald-400 leading-relaxed font-medium">
+                                    <span className="font-bold">{editedAgent.settings.tools.length}</span> tools enabled for autonomous data collection.
+                                </p>
+                            </div>
+
+                            <div className="space-y-3">
+                                {editedAgent.settings.tools.length > 0 ? (
+                                    editedAgent.settings.tools.map(tool => (
+                                        <div key={tool.id} className="group p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50 bg-white dark:bg-slate-800 hover:border-primary/30 transition-all">
+                                            <div className="flex justify-between items-start mb-1">
+                                                <span className="text-xs font-black text-slate-800 dark:text-white group-hover:text-primary transition-colors">{tool.name}</span>
+                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button onClick={() => handleEditTool(tool)} className="p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-400 hover:text-primary transition-all">
+                                                        <PencilIcon className="h-3.5 w-3.5" />
+                                                    </button>
+                                                    <button onClick={() => handleDeleteTool(tool.id)} className="p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-400 hover:text-red-500 transition-all">
+                                                        <TrashIcon className="h-3.5 w-3.5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-900 text-[9px] font-black uppercase tracking-widest text-slate-500">Google Sheets</span>
+                                                <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700"></span>
+                                                <span className="text-[10px] text-slate-400 font-bold">{tool.parameters?.length || 0} Params</span>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
-                            )}
+                                    ))
+                                ) : (
+                                    <button
+                                        onClick={() => { setEditingTool(null); setNewTool(initialNewToolState); setNewToolFunctionType('GoogleSheets'); setToolsModalOpen(true); }}
+                                        className="w-full py-8 border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-2xl text-slate-400 hover:text-primary hover:border-primary/50 transition-all flex flex-col items-center gap-2"
+                                    >
+                                        <PlusIcon className="h-6 w-6" />
+                                        <span className="text-xs font-black uppercase tracking-wider">Add Tool</span>
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

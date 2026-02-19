@@ -7,11 +7,7 @@ const nodeFetch = require('node-fetch');
 const expressWs = require('express-ws');
 const { v4: uuidv4 } = require('uuid');
 const twilio = require('twilio');
-// Load environment variables
 const fs = require('fs');
-
-// Load environment variables
-// Priority: .env.local (root) -> .env (root) -> .env (server dir)
 const rootEnvLocal = path.resolve(__dirname, '../.env.local');
 const rootEnv = path.resolve(__dirname, '../.env');
 const serverEnv = path.resolve(__dirname, '.env');
@@ -86,10 +82,8 @@ const authService = new AuthService(mysqlPool);
 const twilioService = new TwilioService();
 const twilioBasicService = new TwilioBasicService();
 const adminService = new AdminService(mysqlPool);
-//Import Google Sheets Service at the top of server.js
-const googleSheetsService = require('./services/googleSheetsService.js');
-// Initialize Google Sheets on server startup
-googleSheetsService.initialize();
+// Google Sheets service removed
+
 // Initialize MediaStreamHandler for voice call pipeline
 const agentService = new AgentService(mysqlPool);
 
@@ -103,7 +97,6 @@ console.log('✅ Voice Sync Service initialized');
 console.log('✅ WebSocket support enabled on HTTP server');
 
 // Initialize Google Voice Stream Handler
-// Initialize Google Voice Stream Handler
 const GoogleVoiceStreamHandler = require('./services/GoogleVoiceStreamHandler.js');
 const googleVoiceHandler = new GoogleVoiceStreamHandler(voiceSyncService, walletService);
 app.ws('/voice-stream-google', (ws, req) => {
@@ -114,7 +107,7 @@ console.log('✅ Google Voice Stream Handler initialized at /voice-stream-google
 // Initialize Deepgram Browser Handler
 const { DeepgramBrowserHandler } = require('./services/DeepgramBrowserHandler.js');
 const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
-const geminiApiKey = process.env.GOOGLE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 console.log('Deepgram API Key configured:', !!deepgramApiKey);
 console.log('Gemini API Key configured:', !!geminiApiKey);
@@ -137,16 +130,16 @@ if (deepgramApiKey) {
 
 // Initialize BrowserVoiceHandler for production-level browser voice interactions
 const { BrowserVoiceHandler } = require('./services/BrowserVoiceHandler.js');
-const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVENLABS_API_KEY;
+const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY;
 const sarvamApiKey = process.env.SARVAM_API_KEY;
 
 let browserVoiceHandler;
-if (deepgramApiKey) {
+// Initialize if Sarvam API key is available
+if (sarvamApiKey) {
   try {
     browserVoiceHandler = new BrowserVoiceHandler(
-      deepgramApiKey,
       geminiApiKey,
-      openaiApiKey, // Add OpenAI API key
+      openaiApiKey,
       elevenLabsApiKey,
       sarvamApiKey,
       mysqlPool
@@ -155,16 +148,15 @@ if (deepgramApiKey) {
       browserVoiceHandler.handleConnection(ws, req);
     });
     console.log('✅ Browser Voice Handler initialized at /browser-voice-stream');
-    console.log('   - Deepgram STT: ' + (deepgramApiKey ? '✅' : '❌'));
+    console.log('   - Sarvam STT: ✅');
     console.log('   - Gemini LLM: ' + (geminiApiKey ? '✅' : '❌'));
     console.log('   - OpenAI LLM: ' + (openaiApiKey ? '✅' : '❌'));
     console.log('   - ElevenLabs TTS: ' + (elevenLabsApiKey ? '✅' : '❌'));
-    console.log('   - Sarvam TTS: ' + (sarvamApiKey ? '✅' : '❌'));
   } catch (error) {
     console.error('Failed to initialize BrowserVoiceHandler:', error.message);
   }
 } else {
-  console.warn('⚠️ BrowserVoiceHandler not initialized (missing Deepgram API key)');
+  console.warn('⚠️ BrowserVoiceHandler not initialized (missing SARVAM_API_KEY)');
 }
 
 // === ADD THIS BLOCK ===
@@ -175,16 +167,11 @@ if (!process.env.ELEVEN_LABS_API_KEY) {
 }
 console.log("Twilio Basic Service initialized");
 // ================= CORS ==================
-// ================= CORS ==================
-const FRONTEND_URL = process.env.FRONTEND_URL || "https://ziyavoice1.netlify.app";
+const FRONTEND_URL = process.env.FRONTEND_URL;
 
 const corsOptions = {
   origin: [
     FRONTEND_URL,
-    "https://ziyavoice1.netlify.app", // Keep old one just in case
-    /\.netlify\.app$/,
-    /\.vercel\.app$/, // Allow Vercel deployments
-    /\.railway\.app$/ // Allow Railway internal calls if needed
   ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -225,7 +212,7 @@ const sessionStore = new MySQLStore({
 
 // Session middleware (required for Passport)
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'ziya-voice-secret-key-change-in-production',
+  secret: process.env.SESSION_SECRET,
   store: sessionStore,
   resave: false,
   saveUninitialized: false,
@@ -252,7 +239,7 @@ app.get('/api/auth/google/callback',
     console.log('✅ Google OAuth successful for:', user.email);
 
     // Redirect to frontend with user data
-    const frontendUrl = process.env.FRONTEND_URL || 'https://ziyavoice-production-5e44.up.railway.app';
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5000';
     res.redirect(`${frontendUrl}/login?user=${encodeURIComponent(JSON.stringify(user))}`);
   }
 );
@@ -565,22 +552,23 @@ app.get('/api/voice-config-check', (req, res) => {
   const config = {
     timestamp: new Date().toISOString(),
     checks: {
-      deepgram: {
-        configured: !!process.env.DEEPGRAM_API_KEY,
-        keyPreview: process.env.DEEPGRAM_API_KEY
-          ? process.env.DEEPGRAM_API_KEY.substring(0, 8) + '...'
-          : 'NOT SET'
+      sarvam: {
+        configured: !!process.env.SARVAM_API_KEY,
+        keyPreview: process.env.SARVAM_API_KEY
+          ? process.env.SARVAM_API_KEY.substring(0, 8) + '...'
+          : 'NOT SET',
+        note: 'Used for STT in phone call pipeline'
       },
       gemini: {
-        configured: !!process.env.GOOGLE_GEMINI_API_KEY,
-        keyPreview: process.env.GOOGLE_GEMINI_API_KEY
-          ? process.env.GOOGLE_GEMINI_API_KEY.substring(0, 8) + '...'
+        configured: !!process.env.GEMINI_API_KEY,
+        keyPreview: process.env.GEMINI_API_KEY
+          ? process.env.GEMINI_API_KEY.substring(0, 8) + '...'
           : 'NOT SET'
       },
       elevenlabs: {
-        configured: !!(process.env.ELEVEN_LABS_API_KEY || process.env.ELEVENLABS_API_KEY),
-        keyPreview: (process.env.ELEVEN_LABS_API_KEY || process.env.ELEVENLABS_API_KEY)
-          ? (process.env.ELEVEN_LABS_API_KEY || process.env.ELEVENLABS_API_KEY).substring(0, 8) + '...'
+        configured: !!process.env.ELEVEN_LABS_API_KEY,
+        keyPreview: process.env.ELEVEN_LABS_API_KEY
+          ? process.env.ELEVEN_LABS_API_KEY.substring(0, 8) + '...'
           : 'NOT SET'
       },
       appUrl: {
@@ -602,7 +590,7 @@ app.get('/api/voice-config-check', (req, res) => {
   app.get('/api/test-elevenlabs-key', async (req, res) => {
     try {
       const key1 = process.env.ELEVEN_LABS_API_KEY;
-      const key2 = process.env.ELEVENLABS_API_KEY;
+      const key2 = process.env.ELEVEN_LABS_API_KEY;
 
       const result = {
         timestamp: new Date().toISOString(),
@@ -612,7 +600,7 @@ app.get('/api/voice-config-check', (req, res) => {
             preview: key1 ? `${key1.substring(0, 8)}...` : 'NOT SET',
             length: key1 ? key1.length : 0
           },
-          ELEVENLABS_API_KEY: {
+          ELEVEN_LABS_API_KEY: {
             exists: !!key2,
             preview: key2 ? `${key2.substring(0, 8)}...` : 'NOT SET',
             length: key2 ? key2.length : 0
@@ -675,12 +663,12 @@ app.get('/api/voice-config-check', (req, res) => {
       }
 
       const testVoiceId = voiceId || '21m00Tcm4TlvDq8ikWAM';
-      const apiKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVENLABS_API_KEY;
+      const apiKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
 
       if (!apiKey) {
         return res.status(500).json({
           error: 'ElevenLabs API key not configured',
-          fix: 'Set ELEVEN_LABS_API_KEY or ELEVENLABS_API_KEY in Railway environment variables'
+          fix: 'Set ELEVEN_LABS_API_KEY or ELEVEN_LABS_API_KEY in Railway environment variables'
         });
       }
 
@@ -733,7 +721,7 @@ app.get('/api/voice-config-check', (req, res) => {
   });
   // Determine overall status
   const allConfigured =
-    config.checks.deepgram.configured &&
+    config.checks.sarvam.configured &&
     config.checks.gemini.configured &&
     config.checks.elevenlabs.configured &&
     config.checks.appUrl.configured &&
@@ -745,9 +733,9 @@ app.get('/api/voice-config-check', (req, res) => {
 
   // Add missing items
   const missing = [];
-  if (!config.checks.deepgram.configured) missing.push('DEEPGRAM_API_KEY');
-  if (!config.checks.gemini.configured) missing.push('GOOGLE_GEMINI_API_KEY');
-  if (!config.checks.elevenlabs.configured) missing.push('ELEVEN_LABS_API_KEY or ELEVENLABS_API_KEY');
+  if (!config.checks.sarvam.configured) missing.push('SARVAM_API_KEY (required for phone call STT)');
+  if (!config.checks.gemini.configured) missing.push('GEMINI_API_KEY');
+  if (!config.checks.elevenlabs.configured) missing.push('ELEVEN_LABS_API_KEY');
   if (!config.checks.appUrl.configured) missing.push('APP_URL');
   if (config.checks.appUrl.configured && !config.checks.appUrl.isPublic) {
     missing.push('APP_URL must be public (not localhost)');
@@ -789,20 +777,21 @@ app.get('/api/test-voice-pipeline', async (req, res) => {
     }
   }
 
-  // Test 2: Check Deepgram
-  results.tests.deepgram = {
-    configured: !!process.env.DEEPGRAM_API_KEY,
-    keyLength: process.env.DEEPGRAM_API_KEY ? process.env.DEEPGRAM_API_KEY.length : 0
+  // Test 2: Check Sarvam STT (phone call pipeline)
+  results.tests.sarvam = {
+    configured: !!process.env.SARVAM_API_KEY,
+    keyLength: process.env.SARVAM_API_KEY ? process.env.SARVAM_API_KEY.length : 0,
+    note: 'Sarvam STT is used for phone call transcription'
   };
 
   // Test 3: Check Gemini
   results.tests.gemini = {
-    configured: !!process.env.GOOGLE_GEMINI_API_KEY,
-    keyLength: process.env.GOOGLE_GEMINI_API_KEY ? process.env.GOOGLE_GEMINI_API_KEY.length : 0
+    configured: !!process.env.GEMINI_API_KEY,
+    keyLength: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.length : 0
   };
 
   // Test 4: Check ElevenLabs
-  const elevenLabsKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVENLABS_API_KEY;
+  const elevenLabsKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
   results.tests.elevenlabs = {
     configured: !!elevenLabsKey,
     keyLength: elevenLabsKey ? elevenLabsKey.length : 0
@@ -842,7 +831,7 @@ app.get('/api/test-voice-pipeline', async (req, res) => {
   // Overall assessment
   const allPassed =
     results.tests.mediaStreamHandler.exists &&
-    results.tests.deepgram.configured &&
+    results.tests.sarvam.configured &&
     results.tests.gemini.configured &&
     results.tests.elevenlabs.configured &&
     (!results.tests.elevenlabs.apiWorking || results.tests.elevenlabs.apiWorking === true);
@@ -1802,7 +1791,7 @@ app.post('/api/validate-api-key', async (req, res) => {
 app.get('/api/voices/elevenlabs', async (req, res) => {
   try {
     // Get ElevenLabs API key from environment variables
-    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const apiKey = process.env.ELEVEN_LABS_API_KEY;
     if (!apiKey) {
       console.error('ElevenLabs API key not configured on server');
       return res.status(500).json({ success: false, message: 'ElevenLabs API key not configured on server' });
@@ -1863,7 +1852,7 @@ app.get('/api/voices/elevenlabs', async (req, res) => {
 app.get('/api/credits/elevenlabs/:userId', async (req, res) => {
   try {
     // Use shared ElevenLabs API key from environment
-    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const apiKey = process.env.ELEVEN_LABS_API_KEY;
     if (!apiKey) {
       return res.status(404).json({ success: false, message: 'ElevenLabs API key not configured' });
     }
@@ -1892,7 +1881,7 @@ app.get('/api/credits/elevenlabs/:userId', async (req, res) => {
 // Fetch Google Gemini credits
 app.get('/api/credits/gemini/:userId', async (req, res) => {
   try {
-    const geminiApiKey = process.env.GOOGLE_GEMINI_API_KEY;
+    const geminiApiKey = process.env.GEMINI_API_KEY;
     if (!geminiApiKey) {
       return res.status(404).json({ success: false, message: 'Google Gemini API key not configured' });
     }
@@ -3042,28 +3031,12 @@ app.delete('/api/campaigns/:campaignId/records/:recordId', async (req, res) => {
   }
 });
 
-// Google Sheets endpoint for appending data
-app.post('/api/tools/google-sheets/append', async (req, res) => {
-  try {
-    const { spreadsheetId, data, sheetName } = req.body;
-    if (!spreadsheetId || !data) {
-      return res.status(400).json({ success: false, message: 'Spreadsheet ID and data are required' });
-    }
+// Google Sheets endpoint removed
 
-    // In a real implementation, you would use the Google Sheets API here
-    // For now, we'll just log the data and return success
-    console.log('Google Sheets append request:', { spreadsheetId, data, sheetName });
-
-    res.json({ success: true, message: 'Data appended successfully' });
-  } catch (error) {
-    console.error('Error appending data to Google Sheets:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
 // Get available voices from ElevenLabs
 app.get('/api/voices/elevenlabs', async (req, res) => {
   try {
-    const apiKey = process.env.ELEVEN_LABS_API_KEY || process.env.VITE_ELEVEN_LABS_API_KEY;
+    const apiKey = process.env.ELEVEN_LABS_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ success: false, message: 'ElevenLabs API key not configured' });
     }
@@ -3098,7 +3071,7 @@ app.get('/api/voices/elevenlabs', async (req, res) => {
 app.get('/api/voices/elevenlabs/list', async (req, res) => {
   try {
     // Get ElevenLabs API key from environment variables
-    const apiKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVENLABS_API_KEY;
+    const apiKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
 
     if (!apiKey) {
       console.error('❌ ElevenLabs API key not configured on server');
@@ -3194,17 +3167,17 @@ app.post('/api/voices/elevenlabs/preview', async (req, res) => {
   }
 });
 
-if (process.env.DEEPGRAM_API_KEY && process.env.GOOGLE_GEMINI_API_KEY) {
+if (process.env.SARVAM_API_KEY && process.env.GEMINI_API_KEY) {
   mediaStreamHandler = new MediaStreamHandler(
-    process.env.DEEPGRAM_API_KEY,
-    process.env.GOOGLE_GEMINI_API_KEY,
-    process.env.OPENAI_API_KEY, // Add OpenAI API key
+    process.env.GEMINI_API_KEY,
+    process.env.OPENAI_API_KEY,
     campaignService,
-    mysqlPool
+    mysqlPool,
+    process.env.SARVAM_API_KEY
   );
-  console.log("MediaStreamHandler initialized with Deepgram + Gemini + OpenAI + Cost Tracking");
+  console.log("✅ MediaStreamHandler initialized with Sarvam STT + Gemini + OpenAI + Cost Tracking");
 } else {
-  console.warn("Voice call feature disabled — missing DEEPGRAM_API_KEY or GOOGLE_GEMINI_API_KEY");
+  console.warn("⚠️ Voice call feature disabled — missing SARVAM_API_KEY or GEMINI_API_KEY");
 }
 // WebSocket endpoint for ElevenLabs STT
 app.ws('/api/stt', function (ws, req) {
@@ -3226,8 +3199,8 @@ app.ws('/voice-stream', async function (ws, req) {  // ✅ ADDED async
   const audioBuffer = [];
   let isProcessing = false; // Flag to prevent overlapping responses
   const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
-  const geminiApiKey = process.env.GOOGLE_GEMINI_API_KEY;
-  const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY || process.env.VITE_ELEVEN_LABS_API_KEY;
+  const geminiApiKey = process.env.GEMINI_API_KEY;
+  const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY;
 
   // Determine if this is a Twilio call or frontend chat
   const callId = req.query?.callId;
@@ -3283,7 +3256,7 @@ app.ws('/voice-stream', async function (ws, req) {  // ✅ ADDED async
     console.warn('WARNING: DEEPGRAM_API_KEY is not configured. Speech-to-text will not work.');
   }
   if (!geminiApiKey) {
-    console.warn('WARNING: GOOGLE_GEMINI_API_KEY is not configured. AI responses will not work.');
+    console.warn('WARNING: GEMINI_API_KEY is not configured. AI responses will not work.');
   }
   if (!elevenLabsApiKey) {
     console.warn('WARNING: ELEVEN_LABS_API_KEY is not configured. Text-to-speech will not work.');
@@ -3841,6 +3814,38 @@ app.post('/api/campaigns/:id/stop', async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
+// Update concurrent calls limit for campaign
+app.put('/api/campaigns/:id/concurrent-calls', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, concurrentCalls } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'User ID is required' });
+    }
+
+    if (!concurrentCalls || concurrentCalls < 1 || concurrentCalls > 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'Concurrent calls must be between 1 and 10'
+      });
+    }
+
+    // Update campaign concurrent calls
+    await mysqlPool.execute(
+      'UPDATE campaigns SET concurrent_calls = ? WHERE id = ? AND user_id = ?',
+      [concurrentCalls, id, userId]
+    );
+
+    const updatedCampaign = await campaignService.getCampaign(id);
+    res.json({ success: true, data: updatedCampaign });
+  }
+  catch (error) {
+    console.error('Error updating concurrent calls:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 // Process campaign calls (runs in background)
 async function processCampaignCalls(campaignId, userId, campaign, records) {
   console.log(`Processing campaign ${campaignId} with ${records.length} records`);
@@ -3939,7 +3944,6 @@ app.use((req, res, next) => {
 // Start server and bind to 0.0.0.0 for Railway
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server listening on port ${PORT}`);
-  console.log(`📡 WebSocket endpoint: wss://ziyavoice-production-5e44.up.railway.app/api/call`);
   console.log(`🌐 Frontend URL: ${FRONTEND_URL}`);
   console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
 });

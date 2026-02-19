@@ -120,7 +120,7 @@ const AdminDashboardPage: React.FC = () => {
     <div className="min-h-screen bg-gray-900">
       {/* Header */}
       <div className="bg-gray-800 border-b border-gray-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="container-wrapper">
           <div className="flex justify-between items-center py-4">
             <div>
               <h1 className="text-2xl font-bold text-white">Admin Dashboard</h1>
@@ -144,7 +144,7 @@ const AdminDashboardPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="container-wrapper py-8">
         {/* Error Message */}
         {error && (
           <div className="mb-6 p-4 bg-red-500/10 border border-red-500/50 rounded-lg">

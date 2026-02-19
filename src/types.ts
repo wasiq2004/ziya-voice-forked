@@ -5,10 +5,11 @@ export enum Page {
     Campaigns = 'Campaigns',
     Agent = 'Agent',
     PhoneNo = 'Phone Numbers',
-    CallHistory = 'Call History',
     Settings = 'Settings',
     API = 'API',
     Credits = 'Credits',
+    Schedule = 'Schedule',
+    Reports = 'Reports',
 }
 
 export enum CampaignStatus {
