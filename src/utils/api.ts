@@ -19,11 +19,11 @@ export const fetchCampaigns = async (userId: string) => {
   return response.json();
 };
 
-export const createCampaign = async (userId: string, name: string) => {
+export const createCampaign = async (userId: string, name: string, agentId?: string, concurrentCalls?: number, retryAttempts?: number) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, name })
+    body: JSON.stringify({ userId, name, agentId, concurrentCalls, retryAttempts })
   });
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
@@ -49,6 +49,19 @@ export const fetchCampaign = async (id: string, userId: string) => {
   return response.json();
 };
 
+export const updateCampaign = async (id: string, userId: string, data: any) => {
+  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, ...data })
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || 'Failed to update campaign');
+  }
+  return response.json();
+};
+
 export const setCallerPhone = async (id: string, userId: string, callerPhone: string, agentId?: string) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/set-caller-phone`, {
     method: 'POST',
@@ -62,6 +75,22 @@ export const setCallerPhone = async (id: string, userId: string, callerPhone: st
   const contentType = response.headers.get('content-type');
   if (!contentType || !contentType.includes('application/json')) {
     throw new Error('Received non-JSON response from server');
+  }
+  return response.json();
+};
+
+// Import CSV content (raw string)
+export const importCSV = async (id: string, userId: string, csvContent: string) => {
+  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/import-csv`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ userId, csvContent }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || 'Failed to import CSV');
   }
   return response.json();
 };

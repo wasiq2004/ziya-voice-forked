@@ -4,43 +4,20 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-/**
- * Get ElevenLabs API key from environment
- * @returns {string} API key
- */
+
 function getElevenLabsApiKey() {
     return process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
 }
 
-/**
- * Get Sarvam API key from environment
- * @returns {string} API key
- */
 function getSarvamApiKey() {
     return process.env.SARVAM_API_KEY;
 }
 
-/**
- * Main TTS generation function
- * Routes to appropriate provider based on voice ID or explicit provider
- * @param {string} text - Text to synthesize
- * @param {Object} options - TTS options
- * @param {string} options.voiceId - Voice ID or speaker name
- * @param {string} options.speaker - Speaker name (for Sarvam)
- * @param {string} options.provider - Explicit provider ('elevenlabs' or 'sarvam')
- * @param {string} options.format - Output format
- * @returns {Promise<Buffer>} - Audio buffer
- */
 async function generateTTS(text, options = {}) {
-    // Known Sarvam speakers (updated list from API)
-    // WARNING: This is a hardcoded list. New Sarvam voices won't be auto-detected.
-    // TODO: Query database or Sarvam API for voice list instead
+    // VERIFIED by Sarvam API: ONLY these 7 speakers exist for bulbul:v2
     const sarvamSpeakers = [
-        'anushka', 'abhilash', 'manisha', 'vidya', 'arya', 'karun', 'hitesh', 'aditya',
-        'isha', 'ritu', 'chirag', 'harsh', 'sakshi', 'priya', 'neha', 'rahul',
-        'pooja', 'rohan', 'simran', 'kavya', 'anjali', 'sneha', 'kiran', 'vikram',
-        'rajesh', 'sunita', 'tara', 'anirudh', 'kriti', 'ishaan', 'ratan', 'varun',
-        'manan', 'sumit', 'roopa', 'kabir', 'aayan', 'shubh'
+        'anushka', 'manisha', 'vidya', 'arya',   // female
+        'abhilash', 'karun', 'hitesh'              // male
     ];
 
     // Auto-detect provider based on voice ID or speaker
@@ -74,13 +51,7 @@ async function generateTTS(text, options = {}) {
     }
 }
 
-/**
- * Generate TTS using Sarvam AI
- * @param {string} text - Text to synthesize
- * @param {Object} options - TTS options
- * @param {string} options.speaker - Sarvam speaker name
- * @returns {Promise<Buffer>} - Audio buffer
- */
+
 async function generateSarvamTTS(text, options) {
     console.log("[TTS Controller] Routing to Sarvam TTS");
 
@@ -113,11 +84,7 @@ async function generateSarvamTTS(text, options) {
     }
 }
 
-/**
- * Convert 16-bit linear PCM to µ-law (G.711)
- * @param {Buffer} pcmBuffer - 16-bit PCM buffer
- * @returns {Buffer} - 8-bit µ-law buffer
- */
+
 function pcmToMuLaw(pcmBuffer) {
     const muLawBuffer = Buffer.alloc(pcmBuffer.length / 2);
     const split = [

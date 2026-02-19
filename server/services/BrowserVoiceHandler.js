@@ -285,10 +285,10 @@ class BrowserVoiceHandler {
             } else {
                 // Silence detected
                 if (!session.silenceTimer && session.audioBuffer.length > 0) {
-                    // Start silence timer
+                    // 700ms: long enough to avoid cutting mid-sentence, short enough to feel real-time.
                     session.silenceTimer = setTimeout(() => {
                         this.processBufferedAudio(session);
-                    }, 1500); // 1.5 seconds of silence = end of utterance
+                    }, 700);
                 }
             }
         } catch (error) {
@@ -318,11 +318,10 @@ class BrowserVoiceHandler {
         session.audioBuffer = [];
         session.speechDetectedInChunk = false;
 
-        // Skip if buffer is too short (likely just noise)
-        // 32000 bytes = ~1 second. If we have speech + 1.5s silence tail, 
-        // a valid utterance should be substantially larger than 32000.
-        // If it's smaller, it means the speech was extremely brief (click/pop).
-        if (completeBuffer.length < 32000) {
+        // Skip if buffer is too short (likely just noise / click).
+        // With VAD at 700ms, the silence tail is much shorter.
+        // 16000 bytes (16kHz 16-bit mono) = ~0.5s — filters clicks/pops but keeps short words like "yes".
+        if (completeBuffer.length < 16000) {
             console.log(`⚠️ Dropping short audio buffer: ${completeBuffer.length} bytes (likely noise)`);
             return;
         }
@@ -352,11 +351,12 @@ class BrowserVoiceHandler {
                     session.detectedLanguage = detectedLanguage;
                 }
 
-                // Filter out common hallucinations if they are the ONLY text
+                // Filter out common STT hallucinations on silence.
+                // With VAD at 700ms: speech + 700ms tail.
+                // A real 'Yes' at 300ms + 700ms tail = ~32,000 bytes.
+                // Buffer < 20,000 bytes = sub-0.6s total = likely hallucination.
                 const hallucinations = ['Okay.', 'Yes.', 'No.', 'Okay', 'Yes', 'No'];
-                // 64000 bytes = 2.0s total (0.5s speech + 1.5s tail).
-                // "Yes" is usually around 0.3-0.5s. Hallucinations on noise are usually < 0.1s.
-                if (hallucinations.includes(cleanTranscript) && completeBuffer.length < 64000) {
+                if (hallucinations.includes(cleanTranscript) && completeBuffer.length < 20000) {
                     console.log(`⚠️ Ignoring likely hallucination: "${cleanTranscript}" (buffer: ${completeBuffer.length})`);
                     return;
                 }
@@ -442,23 +442,18 @@ class BrowserVoiceHandler {
             const currentInput = session.inputQueue.shift();
 
             try {
-                console.log(`🤖 Processing user input: "${currentInput}"`);
+                console.log(`🤖 Processing user input (streaming): "${currentInput}"`);
 
-                // Call LLM
-                const response = await this.callLLM(session, currentInput);
+                // Stream LLM response — fires TTS on each complete sentence
+                const fullResponse = await this.callLLMStream(session, currentInput);
 
-                if (response) {
-                    // Add to conversation history
-                    this.appendToContext(session, response, 'assistant');
-
-                    // Send text response to browser
+                if (fullResponse) {
+                    // Conversation history already updated inside callLLMStream
+                    // Send complete text to browser for transcript display
                     session.ws.send(JSON.stringify({
                         event: 'agent-response',
-                        text: response
+                        text: fullResponse
                     }));
-
-                    // Synthesize and stream audio
-                    await this.synthesizeAndStreamTTS(session, response);
                 }
 
             } catch (error) {
@@ -474,77 +469,109 @@ class BrowserVoiceHandler {
     }
 
     /**
-     * Call LLM for response generation
+     * STREAMING LLM call — fires TTS per sentence for minimum latency.
+     * Replaces the old blocking callLLM().
      */
-    async callLLM(session, userInput) {
+    async callLLMStream(session, userInput) {
         try {
-            console.log(`🧠 Calling LLM for session: ${session.connectionId}`);
-            const modelToUse = session.agentModel || "gemini-2.0-flash";
+            console.log(`🧠 [Stream] Calling LLM for session: ${session.connectionId}`);
+            const modelToUse = session.agentModel || 'gemini-2.0-flash';
+            const isGemini = modelToUse.includes('gemini');
 
-            // Prepare conversation history in the correct format
+            // Build conversation history in Gemini parts format
             const contents = session.conversationHistory.map(msg => ({
                 role: msg.role === 'assistant' ? 'model' : 'user',
                 parts: [{ text: msg.content }]
             }));
 
-            // Call LLM service with correct request format
-            const response = await this.llmService.generateContent({
+            // Get the async stream from LLM service
+            const stream = await this.llmService.generateContentStream({
                 model: modelToUse,
-                contents: contents,
-                config: {
-                    systemInstruction: session.agentPrompt
-                }
+                contents,
+                config: { systemInstruction: session.agentPrompt }
             });
 
-            const text = response.text;
-            console.log(`✅ LLM response: ${text.substring(0, 100)}...`);
+            let fullText = '';
+            let currentSentence = '';
+            // Sentence boundaries: period/exclamation/question followed by whitespace or end of string
+            const SENTENCE_BOUNDARY = /[.!?]+(\s|$)/;
 
-            // Update token counts if available
-            if (response.inputTokens) session.totalInputTokens += response.inputTokens;
-            if (response.outputTokens) session.totalOutputTokens += response.outputTokens;
+            for await (const chunk of stream) {
+                // Extract text from chunk based on provider format
+                let content = '';
+                try {
+                    content = isGemini ? chunk.text() : (chunk.choices?.[0]?.delta?.content || '');
+                } catch (e) {
+                    continue; // skip malformed chunks
+                }
+                if (!content) continue;
 
-            // Check for Tool Call (JSON format)
+                fullText += content;
+                currentSentence += content;
+
+                // Fire TTS as soon as a complete sentence is ready
+                if (SENTENCE_BOUNDARY.test(currentSentence)) {
+                    const match = currentSentence.match(SENTENCE_BOUNDARY);
+                    const splitIndex = match.index + match[0].length;
+                    const completeSentence = currentSentence.slice(0, splitIndex).trim();
+                    currentSentence = currentSentence.slice(splitIndex);
+
+                    // Skip pure JSON tool-call responses — don't speak those
+                    if (completeSentence && !completeSentence.startsWith('{')) {
+                        console.log(`📡 [Stream] Sentence ready → TTS: "${completeSentence}"`);
+                        // Fire-and-forget so next sentence can start streaming while TTS is generating
+                        this.synthesizeAndStreamTTS(session, completeSentence).catch(err =>
+                            console.error('❌ Sentence TTS error:', err)
+                        );
+                    }
+                }
+            }
+
+            // Flush any remaining text that didn't end with punctuation
+            if (currentSentence.trim() && !currentSentence.trim().startsWith('{')) {
+                console.log(`📡 [Stream] Final sentence → TTS: "${currentSentence.trim()}"`);
+                this.synthesizeAndStreamTTS(session, currentSentence.trim()).catch(err =>
+                    console.error('❌ Final sentence TTS error:', err)
+                );
+            }
+
+            console.log(`✅ [Stream] Full LLM response: "${fullText.substring(0, 100)}..."`);
+
+            // Check for tool call in the full response
             try {
-                // Remove potential markdown code blocks if present
-                const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+                const cleanText = fullText.replace(/```json/g, '').replace(/```/g, '').trim();
                 if (cleanText.startsWith('{') && cleanText.endsWith('}')) {
                     const parsed = JSON.parse(cleanText);
-
-                    if (parsed.tool && parsed.data) {
+                    if (parsed.tool && parsed.data && this.mysqlPool) {
                         console.log(`🛠️ Tool usage detected: ${parsed.tool}`);
-
-                        // Handle Tool Execution
-                        if (parsed.tool && this.mysqlPool) {
+                        const tool = session.tools?.find(t => t.name === parsed.tool);
+                        if (tool) {
                             const toolService = new ToolExecutionService(this.llmService, this.mysqlPool);
-
-                            // Find the tool definition
-                            const tool = session.tools && session.tools.find(t => t.name === parsed.tool);
-
-                            if (tool) {
-                                // Execute the tool
-                                await toolService.executeTool(tool, parsed.data, session, session.agentSettings);
-
-                                // Add tool result indicator to context
-                                this.appendToContext(session, JSON.stringify({ tool: parsed.tool, status: "success", message: "Data processing initiated" }), "user");
-
-                                // Recursively call LLM to get the verbal response
-                                return await this.callLLM(session, "Tool executed successfully. Please continue.");
-                            } else {
-                                console.warn(`Tool ${parsed.tool} not found in configuration`);
-                            }
+                            await toolService.executeTool(tool, parsed.data, session, session.agentSettings);
+                            this.appendToContext(session, JSON.stringify({ tool: parsed.tool, status: 'success', message: 'Data processing initiated' }), 'user');
+                            // Recurse to get the verbal confirmation response
+                            return await this.callLLMStream(session, 'Tool executed successfully. Please continue.');
+                        } else {
+                            console.warn(`Tool ${parsed.tool} not found in configuration`);
                         }
                     }
                 }
             } catch (jsonError) {
-                // Not a valid JSON tool call, just regular text -> continue
-                // console.log("Response is not JSON tool call");
+                // Not a JSON tool call — normal text response
             }
 
-            return text;
+            // Update conversation history with full assistant response
+            if (fullText) {
+                this.appendToContext(session, fullText, 'assistant');
+            }
+
+            return fullText;
 
         } catch (error) {
-            console.error('❌ LLM call failed:', error);
-            return "I apologize, but I'm having trouble processing your request right now.";
+            console.error('❌ [Stream] LLM call failed:', error);
+            const fallback = "I'm sorry, I'm having trouble responding right now.";
+            this.synthesizeAndStreamTTS(session, fallback).catch(() => { });
+            return fallback;
         }
     }
 
@@ -578,18 +605,22 @@ class BrowserVoiceHandler {
     }
 
     /**
-     * Synthesize with ElevenLabs TTS (streaming)
+     * Synthesize with ElevenLabs TTS — turbo model for minimum latency.
+     * Uses eleven_turbo_v2_5 (real-time model, 2-3x faster) and mp3_22050_32
+     * (75% smaller than default → faster generation AND faster download).
+     * Sends a single complete 'audio' event so the browser's decodeAudioData()
+     * always receives a valid, complete MP3 file.
      */
     async synthesizeElevenLabsTTS(session, text) {
         try {
             if (!this.elevenLabsApiKey) {
-                // If API key is missing but we are here, log it but don't crash - let the user know
-                console.error('ElevenLabs API key not configured');
                 throw new Error('ElevenLabs API key not configured');
             }
 
             const voiceId = session.agentVoiceId;
             const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`;
+
+            console.log(`🔊 [EL] Requesting TTS (turbo) for: "${text.substring(0, 60)}"`);
 
             const response = await fetch(url, {
                 method: 'POST',
@@ -599,39 +630,47 @@ class BrowserVoiceHandler {
                     'xi-api-key': this.elevenLabsApiKey
                 },
                 body: JSON.stringify({
-                    text: text,
-                    model_id: 'eleven_multilingual_v2',
+                    text,
+                    // eleven_turbo_v2_5: ElevenLabs' real-time optimised model — 2-3x faster
+                    model_id: 'eleven_turbo_v2_5',
+                    // mp3_22050_32: ~75% smaller than default 128kbps → faster API + faster transfer
+                    output_format: 'mp3_22050_32',
                     voice_settings: {
-                        stability: 0.35,
-                        similarity_boost: 0.65,
-                        style: 0.75,
-                        use_speaker_boost: true
+                        stability: 0.4,
+                        similarity_boost: 0.7
+                        // style & use_speaker_boost intentionally omitted — add latency on EL side
                     }
                 })
             });
 
             if (!response.ok) {
-                throw new Error(`ElevenLabs API error: ${response.status}`);
+                const errText = await response.text().catch(() => response.statusText);
+                throw new Error(`ElevenLabs API error: ${response.status} - ${errText}`);
             }
 
-            // Stream audio to browser
-            const audioBuffer = await response.buffer();
-            const base64Audio = audioBuffer.toString('base64');
+            // Collect the streaming response into a complete buffer.
+            // NOTE: We MUST send a complete MP3 to the browser because the frontend
+            // uses AudioContext.decodeAudioData() which requires a valid, full audio file.
+            // Partial chunks would cause decoding failures.
+            const chunks = [];
+            for await (const chunk of response.body) {
+                chunks.push(chunk);
+            }
+            const audioBuffer = Buffer.concat(chunks);
 
             session.ws.send(JSON.stringify({
                 event: 'audio',
-                audio: base64Audio,
+                audio: audioBuffer.toString('base64'),
                 format: 'mp3'
             }));
 
-            console.log('✅ ElevenLabs TTS audio sent to browser');
+            console.log(`✅ [EL] Sent ${audioBuffer.length} bytes for: "${text.substring(0, 40)}"`);
 
         } catch (error) {
             console.error('❌ ElevenLabs TTS error:', error);
             throw error;
         }
     }
-
     /**
      * Synthesize with Sarvam TTS
      */

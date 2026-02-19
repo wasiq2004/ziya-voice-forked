@@ -57,7 +57,7 @@ const CampaignsPage: React.FC = () => {
     const handleCreateCampaign = async (data: any) => {
         if (!user?.id) return;
         try {
-            const response = await createCampaign(user.id, data.name);
+            const response = await createCampaign(user.id, data.name, data.agentId, data.concurrentCalls, data.retryAttempts);
             if (response.success) {
                 // Reload campaigns
                 const reloadResponse = await fetchCampaigns(user.id);

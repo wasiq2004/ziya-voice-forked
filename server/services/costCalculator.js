@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
+const { usdToCredits, getProfitMarkupPerMinute } = require('../config/creditConfig');
 
 /**
  * Cost Calculator Service
@@ -37,9 +38,6 @@ class CostCalculator {
         return this.pricingCache;
     }
 
-    /**
-     * Calculate cost for a specific service
-     */
     async calculateServiceCost(serviceType, unitsUsed) {
         await this.getPricing();
 
@@ -49,15 +47,12 @@ class CostCalculator {
             return 0;
         }
 
-        const cost = pricing.costPerUnit * parseFloat(unitsUsed);
-        return parseFloat(cost.toFixed(6));
+        // costPerUnit stored in DB is in USD — convert to Credits
+        const usdCost = pricing.costPerUnit * parseFloat(unitsUsed);
+        const creditCost = usdToCredits(usdCost);
+        return parseFloat(creditCost.toFixed(6));
     }
 
-    /**
-     * Calculate total cost for a call based on all services used
-     * @param {Object} usage - Object containing usage for each service
-     * @returns {Object} - Breakdown of costs
-     */
     async calculateCallCost(usage) {
         const costs = {};
         let totalCost = 0;
@@ -79,60 +74,31 @@ class CostCalculator {
         };
     }
 
-    /**
-     * Estimate cost for ElevenLabs TTS
-     * @param {string} text - Text to be synthesized
-     * @returns {number} - Estimated cost
-     */
     async estimateElevenLabsCost(text) {
         const characters = text.length;
         return await this.calculateServiceCost('elevenlabs', characters);
     }
 
-    /**
-     * Estimate cost for Sarvam TTS
-     * @param {string} text - Text to be synthesized
-     * @returns {number} - Estimated cost
-     */
     async estimateSarvamCost(text) {
         const characters = text.length;
         return await this.calculateServiceCost('sarvam', characters);
     }
 
-    /**
-     * Estimate cost for Deepgram STT
-     * @param {number} durationSeconds - Audio duration in seconds
-     * @returns {number} - Estimated cost
-     */
     async estimateDeepgramCost(durationSeconds) {
         return await this.calculateServiceCost('deepgram', durationSeconds);
     }
 
-    /**
-     * Estimate cost for Gemini
-     * @param {number} tokens - Number of tokens (input + output)
-     * @returns {number} - Estimated cost
-     */
     async estimateGeminiCost(tokens) {
         return await this.calculateServiceCost('gemini', tokens);
     }
 
-    /**
-     * Estimate cost for Twilio
-     * @param {number} durationSeconds - Call duration in seconds
-     * @returns {number} - Estimated cost
-     */
+
     async estimateTwilioCost(durationSeconds) {
         const minutes = durationSeconds / 60;
         return await this.calculateServiceCost('twilio', minutes);
     }
 
-    /**
-     * Check if user has sufficient balance for estimated cost
-     * @param {string} userId - User ID
-     * @param {number} estimatedCost - Estimated cost
-     * @returns {boolean} - True if sufficient balance
-     */
+
     async checkSufficientBalance(userId, estimatedCost) {
         try {
             const balance = await this.walletService.getBalance(userId);
@@ -143,21 +109,23 @@ class CostCalculator {
         }
     }
 
-    /**
-     * Record usage and charge user
-     * @param {string} userId - User ID
-     * @param {string} callId - Call ID
-     * @param {Object} usage - Usage breakdown by service
-     * @returns {Object} - Result with total charged
-     */
-    async recordAndCharge(userId, callId, usage) {
+    async recordAndCharge(userId, callId, usage, isVoiceCall = false, durationSeconds = 0) {
         try {
             const costBreakdown = await this.calculateCallCost(usage);
+
+            // Hidden profit markup for phone calls and browser voice sessions
+            let hiddenMarkupCredits = 0;
+            if (isVoiceCall && durationSeconds > 0) {
+                const durationMinutes = durationSeconds / 60;
+                hiddenMarkupCredits = getProfitMarkupPerMinute() * durationMinutes;
+            }
+
+            const totalCreditsToCharge = parseFloat((costBreakdown.totalCost + hiddenMarkupCredits).toFixed(4));
 
             // Check if user has sufficient balance
             const hasSufficientBalance = await this.checkSufficientBalance(
                 userId,
-                costBreakdown.totalCost
+                totalCreditsToCharge
             );
 
             if (!hasSufficientBalance) {
@@ -174,15 +142,15 @@ class CostCalculator {
                     );
                     if (calls.length === 0) {
                         console.warn(`⚠️ Call ${callId} not found in database. Recording usage without call reference.`);
-                        validCallId = null; // Set to NULL if call doesn't exist
+                        validCallId = null;
                     }
                 } catch (err) {
                     console.error('Error checking call existence:', err);
-                    validCallId = null; // Fallback to NULL on error
+                    validCallId = null;
                 }
             }
 
-            // Record each service usage
+            // Record each service usage (cost stored in Credits)
             const usageRecords = [];
             for (const [service, data] of Object.entries(costBreakdown.breakdown)) {
                 const usageId = uuidv4();
@@ -193,34 +161,34 @@ class CostCalculator {
                     [
                         usageId,
                         userId,
-                        validCallId, // Use validated call_id (may be NULL)
+                        validCallId,
                         service,
                         data.units,
-                        this.pricingCache.get(service).costPerUnit,
+                        this.pricingCache.get(service) ? usdToCredits(this.pricingCache.get(service).costPerUnit) : 0,
                         data.cost,
                         JSON.stringify({
                             timestamp: new Date().toISOString(),
-                            originalCallId: callId // Keep original for reference
+                            originalCallId: callId
                         })
                     ]
                 );
                 usageRecords.push({ service, ...data });
             }
 
-            // Deduct total cost from wallet
-            const description = `Call ${callId ? callId.substring(0, 8) : 'N/A'} - ${Object.keys(costBreakdown.breakdown).join(', ')}`;
+            // Deduct total credits from wallet (includes hidden markup)
+            const description = `Call ${callId ? callId.substring(0, 8) : 'N/A'} - Voice processing`;
             await this.walletService.deductCredits(
                 userId,
-                costBreakdown.totalCost,
-                null, // Set to NULL to avoid truncation - service_type column might be ENUM or very small
+                totalCreditsToCharge,
+                null,
                 description,
-                validCallId, // Use validated call_id
+                validCallId,
                 { breakdown: costBreakdown.breakdown }
             );
 
             return {
                 success: true,
-                totalCharged: costBreakdown.totalCost,
+                totalCharged: totalCreditsToCharge,
                 breakdown: costBreakdown.breakdown,
                 usageRecords
             };
@@ -230,13 +198,6 @@ class CostCalculator {
         }
     }
 
-    /**
-     * Get cost summary for a date range
-     * @param {string} userId - User ID
-     * @param {Date} startDate - Start date
-     * @param {Date} endDate - End date
-     * @returns {Object} - Cost summary
-     */
     async getCostSummary(userId, startDate, endDate) {
         try {
             const [results] = await this.mysqlPool.execute(
