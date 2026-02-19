@@ -21,8 +21,9 @@ for (let i = 0; i < 256; i++) {
 const sessions = new Map();
 
 class MediaStreamHandler {
-    constructor(deepgramApiKey, geminiApiKey, openaiApiKey, campaignService, mysqlPool = null, sarvamApiKey = null) {
+    constructor(geminiApiKey, openaiApiKey, campaignService, mysqlPool = null, sarvamApiKey = null) {
         if (!geminiApiKey) throw new Error("Missing Gemini API Key");
+        if (!sarvamApiKey && !process.env.SARVAM_API_KEY) throw new Error("Missing Sarvam API Key for STT");
 
         this.llmService = new LLMService(geminiApiKey, openaiApiKey);
         this.campaignService = campaignService;
@@ -34,7 +35,7 @@ class MediaStreamHandler {
             this.walletService = new WalletService(mysqlPool);
             this.costCalculator = new CostCalculator(mysqlPool, this.walletService);
         }
-        console.log('✅ MediaStreamHandler initialized (Sarvam STT enabled)');
+        console.log('✅ MediaStreamHandler initialized (Sarvam STT)');
     }
 
     // ✅ FIX: Method to get fresh API key each time
@@ -297,24 +298,24 @@ class MediaStreamHandler {
                             console.log(`✅ Balance check passed: $${balanceCheck.balance.toFixed(4)}`);
                         }
 
-                        // Map agent language to Deepgram language codes
+                        // Map agent language to Sarvam language codes
                         const languageMap = {
-                            'ENGLISH': 'en-US',
-                            'HINDI': 'hi',
-                            'TAMIL': 'ta',
-                            'TELUGU': 'te',
-                            'KANNADA': 'kn',
-                            'MALAYALAM': 'ml',
-                            'BENGALI': 'bn',
-                            'MARATHI': 'mr',
-                            'GUJARATI': 'gu',
-                            'PUNJABI': 'pa'
+                            'ENGLISH': 'en-IN',
+                            'HINDI': 'hi-IN',
+                            'TAMIL': 'ta-IN',
+                            'TELUGU': 'te-IN',
+                            'KANNADA': 'kn-IN',
+                            'MALAYALAM': 'ml-IN',
+                            'BENGALI': 'bn-IN',
+                            'MARATHI': 'mr-IN',
+                            'GUJARATI': 'gu-IN',
+                            'PUNJABI': 'pa-IN'
                         };
 
                         // Get language from agent or default to English
                         const agentLanguage = agent?.language || 'ENGLISH';
-                        const deepgramLanguage = languageMap[agentLanguage] || 'en-US';
-                        console.log(`🌐 Using language: ${agentLanguage} (Deepgram: ${deepgramLanguage})`);
+                        const sarvamLanguage = languageMap[agentLanguage] || 'en-IN';
+                        console.log(`🌐 Using language: ${agentLanguage} (Sarvam: ${sarvamLanguage})`);
 
                         session = this.createSession(callId, agentPrompt, agentVoiceId, ws, userId, agentId, agentModel, agent?.settings);
                         session.tools = tools;

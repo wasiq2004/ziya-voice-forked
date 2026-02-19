@@ -1,4 +1,4 @@
-// Removed Deepgram import
+// Sarvam STT is the sole STT provider
 const { LLMService } = require("../llmService.js");
 const SarvamSttService = require('./sarvamSttService.js');
 const WalletService = require('./walletService.js');
@@ -11,19 +11,15 @@ const fetch = require('node-fetch');
 const sessions = new Map();
 
 class BrowserVoiceHandler {
-    constructor(deepgramApiKey, geminiApiKey, openaiApiKey, elevenLabsApiKey, sarvamApiKey, mysqlPool = null) {
-        if (!deepgramApiKey && !sarvamApiKey) throw new Error("Missing STT API Key (Deepgram or Sarvam)");
+    constructor(geminiApiKey, openaiApiKey, elevenLabsApiKey, sarvamApiKey, mysqlPool = null) {
+        if (!sarvamApiKey) throw new Error("Missing SARVAM_API_KEY for STT");
 
-        // Removed strict check for Gemini API Key to allow STT-only or OpenAI-only usage
-        // if (!geminiApiKey) throw new Error("Missing Gemini API Key");
-
-        this.deepgramApiKey = deepgramApiKey; // Kept for compatibility but unused
         this.geminiApiKey = geminiApiKey;
         this.openaiApiKey = openaiApiKey;
         this.elevenLabsApiKey = elevenLabsApiKey;
         this.sarvamApiKey = sarvamApiKey;
         this.mysqlPool = mysqlPool;
-        this.llmService = new LLMService(geminiApiKey, openaiApiKey); // Pass both API keys
+        this.llmService = new LLMService(geminiApiKey, openaiApiKey);
         this.sarvamSttService = new SarvamSttService(sarvamApiKey);
 
         // Initialize wallet and cost tracking services
@@ -32,7 +28,7 @@ class BrowserVoiceHandler {
             this.costCalculator = new CostCalculator(mysqlPool, this.walletService);
         }
 
-        console.log('✅ BrowserVoiceHandler initialized (Sarvam STT enabled)');
+        console.log('✅ BrowserVoiceHandler initialized (Sarvam STT)');
     }
 
     /**
