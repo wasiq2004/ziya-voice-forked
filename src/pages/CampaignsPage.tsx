@@ -25,32 +25,48 @@ const CampaignsPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
     const [searchQuery, setSearchQuery] = useState('');
 
-    useEffect(() => {
-        const loadCampaigns = async () => {
-            if (!user?.id) return;
-            try {
-                setLoading(true);
-                const response = await fetchCampaigns(user.id);
-                if (response.success && response.data) {
-                    const mapped: Campaign[] = response.data.map((c: any) => ({
+    const loadCampaigns = async () => {
+        if (!user?.id) return;
+        try {
+            setLoading(true);
+            const response = await fetchCampaigns(user.id);
+            console.log('Fetched campaigns response:', response);
+            if (response.success && response.data) {
+                const mapped: Campaign[] = response.data.map((c: any) => {
+                    let displayStatus: Campaign['status'] = 'Completed';
+                    const backendStatus = (c.status || '').toLowerCase();
+
+                    if (backendStatus === 'running' || backendStatus === 'active' || backendStatus === 'starting') {
+                        displayStatus = 'Active';
+                    } else if (backendStatus === 'draft' || backendStatus === 'idle' || backendStatus === 'initiated') {
+                        displayStatus = 'Draft';
+                    } else if (backendStatus === 'paused' || backendStatus === 'stopped') {
+                        displayStatus = 'Paused';
+                    } else if (backendStatus === 'completed') {
+                        displayStatus = 'Completed';
+                    } else {
+                        displayStatus = backendStatus === 'cancelled' ? 'Completed' : 'Draft';
+                    }
+
+                    return {
                         id: c.id,
                         name: c.name,
-                        status: c.status === 'running' ? 'Active' :
-                            c.status === 'draft' ? 'Draft' :
-                                c.status === 'paused' ? 'Paused' : 'Completed',
+                        status: displayStatus,
                         totalLeads: c.total_contacts || 0,
                         progress: c.total_contacts > 0 ? Math.round((c.completed_calls / c.total_contacts) * 100) : 0,
                         createdDate: new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
-                    }));
-                    setCampaigns(mapped);
-                }
-            } catch (error) {
-                console.error('Error loading campaigns:', error);
-            } finally {
-                setLoading(false);
+                    };
+                });
+                setCampaigns(mapped);
             }
-        };
+        } catch (error) {
+            console.error('Error loading campaigns:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
+    useEffect(() => {
         loadCampaigns();
     }, [user?.id]);
 
@@ -59,21 +75,7 @@ const CampaignsPage: React.FC = () => {
         try {
             const response = await createCampaign(user.id, data.name, data.agentId, data.concurrentCalls, data.retryAttempts);
             if (response.success) {
-                // Reload campaigns
-                const reloadResponse = await fetchCampaigns(user.id);
-                if (reloadResponse.success && reloadResponse.data) {
-                    const mapped: Campaign[] = reloadResponse.data.map((c: any) => ({
-                        id: c.id,
-                        name: c.name,
-                        status: c.status === 'running' ? 'Active' :
-                            c.status === 'draft' ? 'Draft' :
-                                c.status === 'paused' ? 'Paused' : 'Completed',
-                        totalLeads: c.total_contacts || 0,
-                        progress: c.total_contacts > 0 ? Math.round((c.completed_calls / c.total_contacts) * 100) : 0,
-                        createdDate: new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
-                    }));
-                    setCampaigns(mapped);
-                }
+                await loadCampaigns();
                 setIsCreateModalOpen(false);
             }
         } catch (error) {
