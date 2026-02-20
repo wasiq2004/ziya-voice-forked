@@ -112,11 +112,11 @@ export const importRecords = async (id: string, userId: string, csvData: any[]) 
   return response.json();
 };
 
-export const addRecord = async (id: string, userId: string, phone: string) => {
+export const addRecord = async (id: string, userId: string, phone: string, name?: string, email?: string) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/records`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, phone })
+    body: JSON.stringify({ userId, phone, name, email })
   });
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);

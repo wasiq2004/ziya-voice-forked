@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   PlayIcon,
   StopIcon,
-  ChevronLeftIcon
+  ChevronLeftIcon,
+  PhoneIcon,
+  UserCircleIcon
 } from '@heroicons/react/24/outline';
 import AppLayout from '../components/AppLayout';
 import KPICard from '../components/KPICard';
@@ -21,45 +23,63 @@ const CampaignDetailPage: React.FC = () => {
   const [campaign, setCampaign] = useState<any>(null);
   const [leads, setLeads] = useState<any[]>([]);
   const [agents, setAgents] = useState<any[]>([]);
+  const [phoneNumbers, setPhoneNumbers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Helper: map raw DB records to lead objects
+  const mapRecords = (records: any[]) =>
+    records.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      phone: r.phone_number || r.phone,
+      email: r.email || '',
+      status: r.status ? r.status.charAt(0).toUpperCase() + r.status.slice(1) : 'Pending',
+      attempts: r.attempts || 0,
+      intent: r.intent || null,
+      schedule_time: r.schedule_time || null,
+    }));
+
+  // Load campaign + agents + phone numbers
   useEffect(() => {
     const loadData = async () => {
       if (!id || !user?.id) return;
       try {
         setLoading(true);
-        // Load Campaign
-        const response = await fetchCampaign(id, user.id);
-        if (response.success && response.data) {
-          setCampaign(response.data.campaign);
-          const mappedLeads = (response.data.records || []).map((r: any) => ({
-            id: r.id,
-            name: r.name || 'Unknown',
-            phone: r.phone_number,
-            email: r.email || 'N/A',
-            status: r.status ? r.status.charAt(0).toUpperCase() + r.status.slice(1) : 'Pending',
-            attempts: r.attempts || 0
-          }));
-          setLeads(mappedLeads);
+        const apiUrl = getApiBaseUrl();
+
+        // Parallel fetch: campaign + agents + phone numbers
+        const [campaignRes, agentsRes, phoneRes] = await Promise.all([
+          fetchCampaign(id, user.id),
+          fetch(`${apiUrl}/api/agents?userId=${user.id}`),
+          fetch(`${apiUrl}/api/phone-numbers?userId=${user.id}`),
+        ]);
+
+        // Campaign
+        if (campaignRes.success && campaignRes.data) {
+          setCampaign(campaignRes.data.campaign);
+          setLeads(mapRecords(campaignRes.data.records || []));
         }
 
-        // Load Agents
-        const agentsUrl = `${getApiBaseUrl()}/api/agents?userId=${user.id}`;
-        console.log('Fetching agents from:', agentsUrl);
-        const agentsRes = await fetch(agentsUrl);
+        // Agents — handle both {agents:[]} and legacy {data:[]}
         if (agentsRes.ok) {
           const agentsData = await agentsRes.json();
-          console.log('Agents data received:', agentsData);
-          if (agentsData.success && Array.isArray(agentsData.agents)) {
-            setAgents(agentsData.agents);
-          } else {
-            console.warn('Agents fetch successful but data format invalid:', agentsData);
+          const agentList = agentsData.agents || agentsData.data || [];
+          if (agentsData.success && Array.isArray(agentList)) {
+            setAgents(agentList);
           }
-        } else {
-          console.error('Agents fetch failed:', agentsRes.status);
+        }
+
+        // Phone numbers — handle both {phoneNumbers:[]} and legacy {data:[]}
+        if (phoneRes.ok) {
+          const phoneData = await phoneRes.json();
+          const phoneList = phoneData.phoneNumbers || phoneData.data || [];
+          if (phoneData.success && Array.isArray(phoneList)) {
+            setPhoneNumbers(phoneList);
+          }
         }
 
       } catch (error) {
@@ -72,6 +92,40 @@ const CampaignDetailPage: React.FC = () => {
     loadData();
   }, [id, user?.id]);
 
+  // Live polling: refresh leads every 5 seconds when campaign is running
+  useEffect(() => {
+    const startPolling = () => {
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = setInterval(async () => {
+        if (!id || !user?.id) return;
+        try {
+          const refreshResponse = await fetchCampaign(id, user.id);
+          if (refreshResponse.success && refreshResponse.data) {
+            setCampaign(refreshResponse.data.campaign);
+            setLeads(mapRecords(refreshResponse.data.records || []));
+          }
+        } catch (err) {
+          console.error('Polling error:', err);
+        }
+      }, 5000);
+    };
+
+    const stopPolling = () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+
+    if (campaign?.status === 'running') {
+      startPolling();
+    } else {
+      stopPolling();
+    }
+
+    return () => stopPolling();
+  }, [campaign?.status, id, user?.id]);
+
   const handleAgentChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!id || !user?.id) return;
     const newAgentId = e.target.value;
@@ -81,6 +135,18 @@ const CampaignDetailPage: React.FC = () => {
     } catch (error) {
       console.error('Failed to update agent:', error);
       alert('Failed to update assigned agent');
+    }
+  };
+
+  const handlePhoneNumberChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (!id || !user?.id) return;
+    const newPhoneNumberId = e.target.value;
+    try {
+      await updateCampaign(id, user.id, { phone_number_id: newPhoneNumberId });
+      setCampaign({ ...campaign, phone_number_id: newPhoneNumberId });
+    } catch (error) {
+      console.error('Failed to update phone number:', error);
+      alert('Failed to update assigned phone number');
     }
   };
 
@@ -98,6 +164,7 @@ const CampaignDetailPage: React.FC = () => {
         const refreshResponse = await fetchCampaign(id, user.id);
         if (refreshResponse.success && refreshResponse.data) {
           setCampaign(refreshResponse.data.campaign);
+          setLeads(mapRecords(refreshResponse.data.records || []));
         }
       }
     } catch (error: any) {
@@ -110,21 +177,11 @@ const CampaignDetailPage: React.FC = () => {
   const handleAddLead = async (data: any) => {
     if (!id || !user?.id) return;
     try {
-      const response = await addRecord(id, user.id, data.phone);
+      const response = await addRecord(id, user.id, data.phone, data.name, data.email);
       if (response.success) {
-        // Refresh data
         const refreshResponse = await fetchCampaign(id, user.id);
-        // DEFENSIVE CHECK: Ensure data exists before accessing records
         if (refreshResponse.success && refreshResponse.data) {
-          const mappedLeads = (refreshResponse.data.records || []).map((r: any) => ({
-            id: r.id,
-            name: r.name || 'Unknown', // Safe fallback
-            phone: r.phone_number,
-            email: r.email || 'N/A',
-            status: r.status ? r.status.charAt(0).toUpperCase() + r.status.slice(1) : 'Pending',
-            attempts: r.attempts || 0
-          }));
-          setLeads(mappedLeads);
+          setLeads(mapRecords(refreshResponse.data.records || []));
         }
         setIsAddLeadModalOpen(false);
       }
@@ -150,26 +207,14 @@ const CampaignDetailPage: React.FC = () => {
   const handleImportLeads = async (file: File) => {
     if (!id || !user?.id) return;
     try {
-      console.log('Importing leads from:', file.name);
       const text = await file.text();
-
       const response = await importCSV(id, user.id, text);
-
       if (response.success) {
         alert(`Successfully imported ${response.count} leads.`);
         setIsImportModalOpen(false);
-
-        // Refresh leads list
         const refreshResponse = await fetchCampaign(id, user.id);
         if (refreshResponse.success && refreshResponse.data) {
-          setLeads((refreshResponse.data.records || []).map((r: any) => ({
-            id: r.id,
-            name: r.name || 'Unknown',
-            phone: r.phone_number,
-            email: r.email || 'N/A',
-            status: r.status ? r.status.charAt(0).toUpperCase() + r.status.slice(1) : 'Pending',
-            attempts: r.attempts || 0
-          })));
+          setLeads(mapRecords(refreshResponse.data.records || []));
         }
       } else {
         alert('Import failed: ' + (response.error || 'Unknown error'));
@@ -182,8 +227,7 @@ const CampaignDetailPage: React.FC = () => {
 
   const handleExport = () => {
     if (!id || !user?.id) return;
-    const apiUrl = getApiBaseUrl();
-    window.location.href = `${apiUrl}/api/campaigns/${id}/export?userId=${user.id}`;
+    window.location.href = `${getApiBaseUrl()}/api/campaigns/${id}/export?userId=${user.id}`;
   };
 
   if (loading) {
@@ -223,13 +267,21 @@ const CampaignDetailPage: React.FC = () => {
     );
   }
 
+  // Compute stats from live leads data
+  const rejectedCount = leads.filter(l => l.status.toLowerCase() === 'rejected').length;
+  const oneOnOneCount = leads.filter(l => l.intent === '1_on_1_session_requested').length;
+
   const campaignStats = {
     total: campaign.total_contacts || 0,
     completed: campaign.completed_calls || 0,
     failed: campaign.failed_calls || 0,
-    pending: (campaign.total_contacts || 0) - (campaign.completed_calls || 0) - (campaign.failed_calls || 0),
+    pending: Math.max(0, (campaign.total_contacts || 0) - (campaign.completed_calls || 0) - (campaign.failed_calls || 0)),
     successful: campaign.successful_calls || 0,
+    rejected: campaign.rejected_count ?? rejectedCount,
+    oneOnOne: campaign.one_on_one_count ?? oneOnOneCount,
   };
+
+  const isRunning = campaign.status === 'running';
 
   const actionButtons = (
     <div className="flex flex-col items-end gap-3">
@@ -243,12 +295,12 @@ const CampaignDetailPage: React.FC = () => {
         <button
           disabled={isProcessing}
           onClick={handleToggleCampaign}
-          className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl font-black transition-all shadow-lg uppercase tracking-wider text-xs ${campaign.status === 'running'
+          className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl font-black transition-all shadow-lg uppercase tracking-wider text-xs ${isRunning
             ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/25'
             : 'bg-green-500 hover:bg-green-600 text-white shadow-green-500/25'
             } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
-          {campaign.status === 'running' ? (
+          {isRunning ? (
             <>
               <StopIcon className="h-4 w-4" />
               <span>Stop Campaign</span>
@@ -263,6 +315,12 @@ const CampaignDetailPage: React.FC = () => {
       </div>
 
       <div className="flex items-center gap-2">
+        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${isRunning ? 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-900/50' : 'bg-slate-50 dark:bg-slate-900/20 border-slate-100 dark:border-slate-800'}`}>
+          <div className={`w-1 h-1 rounded-full ${isRunning ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`}></div>
+          <span className="text-[8px] uppercase font-black text-slate-500 dark:text-slate-400 tracking-wider">
+            {campaign.status || 'Draft'}
+          </span>
+        </div>
         <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/50 rounded-lg">
           <div className="w-1 h-1 rounded-full bg-green-500"></div>
           <span className="text-[8px] uppercase font-black text-slate-500 dark:text-slate-400 tracking-wider">Active</span>
@@ -276,12 +334,12 @@ const CampaignDetailPage: React.FC = () => {
         <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/50 rounded-lg">
           <div className="w-1 h-1 rounded-full bg-amber-500"></div>
           <span className="text-[8px] uppercase font-black text-slate-500 dark:text-slate-400 tracking-wider">Rejected</span>
-          <span className="text-xs font-black text-amber-600 dark:text-amber-400">0</span>
+          <span className="text-xs font-black text-amber-600 dark:text-amber-400">{campaignStats.rejected}</span>
         </div>
         <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/50 rounded-lg">
           <div className="w-1 h-1 rounded-full bg-blue-500"></div>
-          <span className="text-[8px] uppercase font-black text-slate-500 dark:text-slate-400 tracking-wider">1 to 1 Scheduled</span>
-          <span className="text-xs font-black text-blue-600 dark:text-blue-400">0</span>
+          <span className="text-[8px] uppercase font-black text-slate-500 dark:text-slate-400 tracking-wider">1-to-1</span>
+          <span className="text-xs font-black text-blue-600 dark:text-blue-400">{campaignStats.oneOnOne}</span>
         </div>
       </div>
     </div>
@@ -302,28 +360,66 @@ const CampaignDetailPage: React.FC = () => {
         {/* Configuration Section */}
         <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 mb-6">
           <h3 className="text-lg font-black text-slate-900 dark:text-white mb-4">Configuration</h3>
-          <div className="max-w-md">
-            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-              Assigned Agent
-            </label>
-            <div className="relative">
-              <select
-                value={campaign.agent_id || ''}
-                onChange={handleAgentChange}
-                className="w-full appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all cursor-pointer"
-              >
-                <option value="">Select an Agent</option>
-                {Array.isArray(agents) && agents.map((agent: any) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                </svg>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+            {/* Agent Dropdown */}
+            <div>
+              <label className="flex items-center gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                <UserCircleIcon className="w-4 h-4" />
+                Assigned Agent
+              </label>
+              <div className="relative">
+                <select
+                  value={campaign.agent_id || ''}
+                  onChange={handleAgentChange}
+                  className="w-full appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all cursor-pointer"
+                >
+                  <option value="">Select an Agent</option>
+                  {Array.isArray(agents) && agents.map((agent: any) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </div>
               </div>
+            </div>
+
+            {/* Phone Number Dropdown */}
+            <div>
+              <label className="flex items-center gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                <PhoneIcon className="w-4 h-4" />
+                Caller Phone Number
+              </label>
+              <div className="relative">
+                <select
+                  value={campaign.phone_number_id || ''}
+                  onChange={handlePhoneNumberChange}
+                  className="w-full appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all cursor-pointer"
+                >
+                  <option value="">Select a Phone Number</option>
+                  {Array.isArray(phoneNumbers) && phoneNumbers.map((pn: any) => (
+                    <option key={pn.id} value={pn.id}>
+                      {pn.phone_number}
+                      {pn.region ? ` (${pn.region.toUpperCase()})` : ''}
+                      {!pn.verified ? ' — ⚠ unverified' : ''}
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </div>
+              </div>
+              {phoneNumbers.length === 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5 font-medium">
+                  No phone numbers found. Add one in Settings → Twilio.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -332,8 +428,8 @@ const CampaignDetailPage: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard title="Active" value={campaignStats.successful} color="green" />
           <KPICard title="Failed" value={campaignStats.failed} color="red" />
-          <KPICard title="Rejected" value={0} color="gray" />
-          <KPICard title="1 to 1 Scheduled" value={0} color="blue" />
+          <KPICard title="Rejected" value={campaignStats.rejected} color="gray" />
+          <KPICard title="1 to 1 Scheduled" value={campaignStats.oneOnOne} color="blue" />
         </div>
 
         {/* Leads Table Section */}
