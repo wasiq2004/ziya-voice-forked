@@ -19,6 +19,18 @@ export const fetchCampaigns = async (userId: string) => {
   return response.json();
 };
 
+export const fetchScheduledCalls = async (userId: string) => {
+  const response = await fetch(`${getApiBaseUrl()}/api/scheduled-calls?userId=${userId}`);
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Received non-JSON response from server');
+  }
+  return response.json();
+};
+
 export const createCampaign = async (userId: string, name: string, agentId?: string, concurrentCalls?: number, retryAttempts?: number) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns`, {
     method: 'POST',
@@ -153,7 +165,16 @@ export const startCampaign = async (id: string, userId: string) => {
     body: JSON.stringify({ userId })
   });
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+    let errorMessage = `HTTP error! status: ${response.status}`;
+    try {
+      const errorData = await response.json();
+      if (errorData && errorData.message) {
+        errorMessage = errorData.message;
+      }
+    } catch (e) {
+      // fallback to status text if not json
+    }
+    throw new Error(errorMessage);
   }
   // Validate content type before parsing JSON
   const contentType = response.headers.get('content-type');

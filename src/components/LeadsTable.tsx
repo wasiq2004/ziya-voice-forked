@@ -47,10 +47,11 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const INTENT_CONFIG: Record<string, { label: string; color: string }> = {
-    '1_on_1_session_requested': { label: '1-on-1 Requested', color: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400' },
-    'not_interested': { label: 'Not Interested', color: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400' },
-    'call_later_with_time': { label: 'Call Later', color: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400' },
     'interested': { label: 'Interested', color: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400' },
+    'not_interested': { label: 'Not Interested', color: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400' },
+    'needs_demo': { label: 'Needs a Demo', color: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-400' },
+    'scheduled_meeting': { label: 'Scheduled Meeting', color: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400' },
+    '1_on_1_session_requested': { label: '1-on-1 Requested', color: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400' },
 };
 
 function formatScheduleTime(dt: string | null | undefined): string {
