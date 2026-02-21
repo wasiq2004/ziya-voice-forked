@@ -44,9 +44,7 @@ var uuid_1 = require("uuid");
 var PhoneNumberService = /** @class */ (function () {
     function PhoneNumberService() {}
 
-    // ==========================
     // GET ALL PHONE NUMBERS
-    // ==========================
     PhoneNumberService.getPhoneNumbers = function (userId) {
         return __awaiter(this, void 0, void 0, function () {
             var queryResult, rows, mapped, error_1;
@@ -134,9 +132,7 @@ var PhoneNumberService = /** @class */ (function () {
         });
     };
 
-    // ==========================
     // GET ONE PHONE NUMBER
-    // ==========================
     PhoneNumberService.getPhoneNumberById = function (userId, id) {
         return __awaiter(this, void 0, void 0, function () {
             var queryResult, rows, row, caps, mainNumber, normalized, error_2;

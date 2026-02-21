@@ -4,25 +4,26 @@ const { getBackendUrl } = require('../config/backendUrl');
 const { decrypt } = require('../utils/encryption.js');
 
 class CampaignService {
-    constructor(mysqlPool, walletService, costCalculator) {
+    constructor(mysqlPool, walletService, costCalculator, geminiService) {
         this.mysqlPool = mysqlPool;
         this.walletService = walletService;
         this.costCalculator = costCalculator;
+        this.geminiService = geminiService; // New dependency for LLM
         this.activeCampaigns = new Map(); // Track running campaigns
     }
 
     /**
      * Create a new campaign
      */
-    async createCampaign(userId, agentId = null, name, description = '', phoneNumberId = null) {
+    async createCampaign(userId, agentId = null, name, description = '', phoneNumberId = null, concurrentCalls = 1, maxRetryAttempts = 0) {
         try {
             const campaignId = uuidv4();
 
-            // Insert campaign with only existing columns
+            // Insert campaign with all columns, including max_retry_attempts
             await this.mysqlPool.execute(
-                `INSERT INTO campaigns (id, user_id, agent_id, name, status)
-         VALUES (?, ?, ?, ?, 'draft')`,
-                [campaignId, userId, agentId, name]
+                `INSERT INTO campaigns (id, user_id, agent_id, name, description, status, phone_number_id, concurrent_calls, max_retry_attempts)
+         VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?)`,
+                [campaignId, userId, agentId, name, description, phoneNumberId, concurrentCalls, maxRetryAttempts]
             );
 
             // Create default settings
@@ -41,6 +42,7 @@ class CampaignService {
 
     /**
      * Add contacts to campaign (bulk)
+     * Now supports email field.
      */
     async addContacts(campaignId, contacts) {
         try {
@@ -49,11 +51,12 @@ class CampaignService {
                 campaignId,
                 contact.phone_number,
                 contact.name || null,
+                contact.email || null, // New: email field
                 contact.metadata ? JSON.stringify(contact.metadata) : null
             ]);
 
             await this.mysqlPool.query(
-                `INSERT INTO campaign_contacts (id, campaign_id, phone_number, name, metadata)
+                `INSERT INTO campaign_contacts (id, campaign_id, phone_number, name, email, metadata)
          VALUES ?`,
                 [values]
             );
@@ -122,10 +125,10 @@ class CampaignService {
                 throw new Error('Insufficient balance to start campaign. Minimum $1.00 required.');
             }
 
-            // Update campaign status (only if not already running)
+            // Update campaign status (only if not already running or paused)
             const [result] = await this.mysqlPool.execute(
                 `UPDATE campaigns SET status = 'running', started_at = NOW()
-         WHERE id = ? AND status IN ('draft', 'paused')`,
+         WHERE id = ? AND status IN ('draft', 'paused', 'retrying')`, // Allow starting from 'retrying'
                 [campaignId]
             );
 
@@ -145,6 +148,7 @@ class CampaignService {
 
     /**
      * Process campaign - make calls to all contacts with concurrent call limit
+     * Includes retry logic.
      */
     async processCampaign(campaignId, userId) {
         try {
@@ -174,22 +178,28 @@ class CampaignService {
                 'SELECT * FROM campaign_settings WHERE campaign_id = ?',
                 [campaignId]
             );
-            const campaignSettings = settings[0] || { call_interval_seconds: 10 };
+            const campaignSettings = settings[0] || { call_interval_seconds: 10, retry_interval_seconds: 300 }; // Default retry interval 5 mins
 
             // Get concurrent calls limit (default to 2 if not set)
             const concurrentCallsLimit = campaign.concurrent_calls || 2;
             console.log(`🔢 Concurrent calls limit: ${concurrentCallsLimit}`);
 
-            // Get pending contacts
+            // Get contacts that are pending or eligible for retry
             const [contacts] = await this.mysqlPool.execute(
-                `SELECT * FROM campaign_contacts 
-         WHERE campaign_id = ? AND status = 'pending'
+                `SELECT * FROM campaign_contacts
+         WHERE campaign_id = ? AND (status = 'pending' OR (status = 'failed' AND retry_count < ? AND last_attempt_at < NOW() - INTERVAL ? SECOND))
          ORDER BY created_at ASC`,
-                [campaignId]
+                [campaignId, campaign.max_retry_attempts, campaignSettings.retry_interval_seconds]
             );
 
-            console.log(`📋 Found ${contacts.length} contacts to call`);
+            console.log(`📋 Found ${contacts.length} contacts to call (including retries)`);
             console.log(`⏱️ Call interval: ${campaignSettings.call_interval_seconds} seconds between batches`);
+
+            if (contacts.length === 0) {
+                console.log(`✅ No more contacts to process for campaign ${campaignId}. Completing.`);
+                await this.completeCampaign(campaignId);
+                return;
+            }
 
             // Process contacts in batches based on concurrent calls limit
             for (let i = 0; i < contacts.length; i += concurrentCallsLimit) {
@@ -218,6 +228,13 @@ class CampaignService {
                     return this.makeCall(campaignId, contact, campaign, agentSettings)
                         .catch(error => {
                             console.error(`Error calling ${contact.phone_number}:`, error);
+                            // Mark contact as failed immediately if call initiation fails
+                            this.mysqlPool.execute(
+                                `UPDATE campaign_contacts
+                                 SET status = 'failed', error_message = ?, completed_at = NOW(), retry_count = retry_count + 1
+                                 WHERE id = ?`,
+                                [error.message, contact.id]
+                            ).catch(err => console.error('Error updating contact status after call initiation failure:', err));
                             return { success: false, error: error.message };
                         });
                 });
@@ -239,7 +256,7 @@ class CampaignService {
                 }
             }
 
-            // Mark campaign as completed
+            // After processing all current contacts, check if there are any pending retries
             await this.completeCampaign(campaignId);
 
         } catch (error) {
@@ -249,7 +266,11 @@ class CampaignService {
                 [campaignId]
             );
         } finally {
-            this.activeCampaigns.delete(campaignId);
+            // Only delete from active campaigns if it's truly completed or cancelled, not just paused
+            const campaignState = this.activeCampaigns.get(campaignId);
+            if (campaignState && (campaignState.status === 'completed' || campaignState.status === 'cancelled')) {
+                this.activeCampaigns.delete(campaignId);
+            }
         }
     }
 
@@ -260,9 +281,9 @@ class CampaignService {
         try {
             console.log(`📞 Calling ${contact.phone_number} (${contact.name || 'Unknown'})`);
 
-            // Update contact status
+            // Update contact status to 'calling' and increment attempts
             await this.mysqlPool.execute(
-                `UPDATE campaign_contacts 
+                `UPDATE campaign_contacts
          SET status = 'calling', attempts = attempts + 1, last_attempt_at = NOW()
          WHERE id = ?`,
                 [contact.id]
@@ -334,7 +355,7 @@ class CampaignService {
             const callId = uuidv4();
             await this.mysqlPool.execute(
                 `INSERT INTO calls (
-                    id, user_id, agent_id, call_sid, from_number, to_number, 
+                    id, user_id, agent_id, call_sid, from_number, to_number,
                     status, call_type, started_at, campaign_id, phone_number_id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)`,
                 [
@@ -364,10 +385,10 @@ class CampaignService {
         } catch (error) {
             console.error(`Error making call to ${contact.phone_number}:`, error);
 
-            // Mark contact as failed
+            // Mark contact as failed and increment retry_count
             await this.mysqlPool.execute(
-                `UPDATE campaign_contacts 
-         SET status = 'failed', error_message = ?, completed_at = NOW()
+                `UPDATE campaign_contacts
+         SET status = 'failed', error_message = ?, completed_at = NOW(), retry_count = retry_count + 1
          WHERE id = ?`,
                 [error.message, contact.id]
             );
@@ -399,13 +420,44 @@ class CampaignService {
 
     /**
      * Complete a campaign
+     * Now checks for pending retries before marking as 'completed'.
      */
     async completeCampaign(campaignId) {
-        await this.mysqlPool.execute(
-            `UPDATE campaigns SET status = 'completed', completed_at = NOW() WHERE id = ?`,
+        // Check if there are any contacts still eligible for retry
+        const [campaign] = await this.mysqlPool.execute(
+            'SELECT max_retry_attempts FROM campaigns WHERE id = ?',
             [campaignId]
         );
-        console.log(`✅ Campaign ${campaignId} completed`);
+
+        if (campaign.length === 0) {
+            console.error(`Campaign ${campaignId} not found during completion check.`);
+            return;
+        }
+
+        const [contactsToRetry] = await this.mysqlPool.execute(
+            `SELECT id FROM campaign_contacts
+       WHERE campaign_id = ? AND status = 'failed' AND retry_count < ?`,
+            [campaignId, campaign[0].max_retry_attempts]
+        );
+
+        if (contactsToRetry.length > 0) {
+            // If there are contacts to retry, update campaign status to 'retrying'
+            await this.mysqlPool.execute(
+                `UPDATE campaigns SET status = 'retrying' WHERE id = ?`,
+                [campaignId]
+            );
+            console.log(`🔄 Campaign ${campaignId} has contacts pending retry. Status set to 'retrying'.`);
+            // Keep it in activeCampaigns if it's retrying, so processCampaign can pick it up again
+            this.activeCampaigns.set(campaignId, { status: 'retrying' });
+        } else {
+            // No more contacts to retry, mark as completed
+            await this.mysqlPool.execute(
+                `UPDATE campaigns SET status = 'completed', completed_at = NOW() WHERE id = ?`,
+                [campaignId]
+            );
+            console.log(`✅ Campaign ${campaignId} completed`);
+            this.activeCampaigns.delete(campaignId); // Remove from active campaigns
+        }
     }
 
     /**
@@ -448,7 +500,7 @@ class CampaignService {
 
         // Get campaign contacts/records
         const [records] = await this.mysqlPool.execute(
-            `SELECT * FROM campaign_contacts 
+            `SELECT * FROM campaign_contacts
        WHERE campaign_id = ?
        ORDER BY created_at DESC`,
             [campaignId]
@@ -503,18 +555,61 @@ class CampaignService {
 
     /**
      * Update campaign contact after call completion
+     * Now includes LLM intent classification.
      */
-    async updateContactAfterCall(contactId, callDuration, callCost, status = 'completed') {
+    async updateContactAfterCall(contactId, callDuration, callCost, status = 'completed', transcript = null, recordingUrl = null) {
+        let llmClassification = null;
+        let scheduleTime = null;
+
+        if (transcript && this.geminiService) {
+            try {
+                const llmResponse = await this.classifyIntent(transcript);
+                llmClassification = llmResponse.intent;
+                scheduleTime = llmResponse.schedule_time;
+                console.log(`LLM Classification for contact ${contactId}: ${llmClassification}, Schedule: ${scheduleTime}`);
+            } catch (llmError) {
+                console.error(`Error classifying intent for contact ${contactId}:`, llmError);
+            }
+        }
+
+        let meetLink = null;
+        if ((llmClassification === 'scheduled_meeting' || llmClassification === 'needs_demo' || llmClassification === '1_on_1_session_requested') && scheduleTime) {
+            try {
+                const [contactRows] = await this.mysqlPool.execute(
+                    'SELECT email, name, campaign_id FROM campaign_contacts WHERE id = ?', [contactId]
+                );
+                if (contactRows.length > 0 && contactRows[0].email) {
+                    const contactInfo = contactRows[0];
+                    const [campRows] = await this.mysqlPool.execute(
+                        'SELECT a.name as agent_name FROM campaigns c JOIN agents a ON c.agent_id = a.id WHERE c.id = ?',
+                        [contactInfo.campaign_id]
+                    );
+                    const agentName = campRows.length > 0 ? campRows[0].agent_name : 'Ziya Voice Agent';
+
+                    meetLink = emailService.generateMeetLink();
+                    await emailService.sendMeetingInvite(
+                        contactInfo.email,
+                        contactInfo.name,
+                        agentName,
+                        scheduleTime,
+                        meetLink
+                    );
+                }
+            } catch (e) {
+                console.error('Caught error during automated email/meetLink generation:', e);
+            }
+        }
+
         await this.mysqlPool.execute(
-            `UPDATE campaign_contacts 
-       SET status = ?, call_duration = ?, call_cost = ?, completed_at = NOW()
+            `UPDATE campaign_contacts
+       SET status = ?, call_duration = ?, call_cost = ?, completed_at = NOW(), intent = ?, schedule_time = IFNULL(?, schedule_time), transcript = ?, meet_link = ?
        WHERE id = ?`,
-            [status, callDuration, callCost, contactId]
+            [status, callDuration, callCost, llmClassification || null, scheduleTime || null, transcript || null, meetLink || null, contactId]
         );
 
         // Get contact and campaign details for Google Sheets logging
         const [contacts] = await this.mysqlPool.execute(
-            `SELECT cc.*, c.name as campaign_name, c.user_id, c.agent_id 
+            `SELECT cc.*, c.name as campaign_name, c.user_id, c.agent_id, c.max_retry_attempts
              FROM campaign_contacts cc
              JOIN campaigns c ON cc.campaign_id = c.id
              WHERE cc.id = ?`,
@@ -525,19 +620,35 @@ class CampaignService {
             const contact = contacts[0];
             const campaignId = contact.campaign_id;
 
+            // Determine if this contact needs a retry
+            const needsRetry = status === 'failed' && contact.retry_count < contact.max_retry_attempts;
+
             // Update campaign stats
             await this.mysqlPool.execute(
-                `UPDATE campaigns SET 
+                `UPDATE campaigns SET
          completed_calls = completed_calls + 1,
          successful_calls = successful_calls + IF(? = 'completed', 1, 0),
+         failed_calls = failed_calls + IF(? = 'failed' AND ? = 0, 1, 0), -- Only count as failed if no more retries
          total_cost = total_cost + ?
          WHERE id = ?`,
-                [status, callCost, campaignId]
+                [status, needsRetry ? 0 : 1, callCost, campaignId]
             );
 
-            // Log to Google Sheets if configured
+            // If it needs retry, update campaign status to 'retrying'
+            if (needsRetry) {
+                await this.mysqlPool.execute(
+                    `UPDATE campaigns SET status = 'retrying' WHERE id = ? AND status != 'running'`,
+                    [campaignId]
+                );
+                this.activeCampaigns.set(campaignId, { status: 'retrying' });
+            } else {
+                // If no retry, check if campaign is truly completed
+                await this.completeCampaign(campaignId);
+            }
+
+            // Log to Google Sheets if configured (passing intent string)
             try {
-                await this.logToGoogleSheets(contact, callDuration, callCost, status);
+                await this.logToGoogleSheets(contact, callDuration, callCost, status, recordingUrl, llmClassification);
             } catch (error) {
                 console.error('Failed to log to Google Sheets:', error.message);
                 // Don't fail the whole operation if Google Sheets logging fails
@@ -546,9 +657,98 @@ class CampaignService {
     }
 
     /**
-     * Log call data to Google Sheets
+     * Update contact status in real-time (called from Twilio webhook)
      */
-    async logToGoogleSheets(contact, callDuration, callCost, status) {
+    async updateContactStatus(contactId, status, duration = null, callSid = null) {
+        try {
+            console.log(`🔄 Updating lead ${contactId} status to: ${status}`);
+
+            // Map Twilio status to our internal lead status
+            let mappedStatus = 'pending';
+            const s = status.toLowerCase();
+
+            if (s === 'in-progress' || s === 'ringing' || s === 'calling') {
+                mappedStatus = 'calling';
+            } else if (s === 'completed') {
+                mappedStatus = 'completed';
+            } else if (s === 'failed' || s === 'no-answer' || s === 'busy' || s === 'canceled') {
+                mappedStatus = 'failed';
+            }
+
+            const [result] = await this.mysqlPool.execute(
+                `UPDATE campaign_contacts
+                 SET status = ?, 
+                     call_duration = IFNULL(?, call_duration), 
+                     call_id = IFNULL(?, call_id),
+                     updated_at = NOW()
+                 WHERE id = ?`,
+                [mappedStatus, duration, callSid, contactId]
+            );
+
+            if (result.affectedRows === 0) {
+                console.warn(`⚠️ No lead found to update with ID: ${contactId}`);
+                return false;
+            }
+
+            // If call completed or failed, we might want to check campaign completion
+            if (mappedStatus === 'completed' || mappedStatus === 'failed') {
+                // Get campaign ID for this contact
+                const [contacts] = await this.mysqlPool.execute(
+                    'SELECT campaign_id FROM campaign_contacts WHERE id = ?',
+                    [contactId]
+                );
+                if (contacts.length > 0) {
+                    const campaignId = contacts[0].campaign_id;
+                    await this.completeCampaign(campaignId);
+                }
+            }
+
+            return true;
+        } catch (error) {
+            console.error('Error updating contact status:', error);
+            throw error;
+        }
+    }
+
+
+    async classifyIntent(transcript) {
+        if (!this.geminiService) {
+            console.warn('GeminiService not initialized. Cannot classify intent.');
+            return { intent: null, schedule_time: null };
+        }
+
+        const prompt = `Analyze the following call transcript and classify the user's intent.
+        The intent MUST be one of the following exact strings: "interested", "not_interested", "needs_demo", or "scheduled_meeting".
+        If the intent is "needs_demo" or "scheduled_meeting", try to extract the agreed schedule date and time from the transcript. If a time is found, format it as an ISO 8601 string (e.g. 2026-05-20T14:30:00Z). If no exact time is found, return null. Assume current year is 2026.
+
+        IMPORTANT: ALWAYS return ONLY a valid JSON object matching this schema. Do not include any markdown formatting like \`\`\`json.
+        {
+          "intent": "interested" | "not_interested" | "needs_demo" | "scheduled_meeting" | "unknown",
+          "schedule_time": "ISO-8601 date string" | null
+        }
+        
+        Transcript: "${transcript}"`;
+
+        try {
+            const result = await this.geminiService.generateText(prompt);
+            let cleanedResult = result.trim();
+            if (cleanedResult.startsWith('\`\`\`json')) {
+                cleanedResult = cleanedResult.substring(7);
+            }
+            if (cleanedResult.startsWith('\`\`\`')) {
+                cleanedResult = cleanedResult.substring(3);
+            }
+            if (cleanedResult.endsWith('\`\`\`')) {
+                cleanedResult = cleanedResult.substring(0, cleanedResult.length - 3);
+            }
+            return JSON.parse(cleanedResult.trim());
+        } catch (error) {
+            console.error('Error calling Gemini for intent classification:', error);
+            return { intent: 'unknown', schedule_time: null };
+        }
+    }
+
+    async logToGoogleSheets(contact, callDuration, callCost, status, recordingUrl, llmClassification) {
         try {
             // Get agent settings to find Google Sheets URL
             const [agents] = await this.mysqlPool.execute(
@@ -581,18 +781,6 @@ class CampaignService {
 
             const spreadsheetId = spreadsheetIdMatch[1];
 
-            // Get recording URL from calls table if available
-            let recordingUrl = '';
-            if (contact.call_id) {
-                const [calls] = await this.mysqlPool.execute(
-                    'SELECT recording_url FROM calls WHERE id = ?',
-                    [contact.call_id]
-                );
-                if (calls.length > 0 && calls[0].recording_url) {
-                    recordingUrl = calls[0].recording_url;
-                }
-            }
-
             // Prepare data row
             const timestamp = new Date().toISOString();
             const rowData = [
@@ -600,10 +788,12 @@ class CampaignService {
                 contact.campaign_name || 'N/A',
                 contact.name || 'Unknown',
                 contact.phone_number,
+                contact.email || '', // New: email
                 status,
+                llmClassification || '', // New: LLM Classification
                 callDuration || 0,
                 callCost || 0,
-                recordingUrl,  // Add recording URL
+                recordingUrl || '',  // Add recording URL
                 contact.metadata ? JSON.stringify(contact.metadata) : ''
             ];
 
@@ -633,10 +823,10 @@ class CampaignService {
 
             const sheets = google.sheets({ version: 'v4', auth });
 
-            // Append row to sheet
+            // Append row to sheet (Updated range to include new columns)
             await sheets.spreadsheets.values.append({
                 spreadsheetId: spreadsheetId,
-                range: 'Sheet1!A:I', // Updated to include recording URL column
+                range: 'Sheet1!A:K', // Updated to include email and LLM classification
                 valueInputOption: 'USER_ENTERED',
                 resource: {
                     values: [rowData]
@@ -666,6 +856,70 @@ class CampaignService {
     }
 
     /**
+     * Update campaign settings (e.g., retry interval, LLM prompt)
+     */
+    async updateCampaignSettings(campaignId, userId, settingsData) {
+        try {
+            // First, verify campaign belongs to user
+            const [campaigns] = await this.mysqlPool.execute(
+                'SELECT id FROM campaigns WHERE id = ? AND user_id = ?',
+                [campaignId, userId]
+            );
+
+            if (campaigns.length === 0) {
+                throw new Error('Campaign not found or access denied');
+            }
+
+            const updates = [];
+            const values = [];
+
+            if (settingsData.call_interval_seconds !== undefined) {
+                updates.push('call_interval_seconds = ?');
+                values.push(settingsData.call_interval_seconds);
+            }
+            if (settingsData.retry_interval_seconds !== undefined) {
+                updates.push('retry_interval_seconds = ?');
+                values.push(settingsData.retry_interval_seconds);
+            }
+            if (settingsData.llm_prompt !== undefined) {
+                updates.push('llm_prompt = ?');
+                values.push(settingsData.llm_prompt);
+            }
+            if (settingsData.llm_model !== undefined) {
+                updates.push('llm_model = ?');
+                values.push(settingsData.llm_model);
+            }
+
+            if (updates.length === 0) {
+                return this.getCampaignSettings(campaignId); // No updates, return current settings
+            }
+
+            values.push(campaignId);
+
+            await this.mysqlPool.execute(
+                `UPDATE campaign_settings SET ${updates.join(', ')} WHERE campaign_id = ?`,
+                values
+            );
+
+            return this.getCampaignSettings(campaignId);
+        } catch (error) {
+            console.error('Error updating campaign settings:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get campaign settings
+     */
+    async getCampaignSettings(campaignId) {
+        const [settings] = await this.mysqlPool.execute(
+            'SELECT * FROM campaign_settings WHERE campaign_id = ?',
+            [campaignId]
+        );
+        return settings[0] || null;
+    }
+
+    /**
      * Delete a campaign
      */
     async deleteCampaign(campaignId, userId) {
@@ -685,6 +939,9 @@ class CampaignService {
                 'DELETE FROM campaigns WHERE id = ? AND user_id = ?',
                 [campaignId, userId]
             );
+
+            // Remove from active campaigns if it was running
+            this.activeCampaigns.delete(campaignId);
 
             return { success: true, message: 'Campaign deleted successfully' };
         } catch (error) {
@@ -741,7 +998,7 @@ class CampaignService {
             const updates = [];
             const values = [];
 
-            if (campaignData.name) {
+            if (campaignData.name !== undefined) {
                 updates.push('name = ?');
                 values.push(campaignData.name);
             }
@@ -749,17 +1006,26 @@ class CampaignService {
                 updates.push('description = ?');
                 values.push(campaignData.description);
             }
-            if (campaignData.agent_id) {
+            if (campaignData.agent_id !== undefined) {
                 updates.push('agent_id = ?');
-                values.push(campaignData.agent_id);
+                values.push(campaignData.agent_id === '' ? null : campaignData.agent_id);
             }
-            if (campaignData.phone_number_id) {
+            if (campaignData.phone_number_id !== undefined) {
                 updates.push('phone_number_id = ?');
-                values.push(campaignData.phone_number_id);
+                values.push(campaignData.phone_number_id === '' ? null : campaignData.phone_number_id);
+            }
+            if (campaignData.concurrent_calls !== undefined) {
+                updates.push('concurrent_calls = ?');
+                values.push(campaignData.concurrent_calls);
+            }
+            if (campaignData.max_retry_attempts !== undefined) { // Updated from retry_attempts
+                updates.push('max_retry_attempts = ?');
+                values.push(campaignData.max_retry_attempts);
             }
 
             if (updates.length === 0) {
-                throw new Error('No fields to update');
+                // If no fields to update, return current campaign without error
+                return this.getCampaign(campaignId);
             }
 
             values.push(campaignId, userId);

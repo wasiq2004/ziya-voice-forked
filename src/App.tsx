@@ -22,29 +22,6 @@ import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminUserDetailPage from './pages/AdminUserDetailPage';
 
 const App: React.FC = () => {
-    const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
-    const [theme, setTheme] = useState(() => {
-        const savedTheme = localStorage.getItem('ziya-theme');
-        if (savedTheme) return savedTheme;
-        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            return 'dark';
-        }
-        return 'light';``
-    });
-
-    useEffect(() => {
-        if (theme === 'dark') {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-        localStorage.setItem('ziya-theme', theme);
-    }, [theme]);
-
-    const toggleTheme = () => {
-        setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
-    };
-
     return (
         <ThemeProvider>
             <AuthProvider>

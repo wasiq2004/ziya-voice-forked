@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { EllipsisVerticalIcon, PencilSquareIcon, TrashIcon, EyeIcon } from '@heroicons/react/24/outline';
+import React from 'react';
+import { PencilSquareIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 interface CampaignCardProps {
     id: string;
@@ -9,7 +9,6 @@ interface CampaignCardProps {
     progress: number;
     createdDate: string;
     onView: (id: string) => void;
-    onEdit?: (id: string) => void;
     onDelete?: (id: string) => void;
 }
 
@@ -21,10 +20,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     progress,
     createdDate,
     onView,
-    onEdit,
     onDelete
 }) => {
-    const [showMenu, setShowMenu] = useState(false);
 
     const statusColors = {
         Draft: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-900/50 dark:text-slate-400 dark:border-slate-800',
@@ -42,30 +39,21 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                     </h3>
                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Created {createdDate}</p>
                 </div>
-                <div className="relative">
+                <div className="flex items-center space-x-1 relative z-20">
                     <button
-                        onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
-                        className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+                        onClick={(e) => { e.stopPropagation(); onView(id); }}
+                        className="p-2 rounded-xl text-slate-400 hover:bg-primary/10 hover:text-primary transition-all group/btn"
+                        title="Edit Campaign"
                     >
-                        <EllipsisVerticalIcon className="h-5 w-5" />
+                        <PencilSquareIcon className="h-5 w-5" />
                     </button>
-                    {showMenu && (
-                        <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 py-2 z-10 animate-in fade-in slide-in-from-top-2 duration-200">
-                            <button onClick={() => { onView(id); setShowMenu(false); }} className="w-full text-left flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-                                <EyeIcon className="h-4 w-4" />
-                                <span className="font-semibold">View Details</span>
-                            </button>
-                            <button onClick={() => { onEdit?.(id); setShowMenu(false); }} className="w-full text-left flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-                                <PencilSquareIcon className="h-4 w-4" />
-                                <span className="font-semibold">Edit</span>
-                            </button>
-                            <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 mx-2"></div>
-                            <button onClick={() => { onDelete?.(id); setShowMenu(false); }} className="w-full text-left flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                                <TrashIcon className="h-4 w-4" />
-                                <span className="font-semibold">Delete</span>
-                            </button>
-                        </div>
-                    )}
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onDelete?.(id); }}
+                        className="p-2 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all group/btn"
+                        title="Delete Campaign"
+                    >
+                        <TrashIcon className="h-5 w-5" />
+                    </button>
                 </div>
             </div>
 

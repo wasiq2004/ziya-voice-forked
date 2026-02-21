@@ -197,7 +197,7 @@ async function generateSarvamTTS(text, options = {}) {
             throw new Error("SARVAM_API_KEY not configured in environment variables");
         }
 
-        const language = options.language;
+        const language = options.target_language_code || options.language || 'en-IN';
         const speaker = options.speaker;
 
         console.log(`[TTS] Using provider: Sarvam`);
@@ -251,11 +251,17 @@ async function generateSarvamTTS(text, options = {}) {
             let errorMessage = `Sarvam API error: ${response.status}`;
             try {
                 const errorData = await response.json();
-                errorMessage += ` - ${errorData.message || errorData.error || JSON.stringify(errorData)}`;
+                // Properly serialize the error object
+                errorMessage += ` - ${typeof errorData === 'string' ? errorData : JSON.stringify(errorData)}`;
             } catch (e) {
-                const errorText = await response.text();
-                errorMessage += ` - ${errorText}`;
+                try {
+                    const errorText = await response.text();
+                    errorMessage += ` - ${errorText}`;
+                } catch (e2) {
+                    errorMessage += ' - (could not read error body)';
+                }
             }
+            console.error('[TTS] Sarvam error details:', errorMessage);
             throw new Error(errorMessage);
         }
 

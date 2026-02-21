@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import Breadcrumb, { BreadcrumbItem } from './Breadcrumb';
 import {
     BellIcon,
-    MagnifyingGlassIcon,
     UserCircleIcon,
     Cog6ToothIcon,
     ArrowLeftOnRectangleIcon,
@@ -54,14 +53,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
         setNotifications([]);
     };
 
-    const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter') {
-            // Functionality to be implemented
-            console.log('Search triggered:', e.currentTarget.value);
-            // Optionally close keyboard on mobile
-            e.currentTarget.blur();
-        }
-    };
+
 
     // Get organization name from email domain
     const getOrganizationName = (email: string | undefined): string => {
@@ -108,20 +100,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
             <div className="h-full container-wrapper flex items-center justify-end">
                 {/* Right Side - Search, Notifications, Profile */}
                 <div className="flex items-center space-x-3 md:space-x-5">
-                    {/* Search Input */}
-                    <div className="hidden lg:block">
-                        <div className="relative group">
-                            <input
-                                type="text"
-                                placeholder="Search..."
-                                onKeyDown={handleSearch}
-                                className="w-64 bg-slate-50 dark:bg-darkbg-light/30 border border-slate-200 dark:border-slate-800/50 rounded-xl px-4 py-2 pl-10 text-sm text-slate-900 dark:text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all duration-200 group-hover:border-slate-300 dark:group-hover:border-slate-700"
-                            />
-                            <MagnifyingGlassIcon
-                                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-primary transition-colors"
-                            />
-                        </div>
-                    </div>
+
 
                     {/* Theme Toggle Button */}
                     <button

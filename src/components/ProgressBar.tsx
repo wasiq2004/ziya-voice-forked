@@ -40,19 +40,19 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ completed, failed, inProgress
                 <div className="flex items-center space-x-6">
                     <div className="flex items-center space-x-2">
                         <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Completed</span>
+                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Active</span>
                     </div>
                     <div className="flex items-center space-x-2">
                         <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Failed</span>
+                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Failed</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                        <div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div>
+                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Rejected</span>
                     </div>
                     <div className="flex items-center space-x-2">
                         <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">In Progress</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                        <div className="w-2.5 h-2.5 rounded-full bg-slate-400 dark:bg-slate-700"></div>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Pending</span>
+                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">1 to 1 Scheduled</span>
                     </div>
                 </div>
                 <div className="text-sm font-black text-slate-700 dark:text-white transition-all">

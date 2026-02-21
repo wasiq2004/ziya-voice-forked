@@ -7,11 +7,6 @@ class SarvamSttService {
         this.apiKey = apiKey;
     }
 
-    /**
-     * Transcribe audio buffer using Sarvam STT
-     * @param {Buffer} audioBuffer - WAV or PCM audio buffer
-     * @returns {Promise<string>} - Transcription text
-     */
     async transcribe(audioBuffer) {
         try {
             const formData = new FormData();
@@ -19,8 +14,7 @@ class SarvamSttService {
                 filename: 'audio.wav',
                 contentType: 'audio/wav',
             });
-            formData.append('model', 'saarika:v2.5'); // Use v1 for better multilingual support
-            // Do not append language_code to enable auto-detection
+            formData.append('model', 'saarika:v2.5');
 
             const response = await fetch('https://api.sarvam.ai/speech-to-text', {
                 method: 'POST',
@@ -37,7 +31,6 @@ class SarvamSttService {
             }
 
             const data = await response.json();
-            // Return object with transcript and detected language
             return {
                 transcript: data.transcript,
                 language_code: data.language_code

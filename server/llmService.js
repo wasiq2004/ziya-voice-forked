@@ -215,76 +215,45 @@ var LLMService = /** @class */ (function () {
         });
     };
 
-    LLMService.prototype.generateContentStream = function* (request) {
+    LLMService.prototype.generateContentStream = async function (request) {
         var modelName = request.model || 'models/gemini-2.0-flash-lite';
         var provider = this.isOpenAIModel(modelName) ? 'openai' : 'gemini';
 
+        console.log(`🌊 [Stream] Using provider: ${provider}, model: ${modelName}`);
+
         if (provider === 'openai') {
-            return this.generateOpenAIStream(request);
+            // Returns an OpenAI async stream (AsyncIterable of chunks)
+            return await this.generateOpenAIStream(request);
         } else {
-            return this.generateGeminiStream(request);
+            // Returns a Gemini async stream (AsyncIterable of chunks)
+            return await this.generateGeminiStream(request);
         }
     };
 
-    LLMService.prototype.generateGeminiStream = function (request) {
-        return __awaiter(this, void 0, void 0, function () {
-            var modelName, baseInstruction, multilingualInstruction, finalInstruction, model, result, _a, result_1, result_1_1, chunk, e_1_1, error_4;
-            var _b, e_1, _c;
-            return __generator(this, function (_d) {
-                switch (_d.label) {
-                    case 0:
-                        if (!this.genAI) throw new Error('Gemini client not initialized.');
-                        _d.label = 1;
-                    case 1:
-                        _d.trys.push([1, 14, , 15]);
-                        modelName = request.model || 'models/gemini-2.0-flash-lite';
-                        baseInstruction = (_b = request.config) === null || _b === void 0 ? void 0 : _b.systemInstruction;
-                        multilingualInstruction = "IMPORTANT: You must respond in the same language as the user's input.";
-                        finalInstruction = baseInstruction ? baseInstruction + "\n\n" + multilingualInstruction : multilingualInstruction;
-                        model = this.genAI.getGenerativeModel({
-                            model: modelName,
-                            systemInstruction: finalInstruction
-                        });
-                        return [4 /*yield*/, model.generateContentStream({ contents: request.contents })];
-                    case 2:
-                        result = _d.sent();
-                        _d.label = 3;
-                    case 3:
-                        _d.trys.push([3, 8, 9, 10]);
-                        _a = __values(result.stream), result_1 = _a.next();
-                        _d.label = 4;
-                    case 4:
-                        if (!!result_1.done) return [3 /*break*/, 7];
-                        return [4 /*yield*/, result_1.value];
-                    case 5:
-                        chunk = _d.sent();
-                        // Handle yielding in an async generator context
-                        // Note: This specific implementation might need adjustment based on how the caller expects the generator to behave.
-                        // For simplicity in this environment, we'll return the object that can be iterated.
-                        _d.label = 6;
-                    case 6:
-                        result_1 = _a.next();
-                        return [3 /*break*/, 4];
-                    case 7: return [3 /*break*/, 10];
-                    case 8:
-                        e_1_1 = _d.sent();
-                        e_1 = { error: e_1_1 };
-                        return [3 /*break*/, 10];
-                    case 9:
-                        try {
-                            if (result_1 && !result_1.done && (_c = _a.return)) _c.call(_a);
-                        }
-                        finally { if (e_1) throw e_1.error; }
-                        return [7 /*endfinally*/];
-                    case 10: return [2 /*return*/, result.stream];
-                    case 11:
-                        error_4 = _d.sent();
-                        console.error('Error in Gemini stream:', error_4);
-                        throw error_4;
-                    case 12: return [2 /*return*/];
-                }
+    LLMService.prototype.generateGeminiStream = async function (request) {
+        if (!this.genAI) throw new Error('Gemini client not initialized.');
+
+        try {
+            const modelName = request.model || 'models/gemini-2.0-flash-lite';
+            const baseInstruction = request.config?.systemInstruction;
+            const multilingualInstruction = "IMPORTANT: You must respond in the same language as the user's input.";
+            const finalInstruction = baseInstruction
+                ? baseInstruction + "\n\n" + multilingualInstruction
+                : multilingualInstruction;
+
+            const model = this.genAI.getGenerativeModel({
+                model: modelName,
+                systemInstruction: finalInstruction
             });
-        });
+
+            // generateContentStream returns { stream, response }
+            // result.stream is an AsyncIterable<GenerateContentChunk>
+            const result = await model.generateContentStream({ contents: request.contents });
+            return result.stream; // The caller will: for await (const chunk of stream) { chunk.text() }
+        } catch (error) {
+            console.error('Error in Gemini stream:', error);
+            throw error;
+        }
     };
 
     LLMService.prototype.generateOpenAIStream = function (request) {
@@ -327,14 +296,7 @@ var LLMService = /** @class */ (function () {
         });
     };
 
-    /**
-     * Extract structured JSON data from conversation
-     * @param {Object} params
-     * @param {string} params.model - Model to use
-     * @param {Array} params.history - Conversation history
-     * @param {string} params.schema - Description of the schema to extract
-     * @returns {Promise<Object>} Extracted JSON object or null
-     */
+
     LLMService.prototype.extractJson = function (params) {
         return __awaiter(this, void 0, void 0, function () {
             var model, history, schema, systemInstruction, prompt, response, text, jsonMatch, jsonStr, parsed, error_3;

@@ -19,11 +19,23 @@ export const fetchCampaigns = async (userId: string) => {
   return response.json();
 };
 
-export const createCampaign = async (userId: string, name: string) => {
+export const fetchScheduledCalls = async (userId: string) => {
+  const response = await fetch(`${getApiBaseUrl()}/api/scheduled-calls?userId=${userId}`);
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Received non-JSON response from server');
+  }
+  return response.json();
+};
+
+export const createCampaign = async (userId: string, name: string, agentId?: string, concurrentCalls?: number, retryAttempts?: number) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, name })
+    body: JSON.stringify({ userId, name, agentId, concurrentCalls, retryAttempts })
   });
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
@@ -49,6 +61,19 @@ export const fetchCampaign = async (id: string, userId: string) => {
   return response.json();
 };
 
+export const updateCampaign = async (id: string, userId: string, data: any) => {
+  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, ...data })
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || 'Failed to update campaign');
+  }
+  return response.json();
+};
+
 export const setCallerPhone = async (id: string, userId: string, callerPhone: string, agentId?: string) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/set-caller-phone`, {
     method: 'POST',
@@ -62,6 +87,22 @@ export const setCallerPhone = async (id: string, userId: string, callerPhone: st
   const contentType = response.headers.get('content-type');
   if (!contentType || !contentType.includes('application/json')) {
     throw new Error('Received non-JSON response from server');
+  }
+  return response.json();
+};
+
+// Import CSV content (raw string)
+export const importCSV = async (id: string, userId: string, csvContent: string) => {
+  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/import-csv`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ userId, csvContent }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || 'Failed to import CSV');
   }
   return response.json();
 };
@@ -83,11 +124,11 @@ export const importRecords = async (id: string, userId: string, csvData: any[]) 
   return response.json();
 };
 
-export const addRecord = async (id: string, userId: string, phone: string) => {
+export const addRecord = async (id: string, userId: string, phone: string, name?: string, email?: string) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/records`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, phone })
+    body: JSON.stringify({ userId, phone, name, email })
   });
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
@@ -124,7 +165,16 @@ export const startCampaign = async (id: string, userId: string) => {
     body: JSON.stringify({ userId })
   });
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+    let errorMessage = `HTTP error! status: ${response.status}`;
+    try {
+      const errorData = await response.json();
+      if (errorData && errorData.message) {
+        errorMessage = errorData.message;
+      }
+    } catch (e) {
+      // fallback to status text if not json
+    }
+    throw new Error(errorMessage);
   }
   // Validate content type before parsing JSON
   const contentType = response.headers.get('content-type');

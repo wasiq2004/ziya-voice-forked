@@ -44,7 +44,7 @@ interface AgentDetailPageProps {
 }
 
 const SettingsCard: React.FC<{ title: string; children: React.ReactNode; }> = ({ title, children }) => (
-    <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden card-animate group/card">
+    <div className="bg-surface dark:bg-darkbg-light border border-slate-200 dark:border-darkbg-lighter rounded-3xl shadow-sm overflow-hidden card-animate group/card">
         <div className="p-8">
             <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 mb-8 uppercase tracking-[0.2em] flex items-center gap-2">
                 <div className="w-1 h-4 bg-primary rounded-full" />
@@ -67,7 +67,7 @@ interface SettingsToggleProps {
 }
 
 const SettingsToggle: React.FC<SettingsToggleProps> = ({ label, description, checked, onChange, name, isBeta, warning }) => (
-    <div className="flex items-start justify-between group/toggle p-5 -mx-5 rounded-2xl transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-900/20">
+    <div className="flex items-start justify-between group/toggle p-5 -mx-5 rounded-2xl transition-colors hover:bg-lightbg dark:hover:bg-darkbg-lighter/50">
         <div className="flex-1 pr-8">
             <label htmlFor={name} className="flex items-center gap-2 cursor-pointer">
                 <span className="text-sm font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest">{label}</span>
@@ -87,7 +87,7 @@ const SettingsToggle: React.FC<SettingsToggleProps> = ({ label, description, che
         </div>
         <label className="relative inline-flex items-center cursor-pointer">
             <input type="checkbox" id={name} name={name} className="sr-only peer" checked={checked} onChange={onChange} />
-            <div className="w-12 h-7 bg-slate-200 dark:bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary shadow-inner"></div>
+            <div className="w-12 h-7 bg-slate-200 dark:bg-darkbg-lighter peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary shadow-inner"></div>
         </label>
     </div>
 );
@@ -116,16 +116,16 @@ const VoiceSelectionModal: React.FC<{
     }, [selectedProvider, selectedVoice, voicesToDisplay]);
 
     return (
-        <Modal isOpen={true} onClose={onClose} title="Select Voice">
-            <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+        <Modal isOpen={true} onClose={onClose} title="Select Voice" maxWidth="max-w-2xl">
+            <div className="space-y-6">
                 {/* Provider Tabs */}
-                <div className="flex bg-slate-100 dark:bg-slate-900/50 p-1 rounded-2xl">
+                <div className="flex bg-lightbg dark:bg-darkbg p-1 rounded-2xl">
                     {AVAILABLE_VOICE_PROVIDERS.map(provider => (
                         <button
                             key={provider.id}
                             onClick={() => setSelectedProvider(provider.id)}
                             className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${selectedProvider === provider.id
-                                ? 'bg-white dark:bg-slate-800 text-primary shadow-lg shadow-primary/5'
+                                ? 'bg-surface dark:bg-darkbg-light text-primary shadow-lg shadow-primary/5'
                                 : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                                 }`}
                         >
@@ -147,81 +147,83 @@ const VoiceSelectionModal: React.FC<{
                         )}
                     </div>
 
-                    {loadingVoices ? (
-                        <div className="py-20 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-100 dark:border-slate-800">
-                            <div className="animate-spin rounded-full h-10 w-10 border-4 border-primary border-b-transparent mb-4" />
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading Voice Library</p>
-                        </div>
-                    ) : (
-                        <div className="grid gap-3">
-                            {(voicesToDisplay[selectedProvider] || []).length === 0 ? (
-                                <div className="py-16 text-center bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-100 dark:border-slate-800">
-                                    <VoiceIcon className="h-12 w-12 text-slate-200 dark:text-slate-800 mx-auto mb-3" />
-                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No voices found</p>
-                                    <p className="text-[9px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-wider mt-1">Check your API configuration</p>
-                                </div>
-                            ) : (
-                                (voicesToDisplay[selectedProvider] || []).map(voice => (
-                                    <div
-                                        key={voice.id}
-                                        onClick={() => setSelectedVoice(voice.id)}
-                                        className={`group relative p-4 rounded-2xl border transition-all cursor-pointer flex items-center gap-4 ${selectedVoice === voice.id
-                                            ? 'bg-primary/5 border-primary/30 shadow-sm'
-                                            : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700'
-                                            }`}
-                                    >
-                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm transition-colors ${selectedVoice === voice.id
-                                            ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-400 group-hover:bg-slate-200 dark:group-hover:bg-slate-700'
-                                            }`}>
-                                            {voice.name.charAt(0)}
-                                        </div>
-
-                                        <div className="flex-1 min-w-0">
-                                            <h5 className={`text-sm font-black truncate transition-colors ${selectedVoice === voice.id ? 'text-primary' : 'text-slate-700 dark:text-slate-200'}`}>
-                                                {voice.name}
-                                            </h5>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
-                                                {selectedProvider === 'eleven-labs' ? 'High Fidelity' : 'Standard'}
-                                            </p>
-                                        </div>
-
-                                        <div className="flex items-center gap-3">
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    if (playingVoiceId === voice.id) {
-                                                        onStopPreview();
-                                                    } else {
-                                                        onPlayPreview(voice.id);
-                                                    }
-                                                }}
-                                                className={`p-2.5 rounded-xl transition-all ${playingVoiceId === voice.id
-                                                    ? 'bg-primary text-white scale-110 shadow-lg shadow-primary/25'
-                                                    : 'bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-primary hover:bg-primary/10'
-                                                    }`}
-                                            >
-                                                {playingVoiceId === voice.id ? (
-                                                    <StopIcon className="w-4 h-4" />
-                                                ) : (
-                                                    <PlayIcon className="w-4 h-4" />
-                                                )}
-                                            </button>
-
-                                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedVoice === voice.id
-                                                ? 'bg-primary border-primary scale-110'
-                                                : 'border-slate-200 dark:border-slate-700 opacity-0 group-hover:opacity-100'
+                    <div className="max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                        {loadingVoices ? (
+                            <div className="py-20 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-800/30 rounded-3xl border border-slate-100 dark:border-slate-800">
+                                <div className="animate-spin rounded-full h-10 w-10 border-4 border-primary border-b-transparent mb-4" />
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading Voice Library</p>
+                            </div>
+                        ) : (
+                            <div className="grid gap-3">
+                                {(voicesToDisplay[selectedProvider] || []).length === 0 ? (
+                                    <div className="py-16 text-center bg-lightbg dark:bg-darkbg-light/50 rounded-3xl border border-slate-100 dark:border-darkbg-lighter">
+                                        <VoiceIcon className="h-12 w-12 text-slate-200 dark:text-darkbg-lighter mx-auto mb-3" />
+                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No voices found</p>
+                                        <p className="text-[9px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-wider mt-1">Check your API configuration</p>
+                                    </div>
+                                ) : (
+                                    (voicesToDisplay[selectedProvider] || []).map(voice => (
+                                        <div
+                                            key={voice.id}
+                                            onClick={() => setSelectedVoice(voice.id)}
+                                            className={`group relative p-4 rounded-2xl border transition-all cursor-pointer flex items-center gap-4 ${selectedVoice === voice.id
+                                                ? 'bg-primary/5 border-primary/30 shadow-sm'
+                                                : 'bg-surface dark:bg-darkbg-light/50 border-slate-100 dark:border-darkbg-lighter hover:border-slate-200 dark:hover:border-slate-700'
+                                                }`}
+                                        >
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm transition-colors ${selectedVoice === voice.id
+                                                ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                                                : 'bg-lightbg dark:bg-darkbg text-slate-400 group-hover:bg-slate-200 dark:group-hover:bg-darkbg-lighter'
                                                 }`}>
-                                                {selectedVoice === voice.id && <CheckIcon className="h-4 w-4 text-white" />}
+                                                {voice.name.charAt(0)}
+                                            </div>
+
+                                            <div className="flex-1 min-w-0">
+                                                <h5 className={`text-sm font-black truncate transition-colors ${selectedVoice === voice.id ? 'text-primary' : 'text-slate-700 dark:text-slate-200'}`}>
+                                                    {voice.name}
+                                                </h5>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                                                    {selectedProvider === 'eleven-labs' ? 'High Fidelity' : 'Standard'}
+                                                </p>
+                                            </div>
+
+                                            <div className="flex items-center gap-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        if (playingVoiceId === voice.id) {
+                                                            onStopPreview();
+                                                        } else {
+                                                            onPlayPreview(voice.id);
+                                                        }
+                                                    }}
+                                                    className={`p-2.5 rounded-xl transition-all ${playingVoiceId === voice.id
+                                                        ? 'bg-primary text-white scale-110 shadow-lg shadow-primary/25'
+                                                        : 'bg-lightbg dark:bg-darkbg text-slate-400 hover:text-primary hover:bg-primary/10'
+                                                        }`}
+                                                >
+                                                    {playingVoiceId === voice.id ? (
+                                                        <StopIcon className="w-4 h-4" />
+                                                    ) : (
+                                                        <PlayIcon className="w-4 h-4" />
+                                                    )}
+                                                </button>
+
+                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedVoice === voice.id
+                                                    ? 'bg-primary border-primary scale-110'
+                                                    : 'border-slate-200 dark:border-darkbg-lighter opacity-0 group-hover:opacity-100'
+                                                    }`}>
+                                                    {selectedVoice === voice.id && <CheckIcon className="h-4 w-4 text-white" />}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    )}
+                                    ))
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -281,6 +283,11 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
         console.log('isCallActive changed to:', isCallActive);
         // Update the debug ref to track the actual call state
         callActiveDebugRef.current = isCallActive;
+
+        // When a call ends, trigger a credit balance refresh in the sidebar
+        if (!isCallActive) {
+            window.dispatchEvent(new Event('wallet_updated'));
+        }
     }, [isCallActive]);
     const [chatMessages, setChatMessages] = useState<{ sender: 'user' | 'agent', text: string }[]>([]);
     const [currentMessage, setCurrentMessage] = useState('');
@@ -1698,7 +1705,7 @@ When you need to collect information from the user, ask for the required paramet
                                 onClick={() => setSelectedModel(model.id)}
                                 className={`group p-5 rounded-3xl border transition-all cursor-pointer flex items-center gap-5 ${selectedModel === model.id
                                     ? 'bg-primary/5 border-primary/30 shadow-sm'
-                                    : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700'
+                                    : 'bg-white dark:bg-darkbg-surface border-slate-100 dark:border-darkbg-lighter hover:border-slate-200 dark:hover:border-darkbg-light'
                                     }`}
                             >
                                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${selectedModel === model.id
@@ -1774,7 +1781,7 @@ When you need to collect information from the user, ask for the required paramet
                                 onClick={() => setSelectedLanguage(lang.id)}
                                 className={`group p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${selectedLanguage === lang.id
                                     ? 'bg-primary/5 border-primary/30'
-                                    : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700'
+                                    : 'bg-white dark:bg-darkbg-surface border-slate-100 dark:border-darkbg-lighter hover:border-slate-200 dark:hover:border-darkbg-light'
                                     }`}
                             >
                                 <span className={`text-sm font-black transition-colors ${selectedLanguage === lang.id ? 'text-primary' : 'text-slate-700 dark:text-slate-200'}`}>
@@ -1920,7 +1927,7 @@ When you need to collect information from the user, ask for the required paramet
                                         <div
                                             key={doc.id}
                                             onClick={() => toggleDocSelection(doc.id)}
-                                            className={`group p-4 rounded-2xl border transition-all cursor-pointer flex items-center gap-4 ${isSelected ? 'bg-primary/5 border-primary/30 shadow-sm shadow-primary/5' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'}`}
+                                            className={`group p-4 rounded-2xl border transition-all cursor-pointer flex items-center gap-4 ${isSelected ? 'bg-primary/5 border-primary/30 shadow-sm shadow-primary/5' : 'bg-white dark:bg-darkbg-surface border-slate-100 dark:border-darkbg-lighter hover:border-slate-300 dark:hover:border-darkbg-light'}`}
                                         >
                                             <div className={`p-3 rounded-xl transition-colors ${isSelected ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-slate-50 dark:bg-slate-800 text-slate-400 group-hover:bg-slate-100 dark:group-hover:bg-slate-700'}`}>
                                                 <DocumentTextIcon className="h-5 w-5" />
@@ -1983,7 +1990,7 @@ When you need to collect information from the user, ask for the required paramet
                             value={newTool.name}
                             onChange={handleNewToolChange}
                             placeholder="e.g. Order Tracking"
-                            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-5 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-bold text-slate-800 dark:text-white"
+                            className="w-full bg-slate-50/50 dark:bg-darkbg-surface border border-slate-200 dark:border-darkbg-lighter rounded-2xl px-5 py-3.5 text-sm focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white"
                         />
                     </div>
                     <div>
@@ -1994,7 +2001,7 @@ When you need to collect information from the user, ask for the required paramet
                             onChange={(e) => setNewTool(p => ({ ...p, description: e.target.value }))}
                             placeholder="Tell the agent when and how to use this tool..."
                             rows={3}
-                            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-5 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-medium text-slate-700 dark:text-slate-200 min-h-[100px]"
+                            className="w-full bg-slate-50/50 dark:bg-darkbg-surface border border-slate-200 dark:border-darkbg-lighter rounded-2xl px-5 py-3.5 text-sm focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-medium text-slate-700 dark:text-slate-200 min-h-[100px]"
                         />
                     </div>
                 </div>
@@ -2022,7 +2029,7 @@ When you need to collect information from the user, ask for the required paramet
                                 value={newTool.webhookUrl}
                                 onChange={handleNewToolChange}
                                 placeholder="https://docs.google.com/spreadsheets/d/..."
-                                className="w-full bg-white dark:bg-slate-900/50 border border-emerald-100 dark:border-emerald-900/50 rounded-2xl px-5 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all font-medium text-slate-800 dark:text-white"
+                                className="w-full bg-white dark:bg-darkbg-surface border border-emerald-100/50 dark:border-emerald-900/30 rounded-2xl px-5 py-3.5 text-sm focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500/50 transition-all font-medium text-slate-800 dark:text-white"
                             />
                         </div>
 
@@ -2036,7 +2043,7 @@ When you need to collect information from the user, ask for the required paramet
 
                             <div className="space-y-3">
                                 {(newTool.parameters || []).map((param, index) => (
-                                    <div key={index} className="grid grid-cols-[1fr_auto_auto_auto] gap-3 items-center bg-white/60 dark:bg-slate-900/40 p-2.5 rounded-2xl border border-emerald-100/50 dark:border-emerald-900/20 group animate-slide-in">
+                                    <div key={index} className="grid grid-cols-[1fr_auto_auto_auto] gap-3 items-center bg-white/60 dark:bg-darkbg-light/30 p-2.5 rounded-2xl border border-emerald-100/50 dark:border-emerald-900/20 group animate-slide-in">
                                         <input
                                             type="text"
                                             value={param.name}
@@ -2059,7 +2066,7 @@ When you need to collect information from the user, ask for the required paramet
                                                 type="checkbox"
                                                 checked={param.required}
                                                 onChange={e => handleParameterChange(index, 'required', e.target.checked)}
-                                                className="h-4 w-4 rounded-md border-emerald-200 dark:border-emerald-800 text-emerald-500 focus:ring-emerald-500/20 bg-white dark:bg-slate-900"
+                                                className="h-4 w-4 rounded-md border-emerald-200 dark:border-emerald-800 text-emerald-500 focus:ring-emerald-500/20 bg-white dark:bg-darkbg-surface"
                                             />
                                         </div>
                                         <button
@@ -2072,7 +2079,7 @@ When you need to collect information from the user, ask for the required paramet
                                     </div>
                                 ))}
                                 {(!newTool.parameters || newTool.parameters.length === 0) && (
-                                    <div className="text-center py-6 bg-white/40 dark:bg-slate-900/20 rounded-2xl border-2 border-dashed border-emerald-100 dark:border-emerald-900/30">
+                                    <div className="text-center py-6 bg-white/40 dark:bg-darkbg-light/10 rounded-2xl border-2 border-dashed border-emerald-100 dark:border-emerald-900/30">
                                         <p className="text-[10px] font-black text-emerald-800/40 dark:text-emerald-400/40 uppercase tracking-widest">No columns defined yet</p>
                                     </div>
                                 )}
@@ -2082,7 +2089,7 @@ When you need to collect information from the user, ask for the required paramet
                 </div>
 
                 {/* Behavioral settings */}
-                <div className="bg-slate-50 dark:bg-slate-900/50 rounded-3xl p-6 border border-slate-100 dark:border-slate-800 space-y-8">
+                <div className="bg-slate-50 dark:bg-darkbg-light/30 rounded-3xl p-6 border border-slate-100 dark:border-darkbg-lighter space-y-8">
                     <div className="flex items-center justify-between">
                         <div>
                             <h4 className="text-[10px] font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest">Execution Mode</h4>
@@ -2175,7 +2182,7 @@ When you need to collect information from the user, ask for the required paramet
     }, [userId, isKnowledgeModalOpen]); // Re-fetch when modal closes in case of new uploads
 
     return (
-        <div className="bg-lightbg-dark dark:bg-darkbg-lighter min-h-full">
+        <div className="min-h-full">
             {isModelModalOpen && (
                 <ModelSelectionModal
                     onClose={() => setModelModalOpen(false)}
@@ -2334,9 +2341,9 @@ When you need to collect information from the user, ask for the required paramet
                                     <item.icon className="h-16 w-16" />
                                 </div>
                                 <div className="relative z-10">
-                                    <div className={`w-10 h-10 rounded-xl mb-4 flex items-center justify-center ${item.color === 'blue' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-500' :
-                                        item.color === 'purple' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-500' :
-                                            'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500'
+                                    <div className={`w-10 h-10 rounded-xl mb-4 flex items-center justify-center ${item.color === 'blue' ? 'bg-blue-50 dark:bg-blue-900/40 text-blue-500' :
+                                        item.color === 'purple' ? 'bg-purple-50 dark:bg-purple-900/40 text-purple-400' :
+                                            'bg-emerald-50 dark:bg-emerald-900/40 text-emerald-400'
                                         }`}>
                                         <item.icon className="h-5 w-5" />
                                     </div>
@@ -2348,16 +2355,16 @@ When you need to collect information from the user, ask for the required paramet
                         ))}
                     </div>
 
-                    <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden card-animate">
-                        <div className="p-8 border-b border-slate-100 dark:border-slate-800/50 flex justify-between items-center bg-slate-50/30 dark:bg-slate-900/10">
+                    <div className="bg-white dark:bg-darkbg-surface border border-slate-200 dark:border-darkbg-lighter rounded-3xl shadow-sm overflow-hidden card-animate">
+                        <div className="p-8 border-b border-slate-100 dark:border-darkbg-lighter flex justify-between items-center bg-slate-50/30 dark:bg-darkbg-light/50">
                             <div>
                                 <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                                    <EditIcon className="h-4 w-4" /> Agent Persona
+                                    <EditIcon className="h-4 w-4" /> Agent Prompt
                                 </h3>
                                 <p className="text-[10px] text-slate-400 font-bold mt-1 tracking-wider">Define personality, goals, and constraints</p>
                             </div>
                             {!isEditingPrompt ? (
-                                <button onClick={() => setIsEditingPrompt(true)} className="flex items-center text-[10px] font-black uppercase tracking-widest text-primary hover:text-primary-dark transition-colors px-4 py-2 bg-primary/5 rounded-xl border border-primary/10">Edit Persona</button>
+                                <button onClick={() => setIsEditingPrompt(true)} className="flex items-center text-[10px] font-black uppercase tracking-widest text-primary hover:text-primary-dark transition-colors px-4 py-2 bg-primary/5 rounded-xl border border-primary/10">Edit Agent Prompt</button>
                             ) : (
                                 <div className="flex gap-2">
                                     <button onClick={handleCancelPrompt} className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-500">Cancel</button>
@@ -2396,7 +2403,7 @@ When you need to collect information from the user, ask for the required paramet
                                 value={editedAgent.settings.greetingLine}
                                 onChange={handleSettingsChange}
                                 placeholder="e.g. Hello! How can I help you today?"
-                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-5 py-3.5 text-sm focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white"
+                                className="w-full bg-slate-50/50 dark:bg-darkbg-surface border border-slate-200 dark:border-darkbg-lighter rounded-xl px-5 py-3.5 text-sm focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white"
                             />
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-3 ml-1">The first message the agent says. Leave blank to disable.</p>
                         </div>
@@ -2416,7 +2423,7 @@ When you need to collect information from the user, ask for the required paramet
                                         value={editedAgent.settings.sessionTimeoutFixedDuration}
                                         onChange={handleSettingsChange}
                                         min="0" max="86400"
-                                        className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white"
+                                        className="w-full bg-slate-50/50 dark:bg-darkbg-surface border border-slate-200 dark:border-darkbg-lighter rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white"
                                         placeholder="e.g. 300"
                                     />
                                 </div>
@@ -2428,7 +2435,7 @@ When you need to collect information from the user, ask for the required paramet
                                         name="settings.sessionTimeoutEndMessage"
                                         value={editedAgent.settings.sessionTimeoutEndMessage}
                                         onChange={handleSettingsChange}
-                                        className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white text-ellipsis"
+                                        className="w-full bg-slate-50/50 dark:bg-darkbg-surface border border-slate-200 dark:border-darkbg-lighter rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white text-ellipsis"
                                         placeholder="e.g. Goodbye!"
                                     />
                                 </div>
@@ -2457,7 +2464,7 @@ When you need to collect information from the user, ask for the required paramet
                                         value={editedAgent.settings.webhookUrl || ''}
                                         onChange={handleSettingsChange}
                                         placeholder="https://api.yourdomain.com/webhook"
-                                        className="mt-2 w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                                        className="mt-2 w-full px-4 py-3 bg-slate-50/50 dark:bg-darkbg-surface border border-slate-200 dark:border-darkbg-lighter rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white"
                                     />
                                 </div>
 
@@ -2471,7 +2478,7 @@ When you need to collect information from the user, ask for the required paramet
                                         value={editedAgent.settings.webhookSecret || ''}
                                         onChange={handleSettingsChange}
                                         placeholder="Enter a strong secret key"
-                                        className="mt-2 w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                                        className="mt-2 w-full px-4 py-3 bg-slate-50/50 dark:bg-darkbg-surface border border-slate-200 dark:border-darkbg-lighter rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white"
                                     />
                                 </div>
 
@@ -2485,7 +2492,7 @@ When you need to collect information from the user, ask for the required paramet
                                         onChange={handleSettingsChange}
                                         min="0"
                                         max="10"
-                                        className="mt-2 w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                                        className="mt-2 w-full px-4 py-3 bg-slate-50/50 dark:bg-darkbg-surface border border-slate-200 dark:border-darkbg-lighter rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white"
                                     />
                                 </div>
                             </div>
@@ -2496,14 +2503,14 @@ When you need to collect information from the user, ask for the required paramet
                 {/* Right Column */}
                 <div className="lg:col-span-1">
                     <div className="sticky top-28 space-y-6">
-                        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden card-animate">
+                        <div className="bg-white dark:bg-darkbg-surface border border-slate-200 dark:border-darkbg-lighter rounded-3xl shadow-sm overflow-hidden card-animate">
                             <div className="p-6 border-b border-slate-100 dark:border-slate-800/50 flex justify-between items-center">
                                 <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2">
                                     <SipPhoneIcon className="h-4 w-4" /> Simulator
                                 </h3>
-                                <div className="flex bg-slate-100 dark:bg-slate-900/50 p-1 rounded-xl">
-                                    <button onClick={() => setCallAgentTab('web')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${callAgentTab === 'web' ? 'bg-white dark:bg-slate-800 text-primary shadow-sm' : 'text-slate-500 hover:text-primary'}`}>Web</button>
-                                    <button onClick={() => setCallAgentTab('chat')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${callAgentTab === 'chat' ? 'bg-white dark:bg-slate-800 text-primary shadow-sm' : 'text-slate-500 hover:text-primary'}`}>Chat</button>
+                                <div className="flex bg-slate-100 dark:bg-darkbg-light p-1 rounded-xl">
+                                    <button onClick={() => setCallAgentTab('web')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${callAgentTab === 'web' ? 'bg-white dark:bg-darkbg-surface text-primary shadow-sm' : 'text-slate-500 hover:text-primary'}`}>Web</button>
+                                    <button onClick={() => setCallAgentTab('chat')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${callAgentTab === 'chat' ? 'bg-white dark:bg-darkbg-surface text-primary shadow-sm' : 'text-slate-500 hover:text-primary'}`}>Chat</button>
                                 </div>
                             </div>
                             <div className="p-6">
@@ -2571,7 +2578,7 @@ When you need to collect information from the user, ask for the required paramet
                                                 value={currentMessage}
                                                 onChange={(e) => setCurrentMessage(e.target.value)}
                                                 placeholder="Ask something..."
-                                                className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-medium"
+                                                className="flex-1 bg-slate-50 dark:bg-darkbg-light border border-slate-200 dark:border-darkbg-lighter rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-medium"
                                             />
                                             <button
                                                 type="submit"
@@ -2588,7 +2595,7 @@ When you need to collect information from the user, ask for the required paramet
                             </div>
                         </div>
 
-                        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-8 space-y-6 card-animate">
+                        <div className="bg-white dark:bg-darkbg-surface border border-slate-200 dark:border-darkbg-lighter rounded-3xl shadow-sm p-8 space-y-6 card-animate">
                             <div className="flex justify-between items-center">
                                 <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2">
                                     <KnowledgeIcon className="h-4 w-4" /> Knowledge
@@ -2596,7 +2603,7 @@ When you need to collect information from the user, ask for the required paramet
                                 <button onClick={() => setKnowledgeModalOpen(true)} className="text-[10px] font-black uppercase tracking-wider text-primary hover:text-primary-dark transition-colors">Manage</button>
                             </div>
 
-                            <div className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-800">
+                            <div className="bg-slate-50 dark:bg-darkbg-light/50 rounded-2xl p-4 border border-slate-100 dark:border-darkbg-lighter">
                                 <p className="text-xs text-slate-500 leading-relaxed font-medium">
                                     Agent has access to <span className="text-primary font-bold">{editedAgent.settings.knowledgeDocIds?.length || 0}</span> documents for context.
                                 </p>
@@ -2623,7 +2630,7 @@ When you need to collect information from the user, ask for the required paramet
                             </div>
                         </div>
 
-                        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-8 space-y-6 card-animate">
+                        <div className="bg-white dark:bg-darkbg-surface border border-slate-200 dark:border-darkbg-lighter rounded-3xl shadow-sm p-8 space-y-6 card-animate">
                             <div className="flex justify-between items-center">
                                 <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2">
                                     <ToolsIcon className="h-4 w-4" /> Automation Tools

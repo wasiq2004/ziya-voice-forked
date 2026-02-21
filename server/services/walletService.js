@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
+const { inrToCredits, MIN_CREDITS_FOR_CALL } = require('../config/creditConfig');
 
 class WalletService {
   constructor(mysqlPool) {
@@ -43,7 +44,7 @@ class WalletService {
         id: walletId,
         user_id: userId,
         balance: initialBalance,
-        currency: 'USD',
+        currency: 'CREDITS',
         created_at: new Date(),
         updated_at: new Date()
       };
@@ -68,11 +69,17 @@ class WalletService {
 
   /**
    * Add credits to wallet (admin only)
+   * @param {string} userId - User ID
+   * @param {number} amountInr - Amount in Indian Rupees (INR)
+   * @param {string} description - Transaction description
+   * @param {string|null} adminId - Admin performing the action
    */
-  async addCredits(userId, amount, description, adminId = null) {
+  async addCredits(userId, amountInr, description, adminId = null) {
     try {
       const wallet = await this.getOrCreateWallet(userId);
-      const newBalance = parseFloat(wallet.balance) + parseFloat(amount);
+      // Convert INR to Credits (1 INR = 1 Credit)
+      const creditsToAdd = inrToCredits(parseFloat(amountInr));
+      const newBalance = parseFloat(wallet.balance) + creditsToAdd;
 
       // Update wallet balance
       await this.mysqlPool.execute(
@@ -82,19 +89,22 @@ class WalletService {
 
       // Record transaction
       const transactionId = uuidv4();
+      const txDescription = description || `Added ${creditsToAdd.toFixed(2)} Credits (₹${amountInr})`;
       await this.mysqlPool.execute(
         `INSERT INTO wallet_transactions 
         (id, user_id, transaction_type, amount, balance_after, service_type, description, created_by) 
         VALUES (?, ?, 'credit', ?, ?, 'admin_adjustment', ?, ?)`,
-        [transactionId, userId, amount, newBalance, description, adminId]
+        [transactionId, userId, creditsToAdd, newBalance, txDescription, adminId]
       );
 
       return {
         success: true,
         newBalance: newBalance,
+        creditsAdded: creditsToAdd,
+        inrAmount: parseFloat(amountInr),
         transaction: {
           id: transactionId,
-          amount: amount,
+          amount: creditsToAdd,
           type: 'credit'
         }
       };
@@ -395,26 +405,28 @@ class WalletService {
     }
   }
   /**
-   * Check if user has sufficient balance for a call
-   * Requires minimum balance to start a call (prevents immediate disconnection)
+   * Check if user has sufficient credits for a call
+   * Requires minimum credits to start a call (prevents immediate disconnection)
    */
-  async checkBalanceForCall(userId, minimumRequired = 0.10) {
+  async checkBalanceForCall(userId, minimumRequired = null) {
+    // Default minimum is defined in creditConfig
+    const minRequired = minimumRequired !== null ? minimumRequired : MIN_CREDITS_FOR_CALL;
     try {
       const balance = await this.getBalance(userId);
 
-      if (balance < minimumRequired) {
+      if (balance < minRequired) {
         return {
           allowed: false,
           balance: balance,
-          required: minimumRequired,
-          message: `Insufficient balance. You need at least $${minimumRequired.toFixed(2)} to start a call. Current balance: $${balance.toFixed(4)}`
+          required: minRequired,
+          message: `Insufficient credits. You need at least ${minRequired.toFixed(0)} Credits to start a call. Current balance: ${balance.toFixed(2)} Credits`
         };
       }
 
       return {
         allowed: true,
         balance: balance,
-        message: 'Sufficient balance'
+        message: 'Sufficient credits'
       };
     } catch (error) {
       console.error('Error checking balance for call:', error);
@@ -422,8 +434,8 @@ class WalletService {
       return {
         allowed: false,
         balance: 0,
-        required: minimumRequired,
-        message: 'Error checking balance'
+        required: minRequired,
+        message: 'Error checking credits'
       };
     }
   }
