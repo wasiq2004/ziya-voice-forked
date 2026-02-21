@@ -155,6 +155,10 @@ const CampaignDetailPage: React.FC = () => {
     try {
       setIsProcessing(true);
       const isRunning = campaign.status === 'running';
+
+      // Optimistic Update
+      setCampaign({ ...campaign, status: isRunning ? 'stopped' : 'running' });
+
       const response = isRunning
         ? await stopCampaign(id, user.id)
         : await startCampaign(id, user.id);

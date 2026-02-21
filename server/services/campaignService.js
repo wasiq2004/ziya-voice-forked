@@ -559,20 +559,52 @@ class CampaignService {
      */
     async updateContactAfterCall(contactId, callDuration, callCost, status = 'completed', transcript = null, recordingUrl = null) {
         let llmClassification = null;
+        let scheduleTime = null;
+
         if (transcript && this.geminiService) {
             try {
-                llmClassification = await this.classifyIntent(transcript);
-                console.log(`LLM Classification for contact ${contactId}: ${llmClassification}`);
+                const llmResponse = await this.classifyIntent(transcript);
+                llmClassification = llmResponse.intent;
+                scheduleTime = llmResponse.schedule_time;
+                console.log(`LLM Classification for contact ${contactId}: ${llmClassification}, Schedule: ${scheduleTime}`);
             } catch (llmError) {
                 console.error(`Error classifying intent for contact ${contactId}:`, llmError);
             }
         }
 
+        let meetLink = null;
+        if ((llmClassification === 'scheduled_meeting' || llmClassification === 'needs_demo' || llmClassification === '1_on_1_session_requested') && scheduleTime) {
+            try {
+                const [contactRows] = await this.mysqlPool.execute(
+                    'SELECT email, name, campaign_id FROM campaign_contacts WHERE id = ?', [contactId]
+                );
+                if (contactRows.length > 0 && contactRows[0].email) {
+                    const contactInfo = contactRows[0];
+                    const [campRows] = await this.mysqlPool.execute(
+                        'SELECT a.name as agent_name FROM campaigns c JOIN agents a ON c.agent_id = a.id WHERE c.id = ?',
+                        [contactInfo.campaign_id]
+                    );
+                    const agentName = campRows.length > 0 ? campRows[0].agent_name : 'Ziya Voice Agent';
+
+                    meetLink = emailService.generateMeetLink();
+                    await emailService.sendMeetingInvite(
+                        contactInfo.email,
+                        contactInfo.name,
+                        agentName,
+                        scheduleTime,
+                        meetLink
+                    );
+                }
+            } catch (e) {
+                console.error('Caught error during automated email/meetLink generation:', e);
+            }
+        }
+
         await this.mysqlPool.execute(
             `UPDATE campaign_contacts
-       SET status = ?, call_duration = ?, call_cost = ?, completed_at = NOW(), intent = ?, transcript = ?
+       SET status = ?, call_duration = ?, call_cost = ?, completed_at = NOW(), intent = ?, schedule_time = IFNULL(?, schedule_time), transcript = ?, meet_link = ?
        WHERE id = ?`,
-            [status, callDuration, callCost, llmClassification || null, transcript || null, contactId]
+            [status, callDuration, callCost, llmClassification || null, scheduleTime || null, transcript || null, meetLink || null, contactId]
         );
 
         // Get contact and campaign details for Google Sheets logging
@@ -614,7 +646,7 @@ class CampaignService {
                 await this.completeCampaign(campaignId);
             }
 
-            // Log to Google Sheets if configured
+            // Log to Google Sheets if configured (passing intent string)
             try {
                 await this.logToGoogleSheets(contact, callDuration, callCost, status, recordingUrl, llmClassification);
             } catch (error) {
@@ -678,35 +710,44 @@ class CampaignService {
         }
     }
 
-    /**
-     * Classify intent using Gemini LLM
-     */
+
     async classifyIntent(transcript) {
         if (!this.geminiService) {
             console.warn('GeminiService not initialized. Cannot classify intent.');
-            return null;
+            return { intent: null, schedule_time: null };
         }
 
-        // You might want to fetch a campaign-specific prompt from campaign_settings
-        // For now, using a generic prompt.
         const prompt = `Analyze the following call transcript and classify the user's intent.
-        Provide a concise classification (e.g., "Interested", "Not Interested", "Voicemail", "Wrong Number", "Follow-up Needed", "Appointment Set").
-        Transcript: "${transcript}"
-        Classification:`;
+        The intent MUST be one of the following exact strings: "interested", "not_interested", "needs_demo", or "scheduled_meeting".
+        If the intent is "needs_demo" or "scheduled_meeting", try to extract the agreed schedule date and time from the transcript. If a time is found, format it as an ISO 8601 string (e.g. 2026-05-20T14:30:00Z). If no exact time is found, return null. Assume current year is 2026.
+
+        IMPORTANT: ALWAYS return ONLY a valid JSON object matching this schema. Do not include any markdown formatting like \`\`\`json.
+        {
+          "intent": "interested" | "not_interested" | "needs_demo" | "scheduled_meeting" | "unknown",
+          "schedule_time": "ISO-8601 date string" | null
+        }
+        
+        Transcript: "${transcript}"`;
 
         try {
             const result = await this.geminiService.generateText(prompt);
-            return result.trim();
+            let cleanedResult = result.trim();
+            if (cleanedResult.startsWith('\`\`\`json')) {
+                cleanedResult = cleanedResult.substring(7);
+            }
+            if (cleanedResult.startsWith('\`\`\`')) {
+                cleanedResult = cleanedResult.substring(3);
+            }
+            if (cleanedResult.endsWith('\`\`\`')) {
+                cleanedResult = cleanedResult.substring(0, cleanedResult.length - 3);
+            }
+            return JSON.parse(cleanedResult.trim());
         } catch (error) {
             console.error('Error calling Gemini for intent classification:', error);
-            return 'Classification Failed';
+            return { intent: 'unknown', schedule_time: null };
         }
     }
 
-    /**
-     * Log call data to Google Sheets
-     * Now includes email and LLM classification.
-     */
     async logToGoogleSheets(contact, callDuration, callCost, status, recordingUrl, llmClassification) {
         try {
             // Get agent settings to find Google Sheets URL

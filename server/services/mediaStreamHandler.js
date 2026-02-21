@@ -42,9 +42,11 @@ class MediaStreamHandler {
         return process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
     }
 
-    createSession(callId, agentPrompt, agentVoiceId, ws, userId = null, agentId = null, agentModel = null, agentSettings = null) {
+    createSession(callId, agentPrompt, agentVoiceId, ws, userId = null, agentId = null, agentModel = null, agentSettings = null, contactId = null, campaignId = null) {
         const session = {
             callId,
+            contactId,
+            campaignId,
             context: [],
             agentPrompt,
             agentVoiceId: agentVoiceId || "21m00Tcm4TlvDq8ikWAM",
@@ -101,6 +103,26 @@ class MediaStreamHandler {
                 }
             }
 
+            // Save Transcript and Classify Intent for Campaigns
+            if (session.contactId && this.campaignService) {
+                try {
+                    const fullTranscript = session.context.map(msg => `${msg.role.toUpperCase()}: ${msg.parts[0].text}`).join('\n');
+                    const durationSeconds = session.startTime ? Math.round((new Date() - session.startTime) / 1000) : 0;
+                    console.log(`📝 Saving transcript and classifying intent for contact ${session.contactId}...`);
+
+                    await this.campaignService.updateContactAfterCall(
+                        session.contactId,
+                        durationSeconds,
+                        0, // cost logged elsewhere
+                        'completed',
+                        fullTranscript
+                    );
+                    console.log(`✅ Campaign contact ${session.contactId} updated with transcript and LLM classification`);
+                } catch (campaignErr) {
+                    console.error('❌ Error updating campaign contact after call:', campaignErr);
+                }
+            }
+
             // Calculate and charge for Twilio usage
             if (session.startTime && session.userId && this.costCalculator) {
                 const endTime = new Date();
@@ -153,6 +175,8 @@ class MediaStreamHandler {
             let queryCallId = queryParams.callId;
             let queryAgentId = queryParams.agentId;
             let queryUserId = queryParams.userId;
+            let queryContactId = queryParams.contactId;
+            let queryCampaignId = queryParams.campaignId;
 
             // ✅ Set up error handler FIRST before any other operations
             ws.on("error", (error) => {
@@ -197,10 +221,13 @@ class MediaStreamHandler {
                         callId = streamParams.callId || queryCallId || data.start?.callSid;
                         agentId = streamParams.agentId || queryAgentId;
                         const userId = streamParams.userId || queryUserId;
+                        const contactId = streamParams.contactId || queryContactId;
+                        const campaignId = streamParams.campaignId || queryCampaignId;
 
                         console.log(`📞 Call ID: ${callId}`);
                         console.log(`🤖 Agent ID: ${agentId}`);
                         console.log(`👤 User ID: ${userId}`);
+                        if (contactId) console.log(`🧑‍💼 Contact ID: ${contactId}`);
 
                         if (!callId) {
                             console.error("❌ No callId found in start event or query params");
@@ -316,7 +343,7 @@ class MediaStreamHandler {
                         const sarvamLanguage = languageMap[agentLanguage] || 'en-IN';
                         console.log(`🌐 Using language: ${agentLanguage} (Sarvam: ${sarvamLanguage})`);
 
-                        session = this.createSession(callId, agentPrompt, agentVoiceId, ws, userId, agentId, agentModel, agent?.settings);
+                        session = this.createSession(callId, agentPrompt, agentVoiceId, ws, userId, agentId, agentModel, agent?.settings, contactId, campaignId);
                         session.tools = tools;
                         session.language = agentLanguage;
                         session.greetingMessage = greetingMessage;

@@ -2718,6 +2718,8 @@ app.post('/api/twilio/voice', async (req, res) => {
     stream.parameter({ name: 'callId', value: actualCallId });
     stream.parameter({ name: 'agentId', value: agentId });
     stream.parameter({ name: 'userId', value: userId || '' });
+    stream.parameter({ name: 'contactId', value: req.query.contactId || '' });
+    stream.parameter({ name: 'campaignId', value: campaignId || '' });
 
     const twiml = response.toString();
 
@@ -3807,32 +3809,16 @@ app.post('/api/campaigns/:id/start', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
-    // Check if phone number is set
-    if (!campaign.phone_number_id) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please set a caller phone number before starting the campaign'
-      });
-    }
-
-    // Check if agent is set
-    if (!campaign.agent_id) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please select an agent for this campaign'
-      });
-    }
-
-    // Get all pending contacts
+    // Get all pending or retryable contacts
     const [contacts] = await mysqlPool.execute(
-      'SELECT * FROM campaign_contacts WHERE campaign_id = ? AND status = ?',
-      [id, 'pending']
+      'SELECT id FROM campaign_contacts WHERE campaign_id = ? AND status IN (?, ?)',
+      [id, 'pending', 'failed']
     );
 
     if (contacts.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'No pending contacts found. Please add contacts to the campaign.'
+        message: 'No pending or retryable contacts found. Please add contacts to the campaign.'
       });
     }
 
@@ -4010,6 +3996,8 @@ app.get('/api/admin/migrate-schema', async (req, res) => {
         alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN schedule_time DATETIME NULL AFTER intent");
       if (!(await checkColumn('campaign_contacts', 'transcript')))
         alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN transcript TEXT NULL AFTER schedule_time");
+      if (!(await checkColumn('campaign_contacts', 'meet_link')))
+        alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN meet_link VARCHAR(255) NULL AFTER transcript");
       if (!(await checkColumn('campaign_contacts', 'call_duration')))
         alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN call_duration INT DEFAULT 0 AFTER transcript");
       if (!(await checkColumn('campaign_contacts', 'call_cost')))
@@ -4131,6 +4119,28 @@ app.put('/api/campaigns/:id', async (req, res) => {
   } catch (error) {
     console.error('Update Campaign error:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// fetch Scheduled calls
+app.get('/api/scheduled-calls', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ success: false, message: 'User ID required' });
+
+    const [rows] = await mysqlPool.execute(`
+      SELECT cc.*, c.name as campaignName, a.name as agentName, a.id as agentId
+      FROM campaign_contacts cc
+      JOIN campaigns c ON cc.campaign_id = c.id
+      LEFT JOIN agents a ON c.agent_id = a.id
+      WHERE c.user_id = ? AND cc.schedule_time IS NOT NULL AND cc.intent IN ('needs_demo', 'scheduled_meeting', '1_on_1_session_requested')
+      ORDER BY cc.schedule_time ASC
+    `, [userId]);
+
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Error fetching scheduled calls:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
