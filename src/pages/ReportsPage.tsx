@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import AppLayout from '../components/AppLayout';
 import {
     ArrowDownTrayIcon,
@@ -16,6 +16,8 @@ import {
     TrashIcon,
     ArrowDownOnSquareIcon
 } from '@heroicons/react/24/outline';
+import { useAuth } from '../contexts/AuthContext';
+import { getApiBaseUrl } from '../utils/api';
 
 // Custom FunnelIcon component
 const FunnelIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -37,9 +39,11 @@ interface ReportData {
     result: string;
     firstCallTime: string;
     followUpTime: string;
+    recordingUrl: string | null;
 }
 
 const ReportsPage: React.FC = () => {
+    const { user } = useAuth();
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'All' | 'Incoming' | 'Outbound'>('All');
     const [sortConfig, setSortConfig] = useState<{ key: keyof ReportData, direction: 'asc' | 'desc' } | null>({ key: 'sNo', direction: 'asc' });
@@ -50,19 +54,61 @@ const ReportsPage: React.FC = () => {
     const [selectedStatus, setSelectedStatus] = useState('All Statuses');
     const [selectedResult, setSelectedResult] = useState('All Results');
 
-    // Dummy Data
-    const [reports, setReports] = useState<ReportData[]>([
-        { id: '1', sNo: 1, date: '2026-02-13', day: 'Friday', campaignId: 'CAMP-001', agentName: 'Ziya AI', calledNumber: '+1 234 567 8901', type: 'Outbound', status: 'Completed', result: 'Interested', firstCallTime: '10:30 AM', followUpTime: '2:00 PM' },
-        { id: '2', sNo: 2, date: '2026-02-13', day: 'Friday', campaignId: 'CAMP-002', agentName: 'ALPS AI', calledNumber: '+1 987 654 3210', type: 'Incoming', status: 'In-Progress', result: 'Pending', firstCallTime: '11:15 AM', followUpTime: 'Pending' },
-        { id: '3', sNo: 3, date: '2026-02-12', day: 'Thursday', campaignId: 'CAMP-001', agentName: 'Ziya AI', calledNumber: '+44 20 7946 0958', type: 'Outbound', status: 'Failed', result: 'Busy', firstCallTime: '09:00 AM', followUpTime: 'N/A' },
-        { id: '4', sNo: 4, date: '2026-02-12', day: 'Thursday', campaignId: 'CAMP-003', agentName: 'ALPS AI', calledNumber: '+91 98765 43210', type: 'Incoming', status: 'Completed', result: 'Not Interested', firstCallTime: '04:45 PM', followUpTime: 'None' },
-        { id: '5', sNo: 5, date: '2026-02-11', day: 'Wednesday', campaignId: 'CAMP-002', agentName: 'Ziya AI', calledNumber: '+1 555 012 3456', type: 'Outbound', status: 'Completed', result: 'Scheduled', firstCallTime: '01:20 PM', followUpTime: 'Next Monday' },
-    ]);
-
+    const [reports, setReports] = useState<ReportData[]>([]);
     const [openActionId, setOpenActionId] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchReports = async () => {
+            if (!user?.id) return;
+            try {
+                setIsLoading(true);
+                const response = await fetch(`${getApiBaseUrl()}/api/reports?userId=${user.id}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const formattedData = data.data.map((row: any, index: number) => {
+                        const dateObj = new Date(row.created_at);
+                        return {
+                            id: row.id.toString(),
+                            sNo: index + 1,
+                            date: dateObj.toISOString().split('T')[0],
+                            day: dateObj.toLocaleDateString('en-US', { weekday: 'long' }),
+                            campaignId: row.campaignName || 'Unknown',
+                            agentName: row.agentName || 'Unknown Agent',
+                            calledNumber: row.calledNumber,
+                            type: row.type || 'Outbound',
+                            status: row.status || 'Unknown',
+                            result: row.result || 'Pending',
+                            firstCallTime: dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                            followUpTime: row.schedule_time ? new Date(row.schedule_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'None',
+                            recordingUrl: row.recording_url || null
+                        };
+                    });
+                    setReports(formattedData);
+                }
+            } catch (error) {
+                console.error('Failed to fetch reports:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchReports();
+    }, [user]);
+
+    // Compute unique dropdown options from data
+    const filterOptions = useMemo(() => {
+        const campaigns = ['All Campaigns', ...Array.from(new Set(reports.map(r => r.campaignId))).filter(Boolean)];
+        const agents = ['All Agents', ...Array.from(new Set(reports.map(r => r.agentName))).filter(Boolean)];
+        const statuses = ['All Statuses', ...Array.from(new Set(reports.map(r => r.status))).filter(Boolean)];
+        const results = ['All Results', ...Array.from(new Set(reports.map(r => r.result))).filter(Boolean)];
+
+        return { campaigns, agents, statuses, results };
+    }, [reports]);
 
     const handleDelete = (id: string) => {
-        if (window.confirm('Are you sure you want to delete this report?')) {
+        if (window.confirm('Are you sure you want to delete this report from view?')) {
             setReports(prev => prev.filter(r => r.id !== id));
             setOpenActionId(null);
         }
@@ -122,8 +168,48 @@ const ReportsPage: React.FC = () => {
             <ChevronDownIcon className="w-3 h-3 ml-1 text-primary" />;
     };
 
+    const handleExportCSV = () => {
+        if (filteredAndSortedData.length === 0) return;
+
+        const headers = ['S.No', 'Date', 'Day', 'Campaign Name', 'Agent Name', 'Called Number', 'Type', 'Status', 'Result', 'First Call Time'];
+
+        const csvRows = [
+            headers.join(','), // Header row
+            ...filteredAndSortedData.map(row =>
+                [
+                    row.sNo,
+                    `"${row.date}"`,
+                    `"${row.day}"`,
+                    `"${row.campaignId}"`,
+                    `"${row.agentName}"`,
+                    `"${row.calledNumber}"`,
+                    `"${row.type}"`,
+                    `"${row.status}"`,
+                    `"${row.result}"`,
+                    `"${row.firstCallTime}"`
+                ].join(',')
+            )
+        ];
+
+        const csvContent = csvRows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'Ziya_Call_Reports_Export.csv');
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const exportBtn = (
-        <button className="flex items-center space-x-2 bg-slate-900 dark:bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-800 dark:hover:bg-slate-700 transition-all shadow-lg shadow-slate-900/10">
+        <button
+            onClick={handleExportCSV}
+            disabled={filteredAndSortedData.length === 0}
+            className="flex items-center space-x-2 bg-slate-900 dark:bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-800 dark:hover:bg-slate-700 transition-all shadow-lg shadow-slate-900/10 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
             <ArrowDownTrayIcon className="h-4 w-4" />
             <span>Export to Excel</span>
         </button>
@@ -181,10 +267,10 @@ const ReportsPage: React.FC = () => {
                 {/* Filters Row 2: Dropdowns */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     {[
-                        { label: 'All Campaigns', value: selectedCampaign, setter: setSelectedCampaign, options: ['All Campaigns', 'CAMP-001', 'CAMP-002', 'CAMP-003'] },
-                        { label: 'All Agents', value: selectedAgent, setter: setSelectedAgent, options: ['All Agents', 'Ziya AI', 'ALPS AI'] },
-                        { label: 'All Statuses', value: selectedStatus, setter: setSelectedStatus, options: ['All Statuses', 'Completed', 'In-Progress', 'Failed'] },
-                        { label: 'All Results', value: selectedResult, setter: setSelectedResult, options: ['All Results', 'Interested', 'Scheduled', 'Not Interested', 'Busy', 'Pending'] },
+                        { label: 'All Campaigns', value: selectedCampaign, setter: setSelectedCampaign, options: filterOptions.campaigns },
+                        { label: 'All Agents', value: selectedAgent, setter: setSelectedAgent, options: filterOptions.agents },
+                        { label: 'All Statuses', value: selectedStatus, setter: setSelectedStatus, options: filterOptions.statuses },
+                        { label: 'All Results', value: selectedResult, setter: setSelectedResult, options: filterOptions.results },
                     ].map((filter, i) => (
                         <div key={i} className="relative">
                             <select
@@ -202,150 +288,165 @@ const ReportsPage: React.FC = () => {
                 </div>
 
                 {/* Data Table */}
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
-                                    <th onClick={() => handleSort('sNo')} className="px-6 py-4 cursor-pointer group hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors text-center w-20">
-                                        <div className="flex items-center justify-center text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-                                            S.No {sortIcon('sNo')}
-                                        </div>
-                                    </th>
-                                    <th onClick={() => handleSort('date')} className="px-6 py-4 cursor-pointer group hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors">
-                                        <div className="flex items-center text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-                                            Date / Day {sortIcon('date')}
-                                        </div>
-                                    </th>
-                                    <th onClick={() => handleSort('campaignId')} className="px-6 py-4 cursor-pointer group hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors">
-                                        <div className="flex items-center text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-                                            Campaign ID {sortIcon('campaignId')}
-                                        </div>
-                                    </th>
-                                    <th onClick={() => handleSort('agentName')} className="px-6 py-4 cursor-pointer group hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors">
-                                        <div className="flex items-center text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-                                            Agent {sortIcon('agentName')}
-                                        </div>
-                                    </th>
-                                    <th className="px-6 py-4">
-                                        <div className="flex items-center text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-                                            Phone / Type
-                                        </div>
-                                    </th>
-                                    <th onClick={() => handleSort('status')} className="px-6 py-4 cursor-pointer group hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors">
-                                        <div className="flex items-center text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-                                            Status {sortIcon('status')}
-                                        </div>
-                                    </th>
-                                    <th onClick={() => handleSort('result')} className="px-6 py-4 cursor-pointer group hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors">
-                                        <div className="flex items-center text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-                                            Result {sortIcon('result')}
-                                        </div>
-                                    </th>
-                                    <th className="px-6 py-4 text-right pr-6">
-                                        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-                                            Actions
-                                        </div>
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                                {filteredAndSortedData.map((row) => (
-                                    <tr key={row.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-all group">
-                                        <td className="px-6 py-4 text-sm font-bold text-slate-400 group-hover:text-primary transition-colors text-center">
-                                            {row.sNo.toString().padStart(2, '0')}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex flex-col">
-                                                <span className="text-sm font-bold text-slate-900 dark:text-white leading-tight">{row.date}</span>
-                                                <span className="text-[10px] text-slate-500 font-medium uppercase tracking-tight">{row.day}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className="px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                                                {row.campaignId}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center space-x-2">
-                                                <div className="w-7 h-7 bg-primary/10 rounded-lg flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                                                    <UserIcon className="w-4 h-4" />
-                                                </div>
-                                                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{row.agentName}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex flex-col">
-                                                <span className="text-sm font-bold text-slate-900 dark:text-white leading-tight">{row.calledNumber}</span>
-                                                <span className={`text-[10px] font-bold uppercase tracking-widest ${row.type === 'Incoming' ? 'text-blue-500' : 'text-purple-500'}`}>
-                                                    {row.type}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center space-x-1.5">
-                                                <div className={`w-1.5 h-1.5 rounded-full ${row.status === 'Completed' ? 'bg-green-500' :
-                                                    row.status === 'In-Progress' ? 'bg-blue-500 animate-pulse' : 'bg-red-500'
-                                                    }`} />
-                                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{row.status}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${row.result === 'Interested' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
-                                                row.result === 'Pending' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
-                                                    row.result === 'Scheduled' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
-                                                        'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                                                }`}>
-                                                {row.result}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 text-right pr-6">
-                                            <div className="relative">
-                                                <button
-                                                    onClick={() => setOpenActionId(openActionId === row.id ? null : row.id)}
-                                                    className={`p-2 rounded-xl transition-all ${openActionId === row.id ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-slate-400 hover:text-primary hover:bg-primary/5'}`}
-                                                >
-                                                    <EllipsisHorizontalIcon className="w-5 h-5" />
-                                                </button>
-
-                                                {/* Action Dropdown */}
-                                                {openActionId === row.id && (
-                                                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                                                        <button
-                                                            onClick={() => {
-                                                                console.log('Downloading call:', row.id);
-                                                                setOpenActionId(null);
-                                                            }}
-                                                            className="w-full px-4 py-2.5 text-left text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center space-x-3 transition-colors"
-                                                        >
-                                                            <ArrowDownOnSquareIcon className="w-4 h-4 text-primary" />
-                                                            <span>Download Call</span>
-                                                        </button>
-                                                        <div className="my-1 border-t border-slate-100 dark:border-slate-700/50"></div>
-                                                        <button
-                                                            onClick={() => handleDelete(row.id)}
-                                                            className="w-full px-4 py-2.5 text-left text-sm font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center space-x-3 transition-colors"
-                                                        >
-                                                            <TrashIcon className="w-4 h-4" />
-                                                            <span>Delete</span>
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                    {filteredAndSortedData.length === 0 && (
-                        <div className="py-20 text-center">
-                            <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-100 dark:border-slate-800">
-                                <ArrowPathRoundedSquareIcon className="w-8 h-8 text-slate-300" />
-                            </div>
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">No matching reports</h3>
-                            <p className="text-sm text-slate-500 dark:text-slate-400">Try adjusting your filters or search query.</p>
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-visible min-h-[400px]">
+                    {isLoading ? (
+                        <div className="flex items-center justify-center h-full py-20">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                         </div>
+                    ) : (
+                        <>
+                            <div className="overflow-visible">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
+                                            <th onClick={() => handleSort('sNo')} className="px-6 py-4 cursor-pointer group hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors text-center w-20">
+                                                <div className="flex items-center justify-center text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                                                    S.No {sortIcon('sNo')}
+                                                </div>
+                                            </th>
+                                            <th onClick={() => handleSort('date')} className="px-6 py-4 cursor-pointer group hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors">
+                                                <div className="flex items-center text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                                                    Date / Day {sortIcon('date')}
+                                                </div>
+                                            </th>
+                                            <th onClick={() => handleSort('campaignId')} className="px-6 py-4 cursor-pointer group hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors">
+                                                <div className="flex items-center text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                                                    Campaign Name {sortIcon('campaignId')}
+                                                </div>
+                                            </th>
+                                            <th onClick={() => handleSort('agentName')} className="px-6 py-4 cursor-pointer group hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors">
+                                                <div className="flex items-center text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                                                    Agent {sortIcon('agentName')}
+                                                </div>
+                                            </th>
+                                            <th className="px-6 py-4">
+                                                <div className="flex items-center text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                                                    Phone / Type
+                                                </div>
+                                            </th>
+                                            <th onClick={() => handleSort('status')} className="px-6 py-4 cursor-pointer group hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors">
+                                                <div className="flex items-center text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                                                    Status {sortIcon('status')}
+                                                </div>
+                                            </th>
+                                            <th onClick={() => handleSort('result')} className="px-6 py-4 cursor-pointer group hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors">
+                                                <div className="flex items-center text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                                                    Result {sortIcon('result')}
+                                                </div>
+                                            </th>
+                                            <th className="px-6 py-4 text-right pr-6">
+                                                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                                                    Actions
+                                                </div>
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                                        {filteredAndSortedData.map((row) => (
+                                            <tr key={row.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-all group">
+                                                <td className="px-6 py-4 text-sm font-bold text-slate-400 group-hover:text-primary transition-colors text-center">
+                                                    {row.sNo.toString().padStart(2, '0')}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-bold text-slate-900 dark:text-white leading-tight">{row.date}</span>
+                                                        <span className="text-[10px] text-slate-500 font-medium uppercase tracking-tight">{row.day}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                                        {row.campaignId}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center space-x-2">
+                                                        <div className="w-7 h-7 bg-primary/10 rounded-lg flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                                                            <UserIcon className="w-4 h-4" />
+                                                        </div>
+                                                        <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{row.agentName}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-bold text-slate-900 dark:text-white leading-tight">{row.calledNumber}</span>
+                                                        <span className={`text-[10px] font-bold uppercase tracking-widest ${row.type === 'Incoming' ? 'text-blue-500' : 'text-purple-500'}`}>
+                                                            {row.type}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center space-x-1.5">
+                                                        <div className={`w-1.5 h-1.5 rounded-full ${['Completed', 'success', 'successful'].includes(row.status.toLowerCase()) ? 'bg-green-500' :
+                                                            ['in-progress', 'in_progress', 'started', 'processing'].includes(row.status.toLowerCase()) ? 'bg-blue-500 animate-pulse' : 'bg-red-500'
+                                                            }`} />
+                                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300 capitalize">{row.status}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${['interested', 'positive', 'success'].includes(row.result.toLowerCase()) ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                                                        ['pending', 'neutral', 'unknown'].includes(row.result.toLowerCase()) ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
+                                                            ['scheduled', 'callback'].includes(row.result.toLowerCase()) ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
+                                                                'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                                                        }`}>
+                                                        {row.result}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-right pr-6">
+                                                    <div className="relative">
+                                                        <button
+                                                            onClick={() => setOpenActionId(openActionId === row.id ? null : row.id)}
+                                                            className={`p-2 rounded-xl transition-all ${openActionId === row.id ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-slate-400 hover:text-primary hover:bg-primary/5'}`}
+                                                        >
+                                                            <EllipsisHorizontalIcon className="w-5 h-5" />
+                                                        </button>
+
+                                                        {/* Action Dropdown */}
+                                                        {openActionId === row.id && (
+                                                            <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                                <button
+                                                                    onClick={() => {
+                                                                        if (row.recordingUrl) {
+                                                                            window.open(row.recordingUrl, '_blank');
+                                                                        } else {
+                                                                            alert('No recording available for this call.');
+                                                                        }
+                                                                        setOpenActionId(null);
+                                                                    }}
+                                                                    className={`w-full px-4 py-2.5 text-left text-sm font-bold flex items-center space-x-3 transition-colors ${row.recordingUrl
+                                                                            ? 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                                                                            : 'text-slate-400 opacity-50 cursor-not-allowed'
+                                                                        }`}
+                                                                >
+                                                                    <ArrowDownOnSquareIcon className={`w-4 h-4 ${row.recordingUrl ? 'text-primary' : 'text-slate-400'}`} />
+                                                                    <span>{row.recordingUrl ? 'Download Call' : 'No Recording'}</span>
+                                                                </button>
+                                                                <div className="my-1 border-t border-slate-100 dark:border-slate-700/50"></div>
+                                                                <button
+                                                                    onClick={() => handleDelete(row.id)}
+                                                                    className="w-full px-4 py-2.5 text-left text-sm font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center space-x-3 transition-colors"
+                                                                >
+                                                                    <TrashIcon className="w-4 h-4" />
+                                                                    <span>Delete</span>
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {filteredAndSortedData.length === 0 && (
+                                <div className="py-20 text-center">
+                                    <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-100 dark:border-slate-800">
+                                        <ArrowPathRoundedSquareIcon className="w-8 h-8 text-slate-300" />
+                                    </div>
+                                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">No matching reports</h3>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">Try adjusting your filters or search query.</p>
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
             </div>

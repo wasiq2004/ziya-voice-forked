@@ -31,6 +31,30 @@ export const fetchScheduledCalls = async (userId: string) => {
   return response.json();
 };
 
+export const rescheduleCall = async (contactId: string, newTime: string) => {
+  const response = await fetch(`${getApiBaseUrl()}/api/scheduled-calls/reschedule`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contactId, newTime })
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || 'Failed to reschedule lead');
+  }
+  return response.json();
+};
+
+export const deleteScheduledCall = async (contactId: string) => {
+  const response = await fetch(`${getApiBaseUrl()}/api/scheduled-calls/${contactId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || 'Failed to delete scheduled call');
+  }
+  return response.json();
+};
+
 export const createCampaign = async (userId: string, name: string, agentId?: string, concurrentCalls?: number, retryAttempts?: number) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns`, {
     method: 'POST',

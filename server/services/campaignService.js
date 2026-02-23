@@ -2,6 +2,8 @@ const { v4: uuidv4 } = require('uuid');
 const twilio = require('twilio');
 const { getBackendUrl } = require('../config/backendUrl');
 const { decrypt } = require('../utils/encryption.js');
+const crypto = require('crypto');
+const axios = require('axios');
 
 class CampaignService {
     constructor(mysqlPool, walletService, costCalculator, geminiService) {
@@ -607,11 +609,12 @@ class CampaignService {
             [status, callDuration, callCost, llmClassification || null, scheduleTime || null, transcript || null, meetLink || null, contactId]
         );
 
-        // Get contact and campaign details for Google Sheets logging
+        // Get contact and campaign details for Google Sheets logging and Webhooks
         const [contacts] = await this.mysqlPool.execute(
-            `SELECT cc.*, c.name as campaign_name, c.user_id, c.agent_id, c.max_retry_attempts
+            `SELECT cc.*, c.name as campaign_name, c.user_id, c.agent_id, c.max_retry_attempts, a.settings as agent_settings
              FROM campaign_contacts cc
              JOIN campaigns c ON cc.campaign_id = c.id
+             LEFT JOIN agents a ON c.agent_id = a.id
              WHERE cc.id = ?`,
             [contactId]
         );
@@ -652,6 +655,56 @@ class CampaignService {
             } catch (error) {
                 console.error('Failed to log to Google Sheets:', error.message);
                 // Don't fail the whole operation if Google Sheets logging fails
+            }
+
+            // Send webhook if configured via agent settings
+            if (contact.agent_settings) {
+                try {
+                    const settingsObj = typeof contact.agent_settings === 'string' ? JSON.parse(contact.agent_settings) : contact.agent_settings;
+
+                    if (settingsObj.webhookEnabled && settingsObj.webhookUrl) {
+                        const payload = {
+                            event: "call.completed",
+                            timestamp: new Date().toISOString(),
+                            contact: {
+                                id: contact.id,
+                                name: contact.name,
+                                phone: contact.phone_number,
+                                email: contact.email,
+                            },
+                            campaign: {
+                                id: contact.campaign_id,
+                                name: contact.campaign_name,
+                            },
+                            call: {
+                                id: contact.call_id,
+                                status: status,
+                                duration_seconds: callDuration,
+                                cost_usd: callCost,
+                                outcome: llmClassification,
+                                transcript: transcript,
+                                recording_url: recordingUrl,
+                                meet_link: meetLink,
+                                schedule_time: scheduleTime,
+                            }
+                        };
+
+                        const headers = { 'Content-Type': 'application/json' };
+
+                        if (settingsObj.webhookSecret) {
+                            const stringPayload = JSON.stringify(payload);
+                            const signature = crypto.createHmac('sha256', settingsObj.webhookSecret).update(stringPayload).digest('hex');
+                            headers['x-ziya-signature'] = signature;
+                        }
+
+                        axios.post(settingsObj.webhookUrl, payload, { headers, timeout: 5000 }).catch(e => {
+                            console.error(`Failed to push webhook to ${settingsObj.webhookUrl}:`, e.message);
+                        });
+                        console.log(`✅ Dispatched webhook for call completion to ${settingsObj.webhookUrl}`);
+                    }
+                } catch (e) {
+                    console.error('Failed to parse agent_settings for webhook or send webhook:', e.message);
+                }
             }
         }
     }
