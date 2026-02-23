@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  node-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ziya-voice
+    restart: unless-stopped
+    ports:
+      - "80:3000"
+    environment:
+      NODE_ENV: development
