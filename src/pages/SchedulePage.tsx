@@ -5,10 +5,12 @@ import {
     ClockIcon,
     PhoneIcon,
     MagnifyingGlassIcon,
-    ChevronDownIcon
+    ChevronDownIcon,
+    EllipsisVerticalIcon,
+    XMarkIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchScheduledCalls, fetchCampaigns } from '../utils/api';
+import { fetchScheduledCalls, fetchCampaigns, rescheduleCall, deleteScheduledCall } from '../utils/api';
 
 // --- Types ---
 
@@ -40,56 +42,93 @@ const SchedulePage: React.FC = () => {
 
     const [allCampaigns, setAllCampaigns] = useState<string[]>([]);
 
-    useEffect(() => {
-        const loadData = async () => {
-            if (!user?.id) return;
-            try {
-                const [callsRes, campsRes] = await Promise.all([
-                    fetchScheduledCalls(user.id),
-                    fetchCampaigns(user.id)
-                ]);
+    const [actionMenuOpen, setActionMenuOpen] = useState<string | null>(null);
+    const [rescheduleModal, setRescheduleModal] = useState<{ isOpen: boolean, contactId: string, leadName: string, date: string }>({ isOpen: false, contactId: '', leadName: '', date: '' });
+    const [isRescheduling, setIsRescheduling] = useState(false);
 
-                if (campsRes.success && campsRes.data) {
-                    const campNames = campsRes.data.map((c: any) => c.name);
-                    setAllCampaigns(Array.from(new Set(campNames)) as string[]);
-                }
+    const loadData = async () => {
+        if (!user?.id) return;
+        try {
+            const [callsRes, campsRes] = await Promise.all([
+                fetchScheduledCalls(user.id),
+                fetchCampaigns(user.id)
+            ]);
 
-                if (callsRes.success && callsRes.data) {
-                    const intentLabels: Record<string, string> = {
-                        'interested': 'Interested',
-                        'not_interested': 'Not Interested',
-                        'needs_demo': 'Needs Demo',
-                        'scheduled_meeting': 'Scheduled Meeting',
-                        '1_on_1_session_requested': '1-on-1 Requested'
-                    };
-
-                    const fetchedCalls: CallLog[] = callsRes.data.map((r: any) => ({
-                        id: r.id,
-                        leadName: r.name || 'Unknown',
-                        phoneNumber: r.phone_number,
-                        agentId: r.agentId || 'unknown',
-                        agentName: r.agentName || 'Unknown Agent',
-                        scheduledTime: r.schedule_time,
-                        status: r.status === 'completed' ? 'Completed' : 'Scheduled',
-                        outcome: intentLabels[r.intent] || r.intent,
-                        campaignName: r.campaignName || 'Unassigned',
-                        meetLink: r.meet_link,
-                    }));
-                    setCalls(fetchedCalls);
-                    // Open all campaigns by default
-                    const uniqueCamps = Array.from(new Set(fetchedCalls.map(c => c.campaignName || 'Unassigned')));
-                    const initialExpanded: Record<string, boolean> = {};
-                    uniqueCamps.forEach(c => initialExpanded[c] = true);
-                    setExpandedCampaigns(initialExpanded);
-                }
-            } catch (err) {
-                console.error('Failed to load schedule data', err);
+            if (campsRes.success && campsRes.data) {
+                const campNames = campsRes.data.map((c: any) => c.name);
+                setAllCampaigns(Array.from(new Set(campNames)) as string[]);
             }
-        };
+
+            if (callsRes.success && callsRes.data) {
+                const intentLabels: Record<string, string> = {
+                    'interested': 'Interested',
+                    'not_interested': 'Not Interested',
+                    'needs_demo': 'Needs Demo',
+                    'scheduled_meeting': 'Scheduled Meeting',
+                    '1_on_1_session_requested': '1-on-1 Requested'
+                };
+
+                const fetchedCalls: CallLog[] = callsRes.data.map((r: any) => ({
+                    id: r.id,
+                    leadName: r.name || 'Unknown',
+                    phoneNumber: r.phone_number,
+                    agentId: r.agentId || 'unknown',
+                    agentName: r.agentName || 'Unknown Agent',
+                    scheduledTime: r.schedule_time,
+                    status: r.status === 'completed' ? 'Completed' : 'Scheduled',
+                    outcome: intentLabels[r.intent] || r.intent,
+                    campaignName: r.campaignName || 'Unassigned',
+                    meetLink: r.meet_link,
+                }));
+                setCalls(fetchedCalls);
+                // Open all campaigns by default
+                const uniqueCamps = Array.from(new Set(fetchedCalls.map(c => c.campaignName || 'Unassigned')));
+                const initialExpanded: Record<string, boolean> = {};
+                uniqueCamps.forEach(c => initialExpanded[c] = true);
+                setExpandedCampaigns(initialExpanded);
+            }
+        } catch (err) {
+            console.error('Failed to load schedule data', err);
+        }
+    };
+
+    useEffect(() => {
         loadData();
     }, [user?.id]);
 
     // --- Helpers ---
+
+    const handleRescheduleSubmit = async () => {
+        if (!rescheduleModal.date) {
+            alert("Please select a valid date and time.");
+            return;
+        }
+        setIsRescheduling(true);
+        try {
+            await rescheduleCall(rescheduleModal.contactId, rescheduleModal.date);
+            alert("Meeting rescheduled successfully! A new invite has been sent.");
+            setRescheduleModal({ isOpen: false, contactId: '', leadName: '', date: '' });
+            await loadData();
+        } catch (error: any) {
+            console.error('Reschedule failed:', error);
+            alert("Failed to reschedule: " + error.message);
+        } finally {
+            setIsRescheduling(false);
+        }
+    };
+
+    const handleDeleteCall = async (contactId: string) => {
+        if (!window.confirm("Are you sure you want to delete this scheduled meeting?")) return;
+        try {
+            await deleteScheduledCall(contactId);
+            alert("Meeting deleted successfully.");
+            setActionMenuOpen(null);
+            await loadData();
+        } catch (error: any) {
+            console.error('Delete failed:', error);
+            alert("Failed to delete meeting: " + error.message);
+        }
+    };
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -186,7 +225,7 @@ const SchedulePage: React.FC = () => {
                 {/* Accordion Grouped Tables */}
                 <div className="space-y-6">
                     {Object.entries(groupedCalls).map(([campaign, campaignCalls]) => (
-                        <div key={campaign} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm transition-all duration-300">
+                        <div key={campaign} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm transition-all duration-300">
                             {/* Accordion Header */}
                             <button
                                 onClick={() => toggleCampaign(campaign)}
@@ -209,7 +248,7 @@ const SchedulePage: React.FC = () => {
 
                             {/* Accordion Body */}
                             {expandedCampaigns[campaign] && (
-                                <div className="overflow-x-auto border-t border-slate-100 dark:border-slate-800 animate-in slide-in-from-top-2 duration-200">
+                                <div className="border-t border-slate-100 dark:border-slate-800 animate-in slide-in-from-top-2 duration-200">
                                     <table className="w-full text-left">
                                         <thead className="bg-slate-50/30 dark:bg-slate-900/30 border-b border-slate-100 dark:border-slate-800/50">
                                             <tr>
@@ -219,6 +258,7 @@ const SchedulePage: React.FC = () => {
                                                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Assigned Agent</th>
                                                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
                                                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Result/Feedback</th>
+                                                <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
@@ -267,16 +307,60 @@ const SchedulePage: React.FC = () => {
                                                                 <span className="text-xs text-slate-400 italic">No feedback yet</span>
                                                             )}
                                                             {call.meetLink && (
-                                                                <a
-                                                                    href={call.meetLink}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-500/30 transition-all hover:-translate-y-0.5"
-                                                                >
-                                                                    Join Google Meet
-                                                                </a>
+                                                                <span className="text-xs text-slate-500 truncate max-w-[150px]">
+                                                                    Meeting Assigned
+                                                                </span>
                                                             )}
                                                         </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right relative">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setActionMenuOpen(actionMenuOpen === call.id ? null : call.id);
+                                                            }}
+                                                            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                                                        >
+                                                            <EllipsisVerticalIcon className="w-5 h-5 text-slate-500" />
+                                                        </button>
+
+                                                        {actionMenuOpen === call.id && (
+                                                            <div className="absolute right-8 top-10 mt-2 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 py-2 z-50">
+                                                                {call.meetLink && (
+                                                                    <a
+                                                                        href={call.meetLink}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="block px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-primary transition-colors text-left"
+                                                                    >
+                                                                        Join Google Meet
+                                                                    </a>
+                                                                )}
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setRescheduleModal({
+                                                                            isOpen: true,
+                                                                            contactId: call.id,
+                                                                            leadName: call.leadName,
+                                                                            date: ''
+                                                                        });
+                                                                        setActionMenuOpen(null);
+                                                                    }}
+                                                                    className="w-full block px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-primary transition-colors text-left"
+                                                                >
+                                                                    Reschedule
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleDeleteCall(call.id);
+                                                                    }}
+                                                                    className="w-full block px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left"
+                                                                >
+                                                                    Delete
+                                                                </button>
+                                                            </div>
+                                                        )}
                                                     </td>
                                                 </tr>
                                             ))}
@@ -293,6 +377,53 @@ const SchedulePage: React.FC = () => {
                     )}
                 </div>
             </div>
+
+            {/* Reschedule Modal */}
+            {rescheduleModal.isOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-0">
+                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setRescheduleModal({ isOpen: false, contactId: '', leadName: '', date: '' })} />
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl relative animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Reschedule Meeting</h2>
+                            <button onClick={() => setRescheduleModal({ isOpen: false, contactId: '', leadName: '', date: '' })} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
+                                <XMarkIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-6 font-medium">
+                            Select a new date and time for **{rescheduleModal.leadName}**. We will automatically generate a new Meet link and email the customer and admin.
+                        </p>
+
+                        <div className="space-y-4 mb-8">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">New Date & Time</label>
+                                <input
+                                    type="datetime-local"
+                                    value={rescheduleModal.date}
+                                    onChange={(e) => setRescheduleModal(prev => ({ ...prev, date: e.target.value }))}
+                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all dark:text-white"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setRescheduleModal({ isOpen: false, contactId: '', leadName: '', date: '' })}
+                                className="flex-1 px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleRescheduleSubmit}
+                                disabled={isRescheduling}
+                                className="flex-1 px-4 py-3 bg-primary text-white rounded-xl font-bold hover:bg-primary-hover transition-colors flex justify-center items-center disabled:opacity-50"
+                            >
+                                {isRescheduling ? 'Processing...' : 'Reschedule'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </AppLayout>
     );
 };

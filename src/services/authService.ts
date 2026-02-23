@@ -4,9 +4,13 @@ export interface User {
   id: string;
   email: string;
   username?: string;
+  full_name?: string;
+  profile_image?: string;
+  dob?: string;
+  gender?: string;
   google_id?: string;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Profile {
@@ -124,9 +128,9 @@ export const authService = {
   },
 
   // Get user profile
-  async getUserProfile(userId: string): Promise<Profile | null> {
+  async getUserProfile(userId: string): Promise<User | null> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/profiles/${userId}`);
+      const response = await fetch(`${getApiBaseUrl()}/api/users/profile/${userId}`);
 
       const result = await response.json();
 
@@ -134,10 +138,34 @@ export const authService = {
         throw new Error(result.message || 'Failed to fetch profile');
       }
 
-      return result.profile;
+      return result.user;
     } catch (error) {
       console.error('Error fetching profile:', error);
       return null;
+    }
+  },
+
+  // Update user profile
+  async updateUserProfile(userId: string, data: Partial<User>): Promise<User | null> {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/users/profile/${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to update user profile');
+      }
+
+      return result.user;
+    } catch (error) {
+      console.error('Error updating user metadata:', error);
+      throw error;
     }
   }
 };

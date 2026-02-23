@@ -1,68 +1,73 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import AppLayout from '../components/AppLayout';
-import { AppSettings } from '../types';
 import {
-    Cog6ToothIcon,
     UserIcon,
-    LanguageIcon,
-    SpeakerWaveIcon,
-    MoonIcon,
-    SunIcon,
-    CheckIcon,
-    ArrowPathIcon
+    CalendarIcon,
+    EnvelopeIcon,
+    PhotoIcon,
+    CheckIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
 
 interface SettingsPageProps { }
 
-// Helper to safely get saved settings from localStorage
-const getSavedSettings = () => {
-    try {
-        const saved = localStorage.getItem('ziyaAgentSettings');
-        if (saved) {
-            return JSON.parse(saved);
-        }
-    } catch (error) {
-        console.error("Failed to parse settings from localStorage", error);
-    }
-    return null;
-};
-
-
 const SettingsPage: React.FC<SettingsPageProps> = () => {
-    const { user } = useAuth();
-    const { theme, toggleTheme } = useTheme();
-    const [settings, setSettings] = useState<AppSettings>(() => {
-        const savedSettings = getSavedSettings();
-        return {
-            agentName: savedSettings?.agentName || 'Ziya',
-            language: savedSettings?.language || 'English (US)',
-            voiceType: savedSettings?.voiceType || 'Male',
-        };
+    const { user, updateUser } = useAuth();
+
+    const [profile, setProfile] = useState({
+        full_name: '',
+        email: '',
+        dob: '',
+        gender: '',
+        profile_image: ''
     });
 
+    useEffect(() => {
+        if (user) {
+            setProfile({
+                full_name: user.full_name || user.username || '',
+                email: user.email || '',
+                dob: user.dob || '',
+                gender: user.gender || '',
+                profile_image: user.profile_image || ''
+            });
+        }
+    }, [user]);
+
     const [saveStatus, setSaveStatus] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setSettings(prev => ({ ...prev, [name]: value }));
+        setProfile(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleRadioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setSettings(prev => ({ ...prev, voiceType: e.target.value }));
-    }
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setProfile(prev => ({ ...prev, profile_image: reader.result as string }));
+            };
+            reader.readAsDataURL(file);
+        }
+    };
 
-    const handleSaveSettings = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleSaveProfile = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        setIsSaving(true);
         try {
-            localStorage.setItem('ziyaAgentSettings', JSON.stringify(settings));
-            setSaveStatus('✅ Settings saved successfully!');
-            setTimeout(() => setSaveStatus(''), 3000); // Hide message after 3 seconds
-        } catch (error) {
-            console.error("Failed to save settings to localStorage", error);
-            setSaveStatus('❌ Failed to save settings.');
+            const result = await updateUser(profile);
+            if (result.error) throw new Error(result.error.message);
+
+            setSaveStatus('✅ Profile saved successfully!');
             setTimeout(() => setSaveStatus(''), 3000);
+        } catch (error) {
+            console.error("Failed to save profile", error);
+            setSaveStatus('❌ Failed to save profile.');
+            setTimeout(() => setSaveStatus(''), 3000);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -70,18 +75,19 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
         <AppLayout
             breadcrumbs={[
                 { label: 'Dashboard', path: '/dashboard' },
-                { label: 'Settings' }
+                { label: 'User Profile' }
             ]}
-            pageTitle="Settings"
-            pageDescription="Manage your workspace preferences and application settings."
+            pageTitle="User Profile"
+            pageDescription="Manage your personal details and account information."
             primaryAction={
                 <button
-                    form="settings-form"
+                    form="profile-form"
                     type="submit"
-                    className="flex items-center px-6 py-2.5 rounded-xl bg-primary text-white font-black text-sm shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all group"
+                    disabled={isSaving}
+                    className="flex items-center px-6 py-2.5 rounded-xl bg-primary text-white font-black text-sm shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all group disabled:opacity-50"
                 >
                     <CheckIcon className="h-4 w-4 mr-2" />
-                    Save Preferences
+                    {isSaving ? 'Saving...' : 'Save Profile'}
                 </button>
             }
         >
@@ -101,147 +107,128 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
                     </div>
                 )}
 
-                <form id="settings-form" onSubmit={handleSaveSettings} className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {/* Navigation Sidebar */}
-                    <div className="space-y-4">
-                        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-3 shadow-sm">
-                            {[
-                                { id: 'general', label: 'General Preferences', icon: Cog6ToothIcon, active: true },
-                                { id: 'account', label: 'Account Details', icon: UserIcon, active: false },
-                                { id: 'security', label: 'Security & Access', icon: ArrowPathIcon, active: false }
-                            ].map(item => (
-                                <button
-                                    key={item.id}
-                                    type="button"
-                                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all ${item.active
-                                        ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                                        : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'
-                                        }`}
-                                >
-                                    <item.icon className="h-5 w-5" />
-                                    {item.label}
-                                </button>
-                            ))}
+                <form id="profile-form" onSubmit={handleSaveProfile} className="space-y-6">
+                    {/* Profile Section */}
+                    <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden transition-all hover:shadow-md">
+                        <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                            <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Personal Details</h3>
+                            <UserIcon className="h-5 w-5 text-slate-300" />
                         </div>
+                        <div className="p-8 space-y-6">
 
-                        <div className="p-6 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-100 dark:border-slate-800/50">
-                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Workspace Insight</h4>
-                            <p className="text-xs text-slate-500 leading-relaxed italic">
-                                Customize your agent behavior and platform aesthetics to match your brand identity.
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Main Content Areas */}
-                    <div className="md:col-span-2 space-y-6">
-                        {/* Profile Section */}
-                        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden transition-all hover:shadow-md">
-                            <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                                <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Global Identity</h3>
-                                <UserIcon className="h-5 w-5 text-slate-300" />
+                            {/* Profile Image URL */}
+                            <div>
+                                <label htmlFor="profile_image" className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Profile Image</label>
+                                <div className="relative group flex items-center gap-4">
+                                    <div className="flex-1 relative">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
+                                            <PhotoIcon className="h-5 w-5" />
+                                        </div>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            name="profile_image"
+                                            id="profile_image"
+                                            onChange={handleImageUpload}
+                                            className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all font-bold text-slate-900 dark:text-white file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                                        />
+                                    </div>
+                                    {profile.profile_image && (
+                                        <div className="shrink-0 relative">
+                                            <img src={profile.profile_image} alt="Profile Preview" className="h-16 w-16 rounded-2xl object-cover shadow-md border border-slate-200 dark:border-slate-700" />
+                                            <button
+                                                type="button"
+                                                onClick={() => setProfile(prev => ({ ...prev, profile_image: '' }))}
+                                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-sm hover:bg-red-600 transition-colors"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                            <div className="p-8 space-y-6">
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Full Name */}
                                 <div>
-                                    <label htmlFor="agentName" className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Preferred Agent Name</label>
+                                    <label htmlFor="full_name" className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Full Name</label>
                                     <div className="relative group">
                                         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
                                             <UserIcon className="h-5 w-5" />
                                         </div>
                                         <input
                                             type="text"
-                                            name="agentName"
-                                            id="agentName"
-                                            value={settings.agentName}
+                                            name="full_name"
+                                            id="full_name"
+                                            value={profile.full_name}
                                             onChange={handleInputChange}
                                             className="w-full pl-12 pr-4 py-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all font-bold text-slate-900 dark:text-white"
-                                            placeholder="System Agent Name"
+                                            placeholder="Jane Doe"
                                         />
                                     </div>
-                                    <p className="mt-2 text-[10px] text-slate-500 italic">This name will be used as the default fallback for new agents.</p>
+                                </div>
+
+                                {/* Email Address */}
+                                <div>
+                                    <label htmlFor="email" className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Email Address</label>
+                                    <div className="relative group">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
+                                            <EnvelopeIcon className="h-5 w-5" />
+                                        </div>
+                                        <input
+                                            type="email"
+                                            name="email"
+                                            id="email"
+                                            value={profile.email}
+                                            onChange={handleInputChange}
+                                            className="w-full pl-12 pr-4 py-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all font-bold text-slate-900 dark:text-white opacity-75"
+                                            placeholder="jane@example.com"
+                                            readOnly
+                                        />
+                                    </div>
+                                    <p className="mt-2 text-[10px] text-slate-500 italic">Email address cannot be changed directly.</p>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* Language & Voice Section */}
-                        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden transition-all hover:shadow-md">
-                            <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                                <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Linguistic Controls</h3>
-                                <LanguageIcon className="h-5 w-5 text-slate-300" />
-                            </div>
-                            <div className="p-8 space-y-8">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Date of Birth */}
                                 <div>
-                                    <label htmlFor="language" className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Primary Interface Language</label>
+                                    <label htmlFor="dob" className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Date of Birth</label>
+                                    <div className="relative group">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
+                                            <CalendarIcon className="h-5 w-5" />
+                                        </div>
+                                        <input
+                                            type="date"
+                                            name="dob"
+                                            id="dob"
+                                            value={profile.dob}
+                                            onChange={handleInputChange}
+                                            className="w-full pl-12 pr-4 py-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all font-bold text-slate-900 dark:text-white"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Gender */}
+                                <div>
+                                    <label htmlFor="gender" className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Gender</label>
                                     <div className="relative">
                                         <select
-                                            id="language"
-                                            name="language"
-                                            value={settings.language}
+                                            id="gender"
+                                            name="gender"
+                                            value={profile.gender}
                                             onChange={handleInputChange}
                                             className="w-full py-4 px-5 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-2xl font-bold appearance-none focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all text-slate-900 dark:text-white"
                                         >
-                                            <option>English (US)</option>
-                                            <option>English (UK)</option>
-                                            <option>Spanish</option>
-                                            <option>French</option>
+                                            <option value="">Select Gender</option>
+                                            <option value="Male">Male</option>
+                                            <option value="Female">Female</option>
+                                            <option value="Non-Binary">Non-Binary</option>
+                                            <option value="Prefer not to say">Prefer not to say</option>
                                         </select>
-                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                                            <ArrowPathIcon className="h-5 w-5 rotate-45" />
-                                        </div>
                                     </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Default Voice Archetype</label>
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                        {['Male', 'Female', 'Neutral'].map((type) => (
-                                            <label
-                                                key={type}
-                                                className={`cursor-pointer p-4 rounded-2xl border-2 flex items-center gap-3 transition-all ${settings.voiceType === type
-                                                    ? 'border-primary bg-primary/5 text-primary shadow-sm'
-                                                    : 'border-slate-100 dark:border-slate-800 bg-transparent text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                    }`}
-                                            >
-                                                <input
-                                                    type="radio"
-                                                    name="voiceType"
-                                                    value={type}
-                                                    checked={settings.voiceType === type}
-                                                    onChange={handleRadioChange}
-                                                    className="sr-only"
-                                                />
-                                                <div className={`p-2 rounded-xl ${settings.voiceType === type ? 'bg-primary text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
-                                                    <SpeakerWaveIcon className="h-4 w-4" />
-                                                </div>
-                                                <span className="font-black text-sm">{type}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Theme Section */}
-                        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden transition-all hover:shadow-md">
-                            <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                                <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Interface Aesthetics</h3>
-                                {theme === 'dark' ? <MoonIcon className="h-5 w-5 text-slate-300" /> : <SunIcon className="h-5 w-5 text-amber-500" />}
-                            </div>
-                            <div className="p-8">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <h4 className="text-sm font-black text-slate-900 dark:text-white mb-1">Visual Mode</h4>
-                                        <p className="text-xs text-slate-500 font-medium italic">Toggle between light and dark system experiences.</p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={toggleTheme}
-                                        className="relative group p-1 w-16 h-9 rounded-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 transition-colors duration-500 focus:outline-none"
-                                    >
-                                        <div className={`absolute top-1 left-1 w-7 h-7 rounded-full shadow-lg transform transition-transform duration-500 flex items-center justify-center ${theme === 'dark' ? 'translate-x-7 bg-primary' : 'translate-x-0 bg-white'
-                                            }`}>
-                                            {theme === 'dark' ? <MoonIcon className="h-4 w-4 text-white" /> : <SunIcon className="h-4 w-4 text-amber-500" />}
-                                        </div>
-                                    </button>
                                 </div>
                             </div>
                         </div>
