@@ -969,6 +969,47 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+// Get user profile
+app.get('/api/users/profile/:id', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const [rows] = await mysqlPool.execute(
+      'SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, created_at, updated_at FROM users WHERE id = ?',
+      [userId]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    res.json({ success: true, user: rows[0] });
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Update user profile
+app.put('/api/users/profile/:id', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { email, username, full_name, profile_image, dob, gender } = req.body;
+
+    await mysqlPool.execute(
+      'UPDATE users SET email = ?, username = ?, full_name = ?, profile_image = ?, dob = ?, gender = ? WHERE id = ?',
+      [email || null, username || null, full_name || null, profile_image || null, dob || null, gender || null, userId]
+    );
+
+    const [rows] = await mysqlPool.execute(
+      'SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, created_at, updated_at FROM users WHERE id = ?',
+      [userId]
+    );
+
+    res.json({ success: true, user: rows[0] });
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ==================== ADMIN PANEL ENDPOINTS ====================
 
 // TEPMORARY ENDPOINT TO CREATE ADMIN
@@ -2923,6 +2964,42 @@ app.get('/api/campaigns', async (req, res) => {
   }
 });
 
+app.get('/api/reports', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'User ID is required' });
+    }
+
+    const query = `
+      SELECT 
+          cc.id, 
+          cc.created_at, 
+          c.name as campaignName, 
+          a.name as agentName, 
+          cc.phone_number as calledNumber, 
+          'Outbound' as type,
+          cc.status, 
+          IFNULL(cc.intent, 'Pending') as result,
+          cc.completed_at,
+          cc.schedule_time,
+          cl.recording_url
+      FROM campaign_contacts cc
+      JOIN campaigns c ON cc.campaign_id = c.id
+      LEFT JOIN agents a ON c.agent_id = a.id
+      LEFT JOIN calls cl ON cc.call_id = cl.call_sid
+      WHERE c.user_id = ?
+      ORDER BY cc.created_at DESC
+    `;
+
+    const [rows] = await mysqlPool.execute(query, [userId]);
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Error fetching reports:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Get a specific campaign by ID with records
 app.get('/api/campaigns/:id', async (req, res) => {
   try {
@@ -4144,6 +4221,78 @@ app.get('/api/scheduled-calls', async (req, res) => {
   }
 });
 
+// Delete Scheduled call
+app.delete('/api/scheduled-calls/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [result] = await mysqlPool.execute('DELETE FROM campaign_contacts WHERE id = ?', [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Scheduled call not found' });
+    }
+
+    res.json({ success: true, message: 'Scheduled call deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting scheduled call:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Reschedule Call
+app.post('/api/scheduled-calls/reschedule', async (req, res) => {
+  try {
+    const { contactId, newTime } = req.body;
+    if (!contactId || !newTime) return res.status(400).json({ success: false, message: 'Contact ID and new time required' });
+
+    const [rows] = await mysqlPool.execute(`
+      SELECT cc.email, cc.name, cc.campaign_id, c.user_id 
+      FROM campaign_contacts cc
+      JOIN campaigns c ON cc.campaign_id = c.id
+      WHERE cc.id = ?
+    `, [contactId]);
+
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Lead not found' });
+    const contactInfo = rows[0];
+
+    // Attempt to generate meet link and send email if email exists
+    let newMeetLink = null;
+    if (contactInfo.email) {
+      try {
+        const emailService = require('./services/emailService.js');
+        const [campRows] = await mysqlPool.execute(
+          'SELECT a.name as agent_name FROM campaigns c JOIN agents a ON c.agent_id = a.id WHERE c.id = ?',
+          [contactInfo.campaign_id]
+        );
+        const agentName = campRows.length > 0 ? campRows[0].agent_name : 'Ziya Voice Agent';
+
+        newMeetLink = emailService.generateMeetLink();
+        await emailService.sendMeetingInvite(
+          contactInfo.email,
+          contactInfo.name,
+          agentName,
+          newTime,
+          newMeetLink
+        );
+      } catch (err) {
+        console.error('Error sending reschedule email:', err);
+      }
+    }
+
+    // Update DB
+    const updateQuery = `
+      UPDATE campaign_contacts
+      SET schedule_time = ?, meet_link = ?, status = 'Rescheduled'
+      WHERE id = ?
+    `;
+    await mysqlPool.execute(updateQuery, [newTime, newMeetLink || null, contactId]);
+
+    res.json({ success: true, message: 'Meeting rescheduled successfully', meetLink: newMeetLink });
+  } catch (error) {
+    console.error('Error rescheduling call:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Get User Phone Numbers (from user_twilio_numbers) — for campaign dropdown
 app.get('/api/phone-numbers', async (req, res) => {
   try {
@@ -4155,10 +4304,10 @@ app.get('/api/phone-numbers', async (req, res) => {
     // verification_code, verification_expires_at, twilio_account_sid, twilio_auth_token, created_at
     const [rows] = await mysqlPool.execute(
       `SELECT id, phone_number, region, verified,
-              (twilio_account_sid IS NOT NULL) AS has_credentials
+      (twilio_account_sid IS NOT NULL) AS has_credentials
        FROM user_twilio_numbers
        WHERE user_id = ?
-       ORDER BY created_at DESC`,
+  ORDER BY created_at DESC`,
       [userId]
     );
 
@@ -4232,6 +4381,95 @@ app.get('/api/campaigns/:id/export', async (req, res) => {
 
   } catch (error) {
     console.error('Error exporting campaign:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get Failed Campaign Notifications
+app.get('/api/notifications/failures', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'User ID required' });
+    }
+
+    // A campaign is considered "failed" if it hit an error. Usually this manifests either as status='error' or 'failed' on the campaign itself,
+    // OR it has contacts with status='failed'.
+    const query = `
+      SELECT 
+        c.id as campaign_id, 
+        c.name as campaign_name, 
+        COUNT(cc.id) as failed_calls, 
+        MAX(cc.error_message) as last_error, 
+        MAX(cc.updated_at) as last_failed_at
+      FROM campaigns c
+      JOIN campaign_contacts cc ON c.id = cc.campaign_id
+      WHERE c.user_id = ? AND cc.status = 'failed'
+      GROUP BY c.id, c.name
+      ORDER BY last_failed_at DESC
+      LIMIT 10
+    `;
+    const [failedContacts] = await mysqlPool.execute(query, [userId]);
+
+    // Also get campaigns where the campaign itself failed (just in case)
+    const [failedCampaigns] = await mysqlPool.execute(
+      `SELECT id as campaign_id, name as campaign_name, updated_at as last_failed_at, 'Campaign stopped unexpectedly' as last_error 
+       FROM campaigns WHERE user_id = ? AND status IN ('error', 'failed') ORDER BY updated_at DESC LIMIT 5`,
+      [userId]
+    );
+
+    // Merge them and format into notifications
+    const notificationsMap = new Map();
+
+    failedCampaigns.forEach(c => {
+      notificationsMap.set(c.campaign_id, {
+        id: 'camp_' + c.campaign_id,
+        title: `Campaign Failed: ${c.campaign_name}`,
+        message: c.last_error || 'An unexpected error occurred.',
+        timeRaw: c.last_failed_at,
+        read: false
+      });
+    });
+
+    failedContacts.forEach(f => {
+      if (!notificationsMap.has(f.campaign_id)) {
+        notificationsMap.set(f.campaign_id, {
+          id: 'camp_calls_' + f.campaign_id,
+          title: `Campaign Calls Failed: ${f.campaign_name}`,
+          message: `${f.failed_calls} call(s) failed. Error: ${f.last_error || 'Unknown error'}`,
+          timeRaw: f.last_failed_at,
+          read: false
+        });
+      }
+    });
+
+    let notifications = Array.from(notificationsMap.values());
+    notifications.sort((a, b) => new Date(b.timeRaw).getTime() - new Date(a.timeRaw).getTime());
+
+    // Format human readable time for frontend
+    notifications = notifications.map(n => {
+      const diff = Date.now() - new Date(n.timeRaw).getTime();
+      const mins = Math.floor(diff / 60000);
+      const hours = Math.floor(mins / 60);
+      const days = Math.floor(hours / 24);
+      let timeStr = 'Just now';
+      if (days > 0) timeStr = `${days} day(s) ago`;
+      else if (hours > 0) timeStr = `${hours} hour(s) ago`;
+      else if (mins > 0) timeStr = `${mins} min(s) ago`;
+
+      return {
+        id: n.id,
+        title: n.title,
+        message: n.message,
+        time: timeStr,
+        timeRaw: n.timeRaw,
+        read: n.read
+      };
+    });
+
+    res.json({ success: true, notifications });
+  } catch (error) {
+    console.error('Error fetching failure notifications:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });

@@ -5,7 +5,7 @@ export enum Page {
     Campaigns = 'Campaigns',
     Agent = 'Agent',
     PhoneNo = 'Phone Numbers',
-    Settings = 'Settings',
+    Settings = 'User Profile',
     API = 'API',
     Credits = 'Credits',
     Schedule = 'Schedule',

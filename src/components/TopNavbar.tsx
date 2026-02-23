@@ -12,6 +12,7 @@ import {
     MoonIcon
 } from '@heroicons/react/24/outline';
 import { useTheme } from '../contexts/ThemeContext';
+import { getApiBaseUrl } from '../utils/api';
 
 interface TopNavbarProps {
     breadcrumbs: BreadcrumbItem[];
@@ -37,19 +38,70 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
     const dropdownRef = useRef<HTMLDivElement>(null);
     const notificationRef = useRef<HTMLDivElement>(null);
 
-    // Mock Notifications
-    const [notifications, setNotifications] = useState([
-        { id: 1, title: 'Welcome to Ziya Voice', message: 'Get started by creating your first agent.', time: 'Just now', read: false },
-        { id: 2, title: 'System Update', message: 'We have updated our voice models.', time: '2 hours ago', read: false }
-    ]);
+    const [notifications, setNotifications] = useState<any[]>([]);
+
+    const fetchNotifications = async () => {
+        if (!user) return;
+        try {
+            const res = await fetch(`${getApiBaseUrl()}/api/notifications/failures?userId=${user.id}`);
+            const data = await res.json();
+            if (data.success && data.notifications) {
+                // filter out deleted ones
+                const deletedMapStr = localStorage.getItem('ziya_deleted_notifications') || '{}';
+                const readMapStr = localStorage.getItem('ziya_read_notifications') || '{}';
+
+                try {
+                    const deletedMap = JSON.parse(deletedMapStr);
+                    const readMap = JSON.parse(readMapStr);
+
+                    const filtered = data.notifications.filter((n: any) => !deletedMap[n.id] || deletedMap[n.id] < new Date(n.timeRaw).getTime());
+                    const output = filtered.map((n: any) => {
+                        // Check if it's read by looking if we have read this exact time pattern.
+                        let isRead = false;
+                        if (readMap[n.id] && readMap[n.id] >= new Date(n.timeRaw).getTime()) {
+                            isRead = true;
+                        }
+                        return { ...n, read: isRead };
+                    });
+
+                    setNotifications(output);
+                } catch (e) {
+                    setNotifications(data.notifications);
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching notifications:', error);
+        }
+    };
+
+    useEffect(() => {
+        if (user) {
+            fetchNotifications();
+            const interval = setInterval(fetchNotifications, 60000); // Poll every minute
+            return () => clearInterval(interval);
+        }
+    }, [user]);
 
     const unreadCount = notifications.filter(n => !n.read).length;
 
     const handleMarkAllRead = () => {
+        const readMapStr = localStorage.getItem('ziya_read_notifications') || '{}';
+        const readMap = JSON.parse(readMapStr);
+
+        notifications.forEach(n => {
+            readMap[n.id] = new Date(n.timeRaw).getTime();
+        });
+        localStorage.setItem('ziya_read_notifications', JSON.stringify(readMap));
         setNotifications(notifications.map(n => ({ ...n, read: true })));
     };
 
     const handleClearNotifications = () => {
+        const deletedMapStr = localStorage.getItem('ziya_deleted_notifications') || '{}';
+        const deletedMap = JSON.parse(deletedMapStr);
+        notifications.forEach(n => {
+            deletedMap[n.id] = new Date(n.timeRaw).getTime();
+        });
+        localStorage.setItem('ziya_deleted_notifications', JSON.stringify(deletedMap));
         setNotifications([]);
     };
 
@@ -189,12 +241,16 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                             className="flex items-center space-x-3 p-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200"
                         >
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-primary/20">
-                                {getUserInitials(user?.email, user?.username)}
-                            </div>
+                            {user?.profile_image ? (
+                                <img src={user.profile_image} alt="Profile" className="w-10 h-10 rounded-xl object-cover shadow-lg shadow-primary/20" />
+                            ) : (
+                                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-primary/20">
+                                    {getUserInitials(user?.email, user?.username)}
+                                </div>
+                            )}
                             <div className="hidden md:block text-left">
                                 <p className="text-sm font-bold text-slate-900 dark:text-white leading-none mb-1">
-                                    {user?.username || user?.email?.split('@')[0] || 'User'}
+                                    {user?.full_name || user?.username || user?.email?.split('@')[0] || 'User'}
                                 </p>
                                 <p className="text-[10px] text-primary font-bold uppercase tracking-wider">
                                     {getOrganizationName(user?.email)}
@@ -244,7 +300,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                                         className="w-full px-3 py-2.5 text-left text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl flex items-center space-x-3 transition-colors"
                                     >
                                         <Cog6ToothIcon className="h-5 w-5 text-slate-400" />
-                                        <span className="font-medium">Settings</span>
+                                        <span className="font-medium">User Profile</span>
                                     </button>
 
                                     <button

@@ -2467,34 +2467,6 @@ When you need to collect information from the user, ask for the required paramet
                                         className="mt-2 w-full px-4 py-3 bg-slate-50/50 dark:bg-darkbg-surface border border-slate-200 dark:border-darkbg-lighter rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white"
                                     />
                                 </div>
-
-                                <div>
-                                    <label htmlFor="webhookSecret" className="block text-sm font-medium text-slate-700 dark:text-slate-200">Webhook Secret</label>
-                                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Secret key used to sign the payload (HMAC SHA256).</p>
-                                    <input
-                                        type="password"
-                                        id="webhookSecret"
-                                        name="settings.webhookSecret"
-                                        value={editedAgent.settings.webhookSecret || ''}
-                                        onChange={handleSettingsChange}
-                                        placeholder="Enter a strong secret key"
-                                        className="mt-2 w-full px-4 py-3 bg-slate-50/50 dark:bg-darkbg-surface border border-slate-200 dark:border-darkbg-lighter rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label htmlFor="webhookRetryAttempts" className="block text-sm font-medium text-slate-700 dark:text-slate-200">Retry Attempts</label>
-                                    <input
-                                        type="number"
-                                        id="webhookRetryAttempts"
-                                        name="settings.webhookRetryAttempts"
-                                        value={editedAgent.settings.webhookRetryAttempts || 3}
-                                        onChange={handleSettingsChange}
-                                        min="0"
-                                        max="10"
-                                        className="mt-2 w-full px-4 py-3 bg-slate-50/50 dark:bg-darkbg-surface border border-slate-200 dark:border-darkbg-lighter rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all font-bold text-slate-800 dark:text-white"
-                                    />
-                                </div>
                             </div>
                         )}
                     </SettingsCard>
