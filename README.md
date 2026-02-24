@@ -4,7 +4,6 @@
 Ziya-Voice is a voice-related service deployed on **Vercel**, designed to handle voice processing, APIs, and integrations within the Ziya ecosystem.
 
 ## Tech Stack
-- Vercel (Hosting & Deployment)
 - Node.js / Next.js
 - REST APIs
 - Environment-based configuration
