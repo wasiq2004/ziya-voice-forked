@@ -1,8 +1,3 @@
-/**
- * ⭐ SINGLE SOURCE OF TRUTH FOR BACKEND URL ⭐
- * Change this URL to update the backend URL everywhere in the application
- */
-
 export const getAuthHeaders = (extraHeaders = {}) => {
   const headers = { ...extraHeaders };
   const selectedCompany = localStorage.getItem('x-company-id');
@@ -277,6 +272,23 @@ export const updateConcurrentCalls = async (id: string, userId: string, concurre
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/concurrent-calls`, {
     method: 'PUT',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ userId, concurrentCalls })
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  // Validate content type before parsing JSON
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Received non-JSON response from server');
+  }
+  return response.json();
+};
+
+export const updateConcurrentCalls = async (id: string, userId: string, concurrentCalls: number) => {
+  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/concurrent-calls`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId, concurrentCalls })
   });
   if (!response.ok) {

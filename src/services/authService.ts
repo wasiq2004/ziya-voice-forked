@@ -17,7 +17,7 @@ export interface User {
 
 export interface Profile {
   id: string;
-  updated_at: string;
+https://github.com/aspiren-tech/ziya-voice/pull/5/conflict?name=src%252Fconstants.tsx&ancestor_oid=ac1bb21bf05d45075663e11185173e47727a4f11&base_oid=e1b34f1884834428031501e70a7e0b88ba96a2cf&head_oid=368a74c7bce2760aa5235bf4cbf029e2c4f54dc8  updated_at: string;
   username: string | null;
   full_name: string | null;
   avatar_url: string | null;
