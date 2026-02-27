@@ -1,5 +1,5 @@
-const INR_TO_CREDIT_RATE = 1; // 1 INR = 1 Credit
-const USD_TO_INR_RATE = 85; // 1 USD ≈ 85 INR
+const INR_TO_CREDIT_RATE = 1;
+const USD_TO_INR_RATE = 85;
 const HIDDEN_PROFIT_PERCENTAGE = 0.30; // 30% hidden profit
 
 function inrToCredits(inr) {

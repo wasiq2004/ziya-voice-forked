@@ -9,8 +9,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 var __generator = (this && this.__generator) || function (thisArg, body) {
-    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
-    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    var _ = { label: 0, sent: function () { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
+    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function () { return this; }), g;
     function verb(n) { return function (v) { return step([n, v]); }; }
     function step(op) {
         if (f) throw new TypeError("Generator is already executing.");
@@ -42,7 +42,7 @@ var database_js_1 = require("../config/database.js");
 var uuid_1 = require("uuid");
 
 var PhoneNumberService = /** @class */ (function () {
-    function PhoneNumberService() {}
+    function PhoneNumberService() { }
 
     // GET ALL PHONE NUMBERS
     PhoneNumberService.getPhoneNumbers = function (userId) {
@@ -81,7 +81,7 @@ var PhoneNumberService = /** @class */ (function () {
                                 try {
                                     console.warn("Warning: failed to parse capabilities for phone id=" + (row && row.id) + " - using default", e && e.message);
                                 }
-                                catch (_) {}
+                                catch (_) { }
                                 caps = { voice: true };
                             }
 
@@ -166,7 +166,7 @@ var PhoneNumberService = /** @class */ (function () {
                             try {
                                 console.warn("Warning: failed to parse capabilities for phone id=" + (row && row.id) + " - using default", e && e.message);
                             }
-                            catch (_) {}
+                            catch (_) { }
                             caps = { voice: true };
                         }
 
@@ -213,36 +213,40 @@ var PhoneNumberService = /** @class */ (function () {
     // ==========================
     PhoneNumberService.createPhoneNumber = function (userId, phoneNumberData) {
         return __awaiter(this, void 0, void 0, function () {
-            var id, number, countryCode, source, _a, agentName, _b, agentId, region, nextCycle, provider, _c, twilioSid, _d, capabilities, nextCycleDate, error_3;
+            var id, number, countryCode, source, _a, agentName, _b, agentId, region, nextCycle, provider, _c, twilioSid, _d, capabilities, nextCycleDate, companyId, userRows, error_3;
             return __generator(this, function (_e) {
                 switch (_e.label) {
                     case 0:
-                        _e.trys.push([0, 3, , 4]);
+                        _e.trys.push([0, 4, , 5]);
                         id = (0, uuid_1.v4)();
                         number = phoneNumberData.number, countryCode = phoneNumberData.countryCode, source = phoneNumberData.source, _a = phoneNumberData.agentName, agentName = _a === void 0 ? null : _a, _b = phoneNumberData.agentId, agentId = _b === void 0 ? null : _b, region = phoneNumberData.region, nextCycle = phoneNumberData.nextCycle, provider = phoneNumberData.provider, _c = phoneNumberData.twilioSid, twilioSid = _c === void 0 ? null : _c, _d = phoneNumberData.capabilities, capabilities = _d === void 0 ? null : _d;
                         nextCycleDate = nextCycle || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-                        return [4 /*yield*/, database_js_1.default.execute("INSERT INTO phone_numbers \
-(id, user_id, number, country_code, source, agent_name, agent_id, region, next_cycle, provider, twilio_sid, capabilities, purchased_at) \
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())", [
-                                id,
-                                userId,
-                                number,
-                                countryCode,
-                                source,
-                                agentName,
-                                agentId,
-                                region,
-                                nextCycleDate,
-                                provider,
-                                twilioSid,
-                                JSON.stringify(capabilities || { voice: true })
-                            ])];
+                        // Fetch user's current company ID
+                        return [4 /*yield*/, database_js_1.default.execute('SELECT current_company_id FROM users WHERE id = ?', [userId])];
                     case 1:
+                        userRows = (_e.sent())[0];
+                        companyId = (userRows.length > 0 && userRows[0].current_company_id) ? userRows[0].current_company_id : null;
+                        return [4 /*yield*/, database_js_1.default.execute("INSERT INTO phone_numbers \r\n(id, user_id, number, country_code, source, agent_name, agent_id, region, next_cycle, provider, twilio_sid, capabilities, purchased_at, company_id) \r\nVALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)", [
+                            id,
+                            userId,
+                            number,
+                            countryCode,
+                            source,
+                            agentName,
+                            agentId,
+                            region,
+                            nextCycleDate,
+                            provider,
+                            twilioSid,
+                            JSON.stringify(capabilities || { voice: true }),
+                            companyId
+                        ])];
+                    case 2:
                         _e.sent();
                         return [4 /*yield*/, this.getPhoneNumberById(userId, id)];
-                    case 2:
-                        return [2 /*return*/, _e.sent()];
                     case 3:
+                        return [2 /*return*/, _e.sent()];
+                    case 4:
                         error_3 = _e.sent();
                         try {
                             console.error("FULL DB ERROR creating phone number:", JSON.stringify(error_3, Object.getOwnPropertyNames(error_3)));
@@ -251,7 +255,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())", [
                             console.error("Error creating phone number (non-serializable):", error_3);
                         }
                         throw new Error("Failed to create phone number");
-                    case 4: return [2 /*return*/];
+                    case 5: return [2 /*return*/];
                 }
             });
         });

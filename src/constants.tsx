@@ -6,7 +6,7 @@ import {
     PhoneIcon as OutlinePhoneIcon,
     CogIcon,
     CodeBracketIcon,
-    CreditCardIcon,
+    CircleStackIcon,
     ClipboardIcon,
     PlayIcon as SolidPlayIcon,
     ArrowUpOnSquareIcon,
@@ -65,7 +65,7 @@ export const SIDEBAR_ITEMS: SidebarItem[] = [
     { id: Page.Reports, icon: ClipboardDocumentListIcon },
     { id: Page.Settings, icon: CogIcon },
     // { id: Page.API, icon: CodeBracketIcon },
-    { id: Page.Credits, icon: CreditCardIcon },
+    { id: Page.Credits, icon: CircleStackIcon },
 ];
 
 

@@ -92,11 +92,11 @@ const AdminUserDetailPage: React.FC = () => {
     }
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCredits = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    }).format(amount) + ' CR';
   };
 
   const formatNumber = (num: number) => {
@@ -148,7 +148,7 @@ const AdminUserDetailPage: React.FC = () => {
 
       const result = await response.json();
       if (result.success) {
-        alert(`Successfully added $${creditAmount} to user wallet`);
+        alert(`Successfully added ${creditAmount} CR to user wallet`);
         // Refresh user data
         fetchUserDetails();
         setCreditAmount('');
@@ -219,13 +219,13 @@ const AdminUserDetailPage: React.FC = () => {
           <div className="mb-4 bg-gray-700/50 p-4 rounded-lg">
             <label className="block text-sm font-medium text-gray-400 mb-1">Current Balance</label>
             <div className="text-3xl font-bold text-emerald-400">
-              {formatCurrency(parseFloat(user.wallet_balance || '0'))}
+              {formatCredits(parseFloat(user.wallet_balance || '0'))}
             </div>
           </div>
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Add Credits ($)</label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Add Credits (CR)</label>
                 <input
                   type="number"
                   step="0.01"
@@ -396,19 +396,19 @@ const AdminUserDetailPage: React.FC = () => {
                         {formatDate(bill.billing_period_start)} - {formatDate(bill.billing_period_end)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                        {formatCurrency(bill.elevenlabs_usage)}
+                        {formatCredits(bill.elevenlabs_usage)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                        {formatCurrency(bill.gemini_usage)}
+                        {formatCredits(bill.gemini_usage)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                        {formatCurrency(bill.deepgram_usage)}
+                        {formatCredits(bill.deepgram_usage)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                        {formatCurrency(bill.platform_fee)}
+                        {formatCredits(bill.platform_fee)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-white">
-                        {formatCurrency(bill.total_amount)}
+                        {formatCredits(bill.total_amount)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${bill.status === 'paid' ? 'bg-green-500/20 text-green-400' :

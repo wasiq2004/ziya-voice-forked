@@ -87,7 +87,7 @@ function configureGoogleAuth(mysqlPool) {
     passport.deserializeUser(async (id, done) => {
         try {
             const [users] = await mysqlPool.execute(
-                'SELECT id, email, username, google_id, created_at, updated_at FROM users WHERE id = ?',
+                'SELECT id, email, username, google_id, current_company_id, created_at, updated_at FROM users WHERE id = ?',
                 [id]
             );
 

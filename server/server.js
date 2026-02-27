@@ -152,7 +152,6 @@ if (sarvamApiKey) {
     console.log('✅ Browser Voice Handler initialized at /browser-voice-stream');
     console.log('   - Sarvam STT: ✅');
     console.log('   - Gemini LLM: ' + (geminiApiKey ? '✅' : '❌'));
-    console.log('   - OpenAI LLM: ' + (openaiApiKey ? '✅' : '❌'));
     console.log('   - ElevenLabs TTS: ' + (elevenLabsApiKey ? '✅' : '❌'));
   } catch (error) {
     console.error('Failed to initialize BrowserVoiceHandler:', error.message);
@@ -980,7 +979,7 @@ app.get('/api/users/profile/:id', async (req, res) => {
   try {
     const userId = req.params.id;
     const [rows] = await mysqlPool.execute(
-      'SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, created_at, updated_at FROM users WHERE id = ?',
+      'SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, current_company_id, created_at, updated_at FROM users WHERE id = ?',
       [userId]
     );
     if (rows.length === 0) {
@@ -997,17 +996,36 @@ app.get('/api/users/profile/:id', async (req, res) => {
 app.put('/api/users/profile/:id', async (req, res) => {
   try {
     const userId = req.params.id;
-    const { email, username, full_name, profile_image, dob, gender } = req.body;
+    const { email, username, full_name, profile_image, dob, gender, current_company_id } = req.body;
 
-    await mysqlPool.execute(
-      'UPDATE users SET email = ?, username = ?, full_name = ?, profile_image = ?, dob = ?, gender = ? WHERE id = ?',
-      [email || null, username || null, full_name || null, profile_image || null, dob || null, gender || null, userId]
-    );
+    // Build query dynamically to only update provided fields
+    const updates = [];
+    const values = [];
+
+    if (email !== undefined) { updates.push('email = ?'); values.push(email); }
+    if (username !== undefined) { updates.push('username = ?'); values.push(username); }
+    if (full_name !== undefined) { updates.push('full_name = ?'); values.push(full_name); }
+    if (profile_image !== undefined) { updates.push('profile_image = ?'); values.push(profile_image); }
+    if (dob !== undefined) { updates.push('dob = ?'); values.push(dob); }
+    if (gender !== undefined) { updates.push('gender = ?'); values.push(gender); }
+    if (current_company_id !== undefined) { updates.push('current_company_id = ?'); values.push(current_company_id); }
+
+    if (updates.length > 0) {
+      values.push(userId);
+      await mysqlPool.execute(
+        `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
+        values
+      );
+    }
 
     const [rows] = await mysqlPool.execute(
-      'SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, created_at, updated_at FROM users WHERE id = ?',
+      'SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, current_company_id, created_at, updated_at FROM users WHERE id = ?',
       [userId]
     );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
 
     res.json({ success: true, user: rows[0] });
   } catch (error) {

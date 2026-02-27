@@ -39,7 +39,7 @@ const CreditManagementModal: React.FC<CreditManagementModalProps> = ({
             const admin = JSON.parse(localStorage.getItem('admin') || '{}');
             await addCredits(userId, amountNum, description || 'Admin credit adjustment', admin.id);
 
-            setSuccess(`Successfully added $${amountNum.toFixed(2)} to ${userEmail}`);
+            setSuccess(`Successfully added ${amountNum} CR to ${userEmail}`);
 
             // Notify sidebar to refresh the credit balance immediately
             window.dispatchEvent(new Event('wallet_updated'));
@@ -67,7 +67,7 @@ const CreditManagementModal: React.FC<CreditManagementModalProps> = ({
                         <h2 className="text-2xl font-bold text-white mb-1">Add Credits</h2>
                         <p className="text-gray-400 text-sm">{userEmail}</p>
                         <p className="text-emerald-400 text-sm mt-1">
-                            Current Balance: ${currentBalance.toFixed(4)}
+                            Current Balance: {currentBalance.toFixed(2)} CR
                         </p>
                     </div>
                     <button
@@ -111,7 +111,7 @@ const CreditManagementModal: React.FC<CreditManagementModalProps> = ({
                                         : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                                         }`}
                                 >
-                                    ${quickAmount}
+                                    {quickAmount} CR
                                 </button>
                             ))}
                         </div>
@@ -120,23 +120,23 @@ const CreditManagementModal: React.FC<CreditManagementModalProps> = ({
                     {/* Custom Amount */}
                     <div>
                         <label htmlFor="amount" className="block text-sm font-medium text-gray-300 mb-2">
-                            Amount (USD)
+                            Amount (Credits)
                         </label>
                         <div className="relative">
-                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                                $
-                            </span>
                             <input
                                 type="number"
                                 id="amount"
                                 value={amount}
                                 onChange={(e) => setAmount(e.target.value)}
-                                step="0.01"
+                                step="any"
                                 min="0.01"
                                 required
-                                className="w-full pl-8 pr-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                placeholder="0.00"
+                                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                                placeholder="0"
                             />
+                            <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-bold text-xs">
+                                CR
+                            </span>
                         </div>
                     </div>
 
@@ -160,17 +160,17 @@ const CreditManagementModal: React.FC<CreditManagementModalProps> = ({
                         <div className="bg-gray-700/50 rounded-lg p-4 border border-gray-600">
                             <div className="flex justify-between items-center text-sm mb-2">
                                 <span className="text-gray-400">Current Balance:</span>
-                                <span className="text-white font-semibold">${currentBalance.toFixed(4)}</span>
+                                <span className="text-white font-semibold">{currentBalance.toFixed(2)} CR</span>
                             </div>
                             <div className="flex justify-between items-center text-sm mb-2">
                                 <span className="text-gray-400">Adding:</span>
-                                <span className="text-emerald-400 font-semibold">+${parseFloat(amount).toFixed(2)}</span>
+                                <span className="text-emerald-400 font-semibold">+{parseFloat(amount).toFixed(2)} CR</span>
                             </div>
                             <div className="border-t border-gray-600 my-2"></div>
                             <div className="flex justify-between items-center">
                                 <span className="text-gray-300 font-medium">New Balance:</span>
                                 <span className="text-emerald-400 font-bold text-lg">
-                                    ${(currentBalance + parseFloat(amount)).toFixed(4)}
+                                    {(currentBalance + parseFloat(amount)).toFixed(2)} CR
                                 </span>
                             </div>
                         </div>

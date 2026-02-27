@@ -93,11 +93,11 @@ const AdminDashboardPage: React.FC = () => {
     setPagination(prev => ({ ...prev, page: 1 }));
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCredits = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    }).format(amount) + ' CR';
   };
 
   const formatNumber = (num: number) => {
@@ -187,7 +187,7 @@ const AdminDashboardPage: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm">Monthly Revenue</p>
-                  <p className="text-3xl font-bold text-white mt-2">{formatCurrency(stats.monthlyRevenue)}</p>
+                  <p className="text-3xl font-bold text-white mt-2">{formatCredits(stats.monthlyRevenue)}</p>
                 </div>
                 <div className="bg-purple-500/20 p-3 rounded-lg">
                   <svg className="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -201,7 +201,7 @@ const AdminDashboardPage: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm">Pending Billing</p>
-                  <p className="text-3xl font-bold text-white mt-2">{formatCurrency(stats.pendingBilling)}</p>
+                  <p className="text-3xl font-bold text-white mt-2">{formatCredits(stats.pendingBilling)}</p>
                 </div>
                 <div className="bg-yellow-500/20 p-3 rounded-lg">
                   <svg className="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -293,7 +293,7 @@ const AdminDashboardPage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-semibold text-emerald-400">
-                          {formatCurrency(userBalances[user.id] || 0)}
+                          {formatCredits(userBalances[user.id] || 0)}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">

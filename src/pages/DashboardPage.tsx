@@ -8,7 +8,7 @@ import {
     UserGroupIcon,
     PhoneIcon,
     SignalIcon,
-    BanknotesIcon,
+    CircleStackIcon,
     PlusIcon,
     ChartBarIcon,
     Cog6ToothIcon,
@@ -150,7 +150,7 @@ const DashboardPage: React.FC = () => {
                 <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6 card-animate hover:shadow-md transition-all duration-300">
                     <div className="flex items-center">
                         <div className="rounded-xl bg-purple-50 dark:bg-purple-900/20 p-3">
-                            <BanknotesIcon className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                            <CircleStackIcon className="h-6 w-6 text-purple-600 dark:text-purple-400" />
                         </div>
                         <div className="ml-4">
                             <h3 className="text-xs md:text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Credits</h3>

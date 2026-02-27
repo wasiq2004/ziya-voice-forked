@@ -130,13 +130,34 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
 
     return (
         <aside className={`fixed top-0 left-0 h-full bg-white dark:bg-darkbg-surface border-r border-slate-200 dark:border-slate-800/50 flex flex-col transition-all duration-300 ease-in-out z-20 font-sidebar ${isCollapsed ? 'w-20' : 'w-64'}`}>
-            <div className={`flex flex-col border-b border-slate-200 dark:border-slate-800/50 px-4 py-3 mb-2 transition-all duration-300 ${isCollapsed ? 'items-center' : ''}`}>
-                <div className="flex items-center space-x-2 mb-3">
-                    <img src="/assets/ziya-logo.png" alt="Ziya Logo" className="w-8 h-8 flex-shrink-0" />
-                    {!isCollapsed && <h1 className="text-xl font-bold text-slate-800 dark:text-white truncate">Ziya Voice</h1>}
-                </div>
-                <CompanySwitcher isCollapsed={isCollapsed} />
-            </div>
+            <div
+  className={`
+    flex flex-col border-b border-slate-200 
+    dark:border-slate-800/50 
+    px-6 py-6 mb 
+    transition-all duration-300
+    ${isCollapsed ? 'items-center w-20' : 'w-64'}
+  `}
+>
+  <div className="flex items-center space-x-3 mb-3">
+
+    {/* Logo - Change w-14 h-14 to control logo size */}
+    <img
+      src="/assets/ziya-logo.png"
+      alt="Ziya Logo"
+      className="w-14 h-10 flex-shrink-0 transition-all duration-300"
+    />
+
+    {/* Text - Change text-2xl to control logo text size */}
+    {!isCollapsed && (
+      <h1 className="text-2xl font-bold text-slate-800 dark:text-white truncate">
+        Ziya Voice
+      </h1>
+    )}
+  </div>
+
+  <CompanySwitcher isCollapsed={isCollapsed} />
+</div>
 
             <nav className="flex-1 px-3 py-4 overflow-y-auto custom-scrollbar">
                 <ul className="space-y-1">
@@ -144,7 +165,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                         <React.Fragment key={item.id}>
                             {/* Section Divider - Add after Dashboard and before Settings */}
                             {(index === 1 || index === 5) && (
-                                <li className="my-3">
+                                <li className="my-2">
                                     <div className="h-px bg-gradient-to-r from-transparent via-slate-700 to-transparent"></div>
                                 </li>
                             )}

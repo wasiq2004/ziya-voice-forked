@@ -9,7 +9,8 @@ import {
   ClockIcon,
   CurrencyDollarIcon,
   ArrowPathIcon,
-  ChartBarIcon
+  ChartBarIcon,
+  CircleStackIcon
 } from '@heroicons/react/24/outline';
 
 interface Transaction {
@@ -103,12 +104,10 @@ const CreditsPage: React.FC = () => {
     }
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCredits = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 4
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
     }).format(amount);
   };
 
@@ -201,13 +200,16 @@ const CreditsPage: React.FC = () => {
         {/* Compact KPI Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Main Balance Card - Clean and Simple */}
-          <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 shadow-lg shadow-emerald-500/20 text-white relative overflow-hidden group">
+          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-6 shadow-lg shadow-indigo-500/20 text-white relative overflow-hidden group">
             <div className="absolute -top-2 -right-2 opacity-10 group-hover:opacity-20 transition-all duration-500 transform group-hover:scale-110">
-              <BanknotesIcon className="h-20 w-20" />
+              <CircleStackIcon className="h-20 w-20" />
             </div>
             <div className="relative z-10">
-              <p className="text-emerald-100 font-bold text-[10px] uppercase tracking-widest mb-1">Available Balance</p>
-              <h2 className="text-4xl font-black tracking-tight">{formatCurrency(balance)}</h2>
+              <p className="text-indigo-100 font-bold text-[10px] uppercase tracking-widest mb-1">Available Credits</p>
+              <h2 className="text-4xl font-black tracking-tight flex items-center gap-2">
+                <CircleStackIcon className="h-8 w-8 text-indigo-200" />
+                {formatCredits(balance)}
+              </h2>
             </div>
           </div>
 
@@ -217,9 +219,9 @@ const CreditsPage: React.FC = () => {
                 <ArrowTrendingUpIcon className="h-6 w-6" />
               </div>
               <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">Total Spent</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">Total Spent Credits</p>
                 <p className="text-2xl font-black text-slate-900 dark:text-white leading-none">
-                  {formatCurrency(usageStats.reduce((acc, curr) => acc + curr.totalCost, 0))}
+                  {formatCredits(usageStats.reduce((acc, curr) => acc + curr.totalCost, 0))} <span className="text-sm text-slate-500">CR</span>
                 </p>
               </div>
             </div>
@@ -290,8 +292,8 @@ const CreditsPage: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <p className="text-sm font-black text-emerald-600">
-                            +{formatCurrency(tx.amount)}
+                          <p className="text-sm font-black text-emerald-600 flex items-center justify-end gap-1">
+                            +{formatCredits(tx.amount)} <CircleStackIcon className="h-4 w-4" />
                           </p>
                         </td>
                       </tr>
