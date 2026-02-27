@@ -4,47 +4,24 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-/**
- * Get ElevenLabs API key from environment
- * @returns {string} API key
- */
+
 function getElevenLabsApiKey() {
-    return process.env.ELEVEN_LABS_API_KEY || process.env.ELEVENLABS_API_KEY;
+    return process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
 }
 
-/**
- * Get Sarvam API key from environment
- * @returns {string} API key
- */
 function getSarvamApiKey() {
     return process.env.SARVAM_API_KEY;
 }
 
-/**
- * Main TTS generation function
- * Routes to appropriate provider based on voice ID or explicit provider
- * @param {string} text - Text to synthesize
- * @param {Object} options - TTS options
- * @param {string} options.voiceId - Voice ID or speaker name
- * @param {string} options.speaker - Speaker name (for Sarvam)
- * @param {string} options.provider - Explicit provider ('elevenlabs' or 'sarvam')
- * @param {string} options.format - Output format
- * @returns {Promise<Buffer>} - Audio buffer
- */
 async function generateTTS(text, options = {}) {
-    // Known Sarvam speakers (updated list from API)
-    // WARNING: This is a hardcoded list. New Sarvam voices won't be auto-detected.
-    // TODO: Query database or Sarvam API for voice list instead
+    // VERIFIED by Sarvam API: ONLY these 7 speakers exist for bulbul:v2
     const sarvamSpeakers = [
-        'anushka', 'abhilash', 'manisha', 'vidya', 'arya', 'karun', 'hitesh', 'aditya',
-        'isha', 'ritu', 'chirag', 'harsh', 'sakshi', 'priya', 'neha', 'rahul',
-        'pooja', 'rohan', 'simran', 'kavya', 'anjali', 'sneha', 'kiran', 'vikram',
-        'rajesh', 'sunita', 'tara', 'anirudh', 'kriti', 'ishaan', 'ratan', 'varun',
-        'manan', 'sumit', 'roopa', 'kabir', 'aayan', 'shubh', 'meera'
+        'anushka', 'manisha', 'vidya', 'arya',   // female
+        'abhilash', 'karun', 'hitesh'              // male
     ];
 
     // Auto-detect provider based on voice ID or speaker
-    let provider = options.provider || process.env.TTS_PROVIDER;
+    let provider = options.provider;
 
     // If no provider specified, try to detect from voice ID/speaker
     if (!provider) {
@@ -74,13 +51,7 @@ async function generateTTS(text, options = {}) {
     }
 }
 
-/**
- * Generate TTS using Sarvam AI
- * @param {string} text - Text to synthesize
- * @param {Object} options - TTS options
- * @param {string} options.speaker - Sarvam speaker name
- * @returns {Promise<Buffer>} - Audio buffer
- */
+
 async function generateSarvamTTS(text, options) {
     console.log("[TTS Controller] Routing to Sarvam TTS");
 
@@ -90,7 +61,7 @@ async function generateSarvamTTS(text, options) {
         throw new Error("Sarvam API key not configured");
     }
 
-    const speaker = options.speaker || options.voiceId || "meera";
+    const speaker = options.speaker || options.voiceId || "anushka";
 
     console.log(`[TTS] Using provider: Sarvam`);
     console.log(`   Speaker: ${speaker}`);
@@ -113,11 +84,7 @@ async function generateSarvamTTS(text, options) {
     }
 }
 
-/**
- * Convert 16-bit linear PCM to µ-law (G.711)
- * @param {Buffer} pcmBuffer - 16-bit PCM buffer
- * @returns {Buffer} - 8-bit µ-law buffer
- */
+
 function pcmToMuLaw(pcmBuffer) {
     const muLawBuffer = Buffer.alloc(pcmBuffer.length / 2);
     const split = [
@@ -161,106 +128,54 @@ function pcmToMuLaw(pcmBuffer) {
  */
 async function convertMp3ToUlaw(mp3Buffer) {
     return new Promise((resolve, reject) => {
-        // Create temp files
-        const tempDir = os.tmpdir();
-        const inputFile = path.join(tempDir, `tts_input_${Date.now()}.mp3`);
-        const outputFile = path.join(tempDir, `tts_output_${Date.now()}.pcm`);
-
         try {
-            // Write MP3 to temp file
-            fs.writeFileSync(inputFile, mp3Buffer);
-            console.log(`[TTS] Wrote MP3 to temp file: ${inputFile} (${mp3Buffer.length} bytes)`);
-
-            // Convert to Raw PCM S16LE 8kHz using ffmpeg (Robust 1st step)
+            // Convert to Raw PCM S16LE 8kHz using ffmpeg via pipe
             const ffmpeg = spawn('ffmpeg', [
-                '-y',                          // Overwrite output file
-                '-i', inputFile,               // Input MP3 file
-                '-f', 's16le',                 // Output format: Signed 16-bit Little Endian PCM
-                '-ar', '8000',                 // Sample rate: 8kHz
-                '-ac', '1',                    // Channels: mono
-                '-acodec', 'pcm_s16le',        // Codec: PCM S16LE
-                outputFile                     // Output file
+                '-y',
+                '-i', 'pipe:0',        // Input from stdin
+                '-f', 's16le',
+                '-ar', '8000',
+                '-ac', '1',
+                '-acodec', 'pcm_s16le',
+                'pipe:1'               // Output to stdout
             ]);
 
+            let pcmBuffer = Buffer.alloc(0);
             let errorOutput = '';
+
+            ffmpeg.stdout.on('data', (data) => {
+                pcmBuffer = Buffer.concat([pcmBuffer, data]);
+            });
 
             ffmpeg.stderr.on('data', (data) => {
                 errorOutput += data.toString();
             });
 
             ffmpeg.on('close', (code) => {
-                try {
-                    // Clean up input file
-                    if (fs.existsSync(inputFile)) {
-                        fs.unlinkSync(inputFile);
-                    }
-
-                    if (code !== 0) {
-                        console.error(`[TTS] ffmpeg conversion failed with code ${code}`);
-                        console.error(`[TTS] ffmpeg stderr: ${errorOutput}`);
-                        reject(new Error(`ffmpeg conversion failed: ${errorOutput}`));
-                        return;
-                    }
-
-                    // Read converted PCM file
-                    if (!fs.existsSync(outputFile)) {
-                        console.error(`[TTS] Output file not created: ${outputFile}`);
-                        reject(new Error('ffmpeg did not create output file'));
-                        return;
-                    }
-
-                    const pcmBuffer = fs.readFileSync(outputFile);
-
-                    // Clean up output file
-                    fs.unlinkSync(outputFile);
-
-                    if (pcmBuffer.length === 0) {
-                        console.error(`[TTS] ❌ ffmpeg produced empty output!`);
-                        reject(new Error('ffmpeg produced empty output'));
-                        return;
-                    }
-
-                    console.log(`[TTS] ✅ Converted MP3 to PCM: ${mp3Buffer.length} bytes → ${pcmBuffer.length} bytes`);
-
-                    // Convert PCM to Mu-Law in JS (Robust 2nd step)
-                    const ulawBuffer = pcmToMuLaw(pcmBuffer);
-
-                    console.log(`[TTS] ✅ Encoded PCM to Mu-Law: ${ulawBuffer.length} bytes`);
-                    console.log(`[TTS] First 20 bytes (hex): ${ulawBuffer.slice(0, 20).toString('hex')}`);
-
-                    // Verify conversion worked (check for non-silence)
-                    const uniqueBytes = new Set(ulawBuffer.slice(0, 100));
-                    if (uniqueBytes.size === 1 && uniqueBytes.has(255)) {
-                        console.warn(`[TTS] ⚠️ WARNING: Converted audio appears silent!`);
-                    } else {
-                        console.log(`[TTS] ✅ Audio conversion successful (${uniqueBytes.size} unique byte values)`);
-                    }
-
-                    resolve(ulawBuffer);
-                } catch (err) {
-                    console.error(`[TTS] Error in ffmpeg cleanup/encoding:`, err);
-                    reject(err);
+                if (code !== 0) {
+                    console.error(`[TTS] ffmpeg conversion failed with code ${code}`);
+                    reject(new Error(`ffmpeg conversion failed: ${errorOutput}`));
+                    return;
                 }
+
+                if (pcmBuffer.length === 0) {
+                    reject(new Error('ffmpeg produced empty output'));
+                    return;
+                }
+
+                // Convert PCM to Mu-Law in JS
+                const ulawBuffer = pcmToMuLaw(pcmBuffer);
+                resolve(ulawBuffer);
             });
 
             ffmpeg.on('error', (err) => {
-                console.error(`[TTS] ffmpeg process error:`, err);
-                try {
-                    if (fs.existsSync(inputFile)) fs.unlinkSync(inputFile);
-                    if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile);
-                } catch (cleanupErr) {
-                    console.error(`[TTS] Error cleaning up temp files:`, cleanupErr);
-                }
                 reject(err);
             });
+
+            ffmpeg.stdin.write(mp3Buffer);
+            ffmpeg.stdin.end();
+
         } catch (err) {
-            console.error(`[TTS] Error setting up ffmpeg conversion:`, err);
-            try {
-                if (fs.existsSync(inputFile)) fs.unlinkSync(inputFile);
-                if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile);
-            } catch (cleanupErr) {
-                console.error(`[TTS] Error cleaning up temp files:`, cleanupErr);
-            }
             reject(err);
         }
     });

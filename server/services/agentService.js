@@ -6,12 +6,28 @@ class AgentService {
     }
 
     // Get all agents
-    async getAgents(userId) {
+    async getAgents(userId, companyId = null) {
         try {
-            const [rows] = await this.pool.execute(
-                `SELECT * FROM agents WHERE user_id = ? ORDER BY created_at DESC`,
-                [userId]
-            );
+            let query = 'SELECT * FROM agents WHERE user_id = ?';
+            let params = [userId];
+
+            if (companyId) {
+                query += ' AND company_id = ?';
+                params.push(companyId);
+            } else {
+                // Fetch user's current company ID if none provided
+                const [user] = await this.pool.execute('SELECT current_company_id FROM users WHERE id = ?', [userId]);
+                if (user.length > 0 && user[0].current_company_id) {
+                    query += ' AND company_id = ?';
+                    params.push(user[0].current_company_id);
+                } else {
+                    // If no company selected, only show those without a company_id
+                    query += ' AND (company_id IS NULL OR company_id = "")';
+                }
+            }
+
+            query += ' ORDER BY created_at DESC';
+            const [rows] = await this.pool.execute(query, params);
 
             return rows.map(agent => ({
                 id: agent.id,
@@ -73,10 +89,19 @@ class AgentService {
                 ? JSON.stringify(data.settings)
                 : JSON.stringify(this.getDefaultSettings());
 
+            // Fetch user's current company ID if none provided in data
+            let companyId = data.companyId;
+            if (!companyId) {
+                const [user] = await this.pool.execute('SELECT current_company_id FROM users WHERE id = ?', [userId]);
+                if (user.length > 0) {
+                    companyId = user[0].current_company_id;
+                }
+            }
+
             await this.pool.execute(
                 `
-                INSERT INTO agents (id, user_id, name, identity, status, model, voice_id, language, settings, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO agents (id, user_id, name, identity, status, model, voice_id, language, settings, created_at, company_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `,
                 [
                     id,
@@ -88,7 +113,8 @@ class AgentService {
                     data.voiceId,
                     data.language,
                     settingsJson,
-                    createdAt
+                    createdAt,
+                    companyId
                 ]
             );
 

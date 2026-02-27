@@ -5,6 +5,21 @@ import AgentDetailPage from './AgentDetailPage';
 import Modal from '../components/Modal';
 import { agentService } from '../services/agentService';
 import { useAuth } from '../contexts/AuthContext';
+import AppLayout from '../components/AppLayout';
+import {
+    PlusIcon,
+    UserIcon,
+    EllipsisVerticalIcon,
+    TrashIcon,
+    DocumentDuplicateIcon,
+    PencilIcon,
+    UserCircleIcon,
+    CalendarIcon,
+    ClockIcon,
+    SignalIcon,
+    ChevronLeftIcon
+} from '@heroicons/react/24/outline';
+// No initial agents fallback
 
 const AgentPage: React.FC = () => {
     const [agents, setAgents] = useState<VoiceAgent[]>([]);
@@ -30,7 +45,7 @@ const AgentPage: React.FC = () => {
         };
     }, [activeDropdown]);
 
-    // Load agents when component mounts or user changes
+    // Load agents
     useEffect(() => {
         if (user) {
             loadAgents();
@@ -41,25 +56,19 @@ const AgentPage: React.FC = () => {
         try {
             setLoading(true);
             if (!user) {
-                throw new Error('User not authenticated');
+                setAgents([]);
+                setLoading(false);
+                return;
             }
-            console.log('Loading agents for user:', user.id);
             const agentData = await agentService.getAgents(user.id);
-            console.log('Agents loaded:', agentData);
-
-            // Validate agent data
-            if (Array.isArray(agentData)) {
-                agentData.forEach((agent, index) => {
-                    if (!agent.id || !agent.name) {
-                        console.error(`Invalid agent data at index ${index}:`, agent);
-                    }
-                });
+            if (agentData && agentData.length > 0) {
+                setAgents(agentData);
+            } else {
+                setAgents([]);
             }
-
-            setAgents(agentData);
         } catch (error) {
             console.error('Error loading agents:', error);
-            alert('Failed to load agents: ' + (error as Error).message);
+            setAgents([]);
         } finally {
             setLoading(false);
         }
@@ -67,22 +76,15 @@ const AgentPage: React.FC = () => {
 
     const handleCreateAgent = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newAgentName.trim()) {
-            alert('Agent name is required.');
-            return;
-        }
+        if (!newAgentName.trim()) return;
 
         try {
-            if (!user) {
-                throw new Error('User not authenticated');
-            }
-
-            // Create a basic agent structure
+            if (!user) throw new Error('User not authenticated');
             const newAgent: Omit<VoiceAgent, 'id' | 'createdDate'> = {
                 name: newAgentName,
-                identity: `This is the default identity for ${newAgentName}. Please click to edit the agent's prompt, personality, and goals.`,
+                identity: `This is the default identity for ${newAgentName}. Click to edit the agent's prompt, personality, and goals.`,
                 status: VoiceAgentStatus.Active,
-                model: 'gemini-2.5-flash',
+                model: 'gemini-2.0-flash',
                 voiceId: 'eleven-rachel',
                 language: 'ENGLISH',
                 settings: {
@@ -113,7 +115,7 @@ const AgentPage: React.FC = () => {
             };
 
             const createdAgent = await agentService.createAgent(user.id, newAgent);
-            setAgents(prevAgents => [createdAgent, ...prevAgents]);
+            setAgents(prev => [createdAgent, ...prev]);
             setView('list');
             setNewAgentName('');
         } catch (error) {
@@ -122,40 +124,28 @@ const AgentPage: React.FC = () => {
         }
     };
 
-    const handleCancelCreate = () => {
-        setView('list');
-        setNewAgentName('');
-    };
-
     const formatDateTime = (isoString: string) => {
         const date = new Date(isoString);
-        const datePart = date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, ' ');
-        const timePart = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-        return { date: datePart, time: timePart };
+        return {
+            date: date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+            time: date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+        };
     };
 
     const handleBackToList = () => {
         setSelectedAgent(null);
-        // Reload agents to get the latest data
         loadAgents();
     };
 
     const handleUpdateAgent = async (updatedAgent: VoiceAgent) => {
         try {
-            console.log('handleUpdateAgent called with:', { userId: user?.id, agentId: updatedAgent.id, updatedAgent });
-            if (!user) {
-                throw new Error('User not authenticated');
-            }
+            if (!user) throw new Error('User not authenticated');
             const agent = await agentService.updateAgent(user.id, updatedAgent.id, updatedAgent);
-            console.log('Agent service returned agent:', agent);
-            setAgents(prevAgents => prevAgents.map(a => a.id === agent.id ? agent : a));
+            setAgents(prev => prev.map(a => a.id === agent.id ? agent : a));
             setSelectedAgent(agent);
         } catch (error) {
             console.error('Error updating agent:', error);
-            console.error('Error name:', error?.name);
-            console.error('Error message:', error?.message);
-            console.error('Error stack:', error?.stack);
-            alert('Failed to update agent: ' + (error as Error).message);
+            alert('Failed to update agent');
         }
     };
 
@@ -167,29 +157,24 @@ const AgentPage: React.FC = () => {
             const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
             setDropdownPos({
                 top: rect.bottom + window.scrollY,
-                left: rect.right + window.scrollX - 192 // w-48 is 192px
+                left: rect.right + window.scrollX - 224
             });
             setActiveDropdown(agentId);
         }
     };
 
     const handleEditAgent = (agent: VoiceAgent) => {
-        console.log('Editing agent:', agent);
         setSelectedAgent(agent);
         setActiveDropdown(null);
     };
 
     const handleDuplicateAgent = async (agentToDuplicate: VoiceAgent) => {
         try {
-            if (!user) {
-                throw new Error('User not authenticated');
-            }
-
+            if (!user) throw new Error('User not authenticated');
             const duplicatedAgentData: Omit<VoiceAgent, 'id' | 'createdDate'> = {
-                ...JSON.parse(JSON.stringify(agentToDuplicate)), // Deep copy
+                ...JSON.parse(JSON.stringify(agentToDuplicate)),
                 name: `${agentToDuplicate.name} (Copy)`,
             };
-
             const duplicatedAgent = await agentService.createAgent(user.id, duplicatedAgentData);
             setAgents(prev => [duplicatedAgent, ...prev]);
             setActiveDropdown(null);
@@ -197,14 +182,6 @@ const AgentPage: React.FC = () => {
         } catch (error) {
             console.error('Error duplicating agent:', error);
             alert('Failed to duplicate agent');
-        }
-    };
-
-    const handleDuplicateAgentFromDetail = async (agent: VoiceAgent) => {
-        const newAgent = await handleDuplicateAgent(agent);
-        if (newAgent) {
-            setSelectedAgent(null);
-            alert(`Agent "${newAgent.name}" has been created.`);
         }
     };
 
@@ -218,11 +195,8 @@ const AgentPage: React.FC = () => {
     };
 
     const handleConfirmDelete = async () => {
-        if (agentToDelete) {
+        if (agentToDelete && user) {
             try {
-                if (!user) {
-                    throw new Error('User not authenticated');
-                }
                 await agentService.deleteAgent(user.id, agentToDelete.id);
                 setAgents(prev => prev.filter(agent => agent.id !== agentToDelete.id));
                 setIsDeleteModalOpen(false);
@@ -234,185 +208,212 @@ const AgentPage: React.FC = () => {
         }
     };
 
-    const handleDeleteAgentFromDetail = async (agentId: string) => {
-        if (window.confirm('Are you sure you want to delete this agent? This action cannot be undone.')) {
-            try {
-                if (!user) {
-                    throw new Error('User not authenticated');
-                }
-                await agentService.deleteAgent(user.id, agentId);
-                setAgents(prev => prev.filter(agent => agent.id !== agentId));
-                setSelectedAgent(null); // Go back to list view
-            } catch (error) {
-                console.error('Error deleting agent:', error);
-                alert('Failed to delete agent');
-            }
-        }
-    };
+    const addButton = (
+        <button
+            onClick={() => setView('create')}
+            className="flex items-center space-x-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-bold transition-all duration-300 shadow-lg shadow-primary/25 transform hover:scale-[1.02] active:scale-[0.98]"
+        >
+            <PlusIcon className="h-5 w-5" />
+            <span>Create Agent</span>
+        </button>
+    );
 
-    if (loading) {
+    if (selectedAgent && user) {
         return (
-            <div className="flex justify-center items-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-            </div>
+            <AppLayout
+                breadcrumbs={[
+                    { label: 'Dashboard', path: '/dashboard' },
+                    { label: 'Agents', path: '/agents' },
+                    { label: selectedAgent.name }
+                ]}
+                pageTitle={selectedAgent.name}
+                pageDescription="Configure your agent's identity, voice, and tools."
+                primaryAction={
+                    <div className="flex items-center space-x-3">
+                        <button
+                            onClick={handleBackToList}
+                            className="p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all font-bold group"
+                        >
+                            <ChevronLeftIcon className="h-5 w-5 group-hover:-translate-x-1 transition-transform" />
+                        </button>
+                        <div className="relative dropdown-trigger">
+                            <button
+                                onClick={(e) => handleToggleDropdown(selectedAgent.id, e)}
+                                className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-6 py-2.5 rounded-xl font-black text-slate-700 dark:text-white flex items-center shadow-lg shadow-slate-200/50 dark:shadow-none hover:border-primary/30 transition-all uppercase tracking-wider text-xs"
+                            >
+                                Agent Actions
+                                <EllipsisVerticalIcon className="w-4 h-4 ml-2" />
+                            </button>
+                        </div>
+                    </div>
+                }
+            >
+                <AgentDetailPage
+                    agent={selectedAgent}
+                    onBack={handleBackToList}
+                    updateAgent={handleUpdateAgent}
+                    onDuplicate={async (agent) => {
+                        const newAgent = await handleDuplicateAgent(agent);
+                        if (newAgent) {
+                            setSelectedAgent(null);
+                            alert(`Agent "${newAgent.name}" created.`);
+                        }
+                    }}
+                    onDelete={async (agentId) => {
+                        handleDeleteRequest(agentId);
+                    }}
+                    userId={user.id}
+                />
+            </AppLayout>
         );
-    }
-
-    if (selectedAgent) {
-        // Validate agent data before rendering
-        if (!selectedAgent.id || !selectedAgent.name) {
-            console.error('Invalid agent data:', selectedAgent);
-            return (
-                <div className="p-6">
-                    <h2 className="text-xl font-bold text-red-600">Invalid Agent Data</h2>
-                    <p className="text-red-500">The selected agent is missing required information.</p>
-                    <button
-                        onClick={() => setSelectedAgent(null)}
-                        className="mt-4 bg-primary text-white px-4 py-2 rounded-md"
-                    >
-                        Back to Agent List
-                    </button>
-                </div>
-            );
-        }
-
-        // Ensure user is authenticated before rendering AgentDetailPage
-        if (!user || !user.id) {
-            return (
-                <div className="p-6">
-                    <h2 className="text-xl font-bold text-red-600">Authentication Error</h2>
-                    <p className="text-red-500">User not authenticated. Please log in again.</p>
-                    <button
-                        onClick={() => window.location.reload()}
-                        className="mt-4 bg-primary text-white px-4 py-2 rounded-md"
-                    >
-                        Refresh Page
-                    </button>
-                </div>
-            );
-        }
-
-        try {
-            return <AgentDetailPage
-                agent={selectedAgent}
-                onBack={handleBackToList}
-                updateAgent={handleUpdateAgent}
-                onDuplicate={handleDuplicateAgentFromDetail}
-                onDelete={handleDeleteAgentFromDetail}
-                userId={user.id}
-            />;
-        } catch (error) {
-            console.error('Error rendering AgentDetailPage:', error);
-            return (
-                <div className="p-6">
-                    <h2 className="text-xl font-bold text-red-600">Error loading agent details</h2>
-                    <p className="text-red-500">{error instanceof Error ? error.message : 'Unknown error'}</p>
-                    <button
-                        onClick={() => setSelectedAgent(null)}
-                        className="mt-4 bg-primary text-white px-4 py-2 rounded-md"
-                    >
-                        Back to Agent List
-                    </button>
-                </div>
-            );
-        }
     }
 
     if (view === 'create') {
         return (
-            <>
-                <div className="flex items-center justify-between mb-8 animate-slide-down">
-                    <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-white">
-                        Create Agent
-                    </h1>
-                </div>
-                <div className="bg-white dark:bg-darkbg-light p-4 sm:p-6 md:p-8 rounded-lg shadow-md max-w-2xl mx-auto card-animate">
-                    <form onSubmit={handleCreateAgent}>
-                        <div className="space-y-6 stagger-children">
-                            <div style={{ animationDelay: '0.1s' }}>
-                                <label htmlFor="agentName" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Agent name</label>
-                                <input
-                                    type="text"
-                                    name="agentName"
-                                    id="agentName"
-                                    value={newAgentName}
-                                    onChange={(e) => setNewAgentName(e.target.value)}
-                                    required
-                                    className="input-animate mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
-                                    placeholder="e.g., Sales Assistant"
-                                />
+            <AppLayout
+                breadcrumbs={[
+                    { label: 'Dashboard', path: '/dashboard' },
+                    { label: 'Agents', path: '/agents' },
+                    { label: 'Create' }
+                ]}
+                pageTitle="Create Agent"
+                pageDescription="Define a new AI persona for your voice calls."
+            >
+                <div className="max-w-2xl mx-auto py-8">
+                    <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 shadow-sm">
+                        <form onSubmit={handleCreateAgent}>
+                            <div className="space-y-6">
+                                <div>
+                                    <label htmlFor="agentName" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Agent Name</label>
+                                    <input
+                                        type="text"
+                                        id="agentName"
+                                        value={newAgentName}
+                                        onChange={(e) => setNewAgentName(e.target.value)}
+                                        required
+                                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                                        placeholder="e.g. Customer Support AI"
+                                    />
+                                </div>
                             </div>
-                        </div>
-                        <div className="mt-8 flex flex-col sm:flex-row justify-end gap-3">
-                            <button
-                                type="button"
-                                onClick={handleCancelCreate}
-                                className="btn-animate bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold py-2 px-4 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                className="btn-animate bg-primary hover:bg-primary-dark text-white font-bold py-2 px-4 rounded-lg transition"
-                            >
-                                Create Agent
-                            </button>
-                        </div>
-                    </form>
+                            <div className="mt-8 flex justify-end space-x-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setView('list')}
+                                    className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-6 py-3 bg-primary hover:bg-primary-dark text-white rounded-xl font-bold shadow-lg shadow-primary/20 transition-all"
+                                >
+                                    Create Persona
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
-            </>
+            </AppLayout>
         );
     }
 
     return (
-        <>
-            <div className="flex items-center justify-end mb-8 gap-2 animate-slide-down">
-                <button
-                    onClick={() => setView('create')}
-                    className="btn-animate bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200"
-                >
-                    Add
-                </button>
-            </div>
-
-            <div className="bg-white dark:bg-darkbg-light rounded-lg shadow-md overflow-x-auto card-animate animate-fade-in relative">
-                <div className="min-w-[700px]">
-                    <div className="flex px-3 sm:px-6 py-3 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-xs sm:text-sm font-semibold tracking-wider">
-                        <div className="w-[40%]">Name</div>
-                        <div className="w-[30%] flex items-center">
-                            Created
-                            <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+        <AppLayout
+            breadcrumbs={[
+                { label: 'Dashboard', path: '/dashboard' },
+                { label: 'Agents' }
+            ]}
+            pageTitle="Agents"
+            pageDescription="Manage your AI agents and their custom personality profiles."
+            primaryAction={addButton}
+        >
+            <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden card-animate">
+                {loading ? (
+                    <div className="p-20 flex justify-center">
+                        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-primary"></div>
+                    </div>
+                ) : agents.length === 0 ? (
+                    <div className="p-20 text-center">
+                        <div className="w-20 h-20 bg-slate-50 dark:bg-slate-900 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                            <UserCircleIcon className="h-10 w-10 text-slate-300 dark:text-slate-600" />
                         </div>
-                        <div className="w-[20%]">Status</div>
-                        <div className="w-[10%]"></div>
+                        <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">No agents yet</h3>
+                        <p className="text-slate-500 dark:text-slate-400 mb-8 max-w-xs mx-auto">Create your first AI persona to handle your calls automatically.</p>
+                        <button onClick={() => setView('create')} className="bg-primary text-white font-bold px-8 py-3 rounded-2xl shadow-lg shadow-primary/20">Create Agent</button>
                     </div>
-
-                    <div className="stagger-children">
-                        {agents.map((agent, idx) => (
-                            <div key={agent.id} onClick={() => handleEditAgent(agent)} style={{ animationDelay: `${idx * 0.05}s` }} className="flex items-center px-3 sm:px-6 py-3 sm:py-4 border-b border-slate-200 dark:border-slate-800 last:border-b-0 cursor-pointer hover:bg-slate-50 dark:hover:bg-darkbg transition-colors duration-150">
-                                <div className="w-[40%] font-medium text-slate-800 dark:text-slate-100 pr-4 text-xs sm:text-sm">
-                                    {agent.name}
-                                </div>
-
-                                <div className="w-[30%] text-xs sm:text-sm">
-                                    <div className="text-slate-800 dark:text-slate-100">{formatDateTime(agent.createdDate).date}</div>
-                                    <div className="text-slate-500 dark:text-slate-400 text-xs">{formatDateTime(agent.createdDate).time}</div>
-                                </div>
-
-                                <div className="w-[20%] flex items-center text-xs sm:text-sm font-medium text-slate-800 dark:text-slate-100">
-                                    <span className="h-2.5 w-2.5 rounded-full bg-green-500 mr-2 animate-pulse-soft"></span>
-                                    {agent.status}
-                                </div>
-
-                                <div className="w-[10%] flex justify-end relative">
-                                    <button onClick={(e) => handleToggleDropdown(agent.id, e)} className="dropdown-trigger p-1 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors transform hover:scale-110">
-                                        <svg className="w-5 h-5 pointer-events-none" viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"></path></svg>
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800">
+                                <tr>
+                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Agent Persona</th>
+                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Configuration</th>
+                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Added Date</th>
+                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Status</th>
+                                    <th className="px-6 py-4 text-right"></th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                                {agents.map((agent, idx) => (
+                                    <tr
+                                        key={agent.id}
+                                        className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors cursor-pointer group"
+                                        onClick={() => handleEditAgent(agent)}
+                                    >
+                                        <td className="px-6 py-5">
+                                            <div className="flex items-center space-x-4">
+                                                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                                                    <UserIcon className="h-5 w-5" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-bold text-slate-800 dark:text-white">{agent.name}</p>
+                                                    <p className="text-[10px] text-slate-500 font-medium uppercase tracking-tight">{agent.model}</p>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <div className="flex items-center space-x-3">
+                                                <div className="flex -space-x-2">
+                                                    <div className="w-6 h-6 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-500 border border-blue-100 dark:border-blue-900/50" title="Voice Enabled">
+                                                        <SignalIcon className="h-3 w-3" />
+                                                    </div>
+                                                    <div className="w-6 h-6 rounded-lg bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center text-purple-500 border border-purple-100 dark:border-purple-900/50" title="Tools Configured">
+                                                        <ClockIcon className="h-3 w-3" />
+                                                    </div>
+                                                </div>
+                                                <span className="text-[10px] font-bold text-slate-400">{agent.language}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <div className="flex items-center space-x-2">
+                                                <CalendarIcon className="h-4 w-4 text-slate-300" />
+                                                <div>
+                                                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{formatDateTime(agent.createdDate).date}</p>
+                                                    <p className="text-[10px] text-slate-400">{formatDateTime(agent.createdDate).time}</p>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-900/50">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse"></span>
+                                                {agent.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-5 text-right">
+                                            <button
+                                                onClick={(e) => handleToggleDropdown(agent.id, e)}
+                                                className="dropdown-trigger p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all"
+                                            >
+                                                <EllipsisVerticalIcon className="h-5 w-5" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-                </div>
+                )}
             </div>
 
             {activeDropdown && (() => {
@@ -420,38 +421,22 @@ const AgentPage: React.FC = () => {
                 if (!agent) return null;
                 return createPortal(
                     <div
-                        className="dropdown-menu absolute w-48 bg-white dark:bg-darkbg-light rounded-md shadow-lg z-50 border border-slate-200 dark:border-slate-700"
+                        className="dropdown-menu absolute w-56 bg-white dark:bg-slate-800/95 backdrop-blur-md rounded-2xl shadow-2xl z-50 border border-slate-200 dark:border-slate-700 py-2 animate-in fade-in slide-in-from-top-2 duration-200"
                         style={{ top: `${dropdownPos.top}px`, left: `${dropdownPos.left}px` }}
                     >
-                        <div className="py-1">
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleEditAgent(agent);
-                                }}
-                                className="block w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-darkbg"
-                            >
-                                Edit
-                            </button>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDuplicateAgent(agent);
-                                }}
-                                className="block w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-darkbg"
-                            >
-                                Duplicate
-                            </button>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteRequest(agent.id);
-                                }}
-                                className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-slate-100 dark:hover:bg-darkbg"
-                            >
-                                Delete
-                            </button>
-                        </div>
+                        <button onClick={(e) => { e.stopPropagation(); handleEditAgent(agent); }} className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                            <PencilIcon className="h-4 w-4 text-slate-400" />
+                            <span className="font-medium">Edit Details</span>
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDuplicateAgent(agent); }} className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                            <DocumentDuplicateIcon className="h-4 w-4 text-slate-400" />
+                            <span className="font-medium">Duplicate Agent</span>
+                        </button>
+                        <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 mx-2"></div>
+                        <button onClick={(e) => { e.stopPropagation(); handleDeleteRequest(agent.id); }} className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                            <TrashIcon className="h-4 w-4" />
+                            <span className="font-medium">Delete Agent</span>
+                        </button>
                     </div>,
                     document.body
                 );
@@ -460,35 +445,23 @@ const AgentPage: React.FC = () => {
             <Modal
                 isOpen={isDeleteModalOpen}
                 onClose={() => setIsDeleteModalOpen(false)}
-                title="Delete Agent"
+                title="Confirm Deletion"
             >
-                <div className="animate-fade-in">
-                    <p className="mb-4 text-slate-600 dark:text-slate-300">
-                        Are you sure you want to delete the agent <strong className="font-semibold text-slate-800 dark:text-slate-100">{agentToDelete?.name}</strong>?
+                <div className="p-2">
+                    <div className="w-16 h-16 bg-red-50 dark:bg-red-900/20 rounded-2xl flex items-center justify-center mb-6 mx-auto">
+                        <TrashIcon className="h-8 w-8 text-red-500" />
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white text-center mb-2">Delete Agent?</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-8">
+                        Are you sure you want to delete <span className="font-bold text-slate-800 dark:text-white">"{agentToDelete?.name}"</span>? This action is permanent and cannot be undone.
                     </p>
-                    <p className="text-sm text-red-600 dark:text-red-400">
-                        This action cannot be undone. All associated data will be permanently removed.
-                    </p>
-                    <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
-                        <button
-                            onClick={() => {
-                                setIsDeleteModalOpen(false);
-                                setAgentToDelete(null);
-                            }}
-                            className="btn-animate bg-slate-200 dark:bg-slate-600 px-4 py-2 rounded-md font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-300 dark:hover:bg-slate-500 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            onClick={handleConfirmDelete}
-                            className="btn-animate bg-red-600 text-white px-4 py-2 rounded-md font-semibold hover:bg-red-700 transition-colors"
-                        >
-                            Delete Agent
-                        </button>
+                    <div className="flex gap-4">
+                        <button onClick={() => setIsDeleteModalOpen(false)} className="flex-1 px-4 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-2xl transition-all">Cancel</button>
+                        <button onClick={handleConfirmDelete} className="flex-1 bg-red-500 text-white font-bold px-4 py-3 rounded-2xl shadow-lg shadow-red-500/20 hover:bg-red-600 transition-all">Delete Forever</button>
                     </div>
                 </div>
             </Modal>
-        </>
+        </AppLayout>
     );
 };
 

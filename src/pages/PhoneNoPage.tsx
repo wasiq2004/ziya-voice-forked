@@ -1,16 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import Header from '../components/Header';
+import AppLayout from '../components/AppLayout';
 import Modal from '../components/Modal';
 import CallInitiator from '../components/CallInitiator';
-import { EditIcon, PhoneIcon, ImportIcon, ArrowUpRightIcon } from '../constants';
-import { PhoneNumber, PhoneProvider, VoiceAgent } from '../types';
+import { PhoneNumber, VoiceAgent } from '../types';
 import { phoneNumberService } from '../services/phoneNumberService';
 import { agentService } from '../services/agentService';
 import { twilioNumberService } from '../services/twilioNumberService';
 import { twilioBasicService } from '../services/twilioBasicService';
 import { useAuth } from '../contexts/AuthContext';
 import { getApiBaseUrl } from '../utils/api';
+import {
+    PlusIcon,
+    PhoneIcon,
+    ChevronDownIcon,
+    ArrowUpRightIcon,
+    EllipsisVerticalIcon,
+    TrashIcon,
+    PencilIcon,
+    ArrowPathIcon,
+    PhoneArrowUpRightIcon,
+    UserIcon,
+    ClockIcon,
+    CalendarIcon,
+    DevicePhoneMobileIcon,
+    CheckCircleIcon,
+    SignalIcon
+} from '@heroicons/react/24/outline';
 
 const ImportPhoneNumberModal: React.FC<{
     isOpen: boolean;
@@ -837,184 +853,188 @@ Please check that:
 
     if (loading) {
         return (
-            <div className="flex justify-center items-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-            </div>
+            <AppLayout
+                breadcrumbs={[{ label: 'Dashboard', path: '/dashboard' }, { label: 'Phone Numbers' }]}
+                pageTitle="Phone Numbers"
+            >
+                <div className="flex flex-col justify-center items-center h-[60vh]">
+                    <div className="relative">
+                        <div className="flex items-center justify-center p-4">
+                            <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary/20 border-t-primary"></div>
+                        </div>
+                    </div>
+                    <p className="mt-4 text-slate-500 font-medium animate-pulse">Loading phone numbers...</p>
+                </div>
+            </AppLayout>
         );
     }
 
     return (
-        <>
-            <Header title="Phone Numbers">
-                <div className="flex flex-col sm:flex-row gap-3">
+        <AppLayout
+            breadcrumbs={[
+                { label: 'Dashboard', path: '/dashboard' },
+                { label: 'Phone Numbers' }
+            ]}
+            pageTitle="Phone Numbers"
+            pageDescription="Manage your virtual phone numbers and assign voice agents."
+            primaryAction={
+                <div className="flex items-center space-x-3">
+
                     <button
                         onClick={() => setAddTwilioModalOpen(true)}
-                        className="btn-animate bg-primary hover:bg-primary-dark text-white font-bold py-2 px-4 rounded-lg flex items-center transition"
+                        className="flex items-center px-5 py-2.5 rounded-xl bg-primary text-white font-bold text-sm shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all group"
                     >
-                        <PhoneIcon className="h-5 w-5 mr-2" />
-                        <span className="hidden sm:inline">Add Twilio Number</span>
-                        <span className="sm:hidden">Add Twilio</span>
-                    </button>
-                    <button
-                        onClick={() => setImportModalOpen(true)}
-                        className="btn-animate bg-white dark:bg-darkbg-light border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-darkbg text-slate-800 dark:text-slate-200 font-bold py-2 px-4 rounded-lg flex items-center transition"
-                    >
-                        <ImportIcon className="h-5 w-5 mr-2" />
-                        <span className="hidden sm:inline">Import Number</span>
-                        <span className="sm:hidden">Import</span>
+                        <PlusIcon className="h-4 w-4 mr-2 group-hover:rotate-90 transition-transform duration-200" />
+                        Connect Twilio
                     </button>
                 </div>
-            </Header>
+            }
+        >
+            <div className="space-y-8 animate-in fade-in duration-500">
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    <div className="bg-white dark:bg-darkbg-light border border-slate-200 dark:border-slate-700 rounded-lg p-6">
-                        <div className="flex items-center">
-                            <div className="p-3 rounded-full bg-blue-500/20">
-                                <PhoneIcon className="h-6 w-6 text-blue-400" />
+                {/* Metrics Section */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {[
+                        {
+                            label: 'Total Numbers',
+                            value: phoneNumbers.length,
+                            icon: DevicePhoneMobileIcon,
+                            color: 'blue',
+                            trend: 'Active Connections'
+                        },
+                        {
+                            label: 'Active Agents',
+                            value: agents.filter(a => a.status === 'Active').length,
+                            icon: UserIcon,
+                            color: 'green',
+                            trend: `${agents.length} Total Agents`
+                        },
+                        {
+                            label: 'Recent Calls',
+                            value: callHistory.length,
+                            icon: PhoneArrowUpRightIcon,
+                            color: 'purple',
+                            trend: 'Last 30 Days'
+                        }
+                    ].map((stat, i) => (
+                        <div key={i} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 p-5 rounded-3xl shadow-sm hover:shadow-md transition-all group">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className={`p-3 rounded-xl bg-${stat.color}-50 dark:bg-${stat.color}-900/20 text-${stat.color}-500 group-hover:scale-110 transition-transform duration-300`}>
+                                    <stat.icon className="h-5 w-5" />
+                                </div>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{stat.trend}</span>
                             </div>
-                            <div className="ml-4">
-                                <h3 className="text-lg font-medium text-slate-600 dark:text-slate-300">Total Numbers</h3>
-                                <p className="text-2xl font-bold text-slate-900 dark:text-white">{phoneNumbers.length}</p>
-                            </div>
+                            <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-1">{stat.value}</h3>
+                            <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-[10px]">{stat.label}</p>
                         </div>
-                    </div>
-
-                    <div className="bg-white dark:bg-darkbg-light border border-slate-200 dark:border-slate-700 rounded-lg p-6">
-                        <div className="flex items-center">
-                            <div className="p-3 rounded-full bg-green-500/20">
-                                <svg className="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                            </div>
-                            <div className="ml-4">
-                                <h3 className="text-lg font-medium text-slate-600 dark:text-slate-300">Active Agents</h3>
-                                <p className="text-2xl font-bold text-slate-900 dark:text-white">{agents.filter(a => a.status === 'Active').length}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-white dark:bg-darkbg-light border border-slate-200 dark:border-slate-700 rounded-lg p-6">
-                        <div className="flex items-center">
-                            <div className="p-3 rounded-full bg-purple-500/20">
-                                <svg className="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                                </svg>
-                            </div>
-                            <div className="ml-4">
-                                <h3 className="text-lg font-medium text-slate-600 dark:text-slate-300">Recent Calls</h3>
-                                <p className="text-2xl font-bold text-slate-900 dark:text-white">{callHistory.length}</p>
-                            </div>
-                        </div>
-                    </div>
+                    ))}
                 </div>
 
-                {/* Phone Numbers Table */}
-                <div className="bg-white dark:bg-darkbg-light border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-                    <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
-                        <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Your Phone Numbers</h2>
-                        <p className="text-slate-600 dark:text-slate-400 text-sm mt-1">Manage your connected phone numbers and assign voice agents</p>
+                {/* Main Table Content */}
+                <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden">
+                    <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1">Your Phone Numbers</h2>
+                            <p className="text-sm text-slate-500 font-medium">Connect numbers to agents for automated voice responses.</p>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <button className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                                <ArrowPathIcon className="h-5 w-5" />
+                            </button>
+                        </div>
                     </div>
 
                     {phoneNumbers.length === 0 ? (
-                        <div className="text-center py-12">
-                            <PhoneIcon className="mx-auto h-12 w-12 text-slate-400" />
-                            <h3 className="mt-2 text-sm font-medium text-slate-700 dark:text-slate-200">No phone numbers</h3>
-                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-500">Get started by adding a Twilio number or importing an existing one.</p>
-                            <div className="mt-6">
-                                <button
-                                    onClick={() => setAddTwilioModalOpen(true)}
-                                    className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-primary-dark focus:outline-none"
-                                >
-                                    <PhoneIcon className="-ml-1 mr-2 h-5 w-5" />
-                                    Add Twilio Number
-                                </button>
+                        <div className="p-20 text-center">
+                            <div className="w-20 h-20 bg-slate-50 dark:bg-slate-900 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                                <PhoneIcon className="h-10 w-10 text-slate-300" />
                             </div>
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">No phone numbers yet</h3>
+                            <p className="text-slate-500 max-w-sm mx-auto mb-8 font-medium italic">
+                                Ready to take your calls to the next level? Connect your first Twilio number to get started.
+                            </p>
+                            <button
+                                onClick={() => setAddTwilioModalOpen(true)}
+                                className="inline-flex items-center px-6 py-3 bg-primary text-white font-bold rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all"
+                            >
+                                <PlusIcon className="h-5 w-5 mr-2" />
+                                Connect Your First Number
+                            </button>
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-                                <thead className="bg-slate-100 dark:bg-slate-800">
-                                    <tr>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">Phone Number</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">Provider</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">Agent</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">Status</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">Added</th>
-                                        <th scope="col" className="relative px-6 py-3">
-                                            <span className="sr-only">Actions</span>
-                                        </th>
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800">
+                                        <th className="px-8 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Connection</th>
+                                        <th className="px-8 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Integrated Agent</th>
+                                        <th className="px-8 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Region & Type</th>
+                                        <th className="px-8 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Added On</th>
+                                        <th className="px-8 py-5"></th>
                                     </tr>
                                 </thead>
-                                <tbody className="bg-white dark:bg-darkbg-light divide-y divide-slate-200 dark:divide-slate-700">
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                     {phoneNumbers.map((phoneNumber) => {
                                         const { date, time } = formatDateTime(phoneNumber.createdDate);
                                         return (
-                                            <tr key={phoneNumber.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                                                <td className="px-6 py-4 whitespace-nowrap">
+                                            <tr key={phoneNumber.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors group">
+                                                <td className="px-8 py-6">
                                                     <div className="flex items-center">
-                                                        <div className="flex-shrink-0 h-10 w-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-                                                            <PhoneIcon className="h-5 w-5 text-blue-400" />
+                                                        <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-600 transition-transform group-hover:scale-110">
+                                                            <PhoneIcon className="h-6 w-6" />
                                                         </div>
                                                         <div className="ml-4">
-                                                            <div className="text-sm font-medium text-slate-900 dark:text-white">{phoneNumber.phoneNumber || phoneNumber.number || phoneNumber.phone_number}</div>
-                                                            <div className="text-sm text-slate-600 dark:text-slate-400">{phoneNumber.region}</div>
+                                                            <div className="text-base font-bold text-slate-900 dark:text-white mb-0.5">
+                                                                {phoneNumber.phoneNumber || phoneNumber.number || phoneNumber.phone_number}
+                                                            </div>
+                                                            <div className="flex items-center text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                                                <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-2 shadow-[0_0_8px_rgba(34,197,94,0.5)]"></span>
+                                                                {phoneNumber.provider} Connection
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="text-sm text-slate-900 dark:text-white capitalize">{phoneNumber.provider}</div>
-                                                    {phoneNumber.twilioSid && (
-                                                        <div className="text-xs text-slate-400 truncate max-w-xs">{phoneNumber.twilioSid.substring(0, 10)}...</div>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                <td className="px-8 py-6">
                                                     {phoneNumber.agentId ? (
-                                                        <div>
-                                                            <div className="text-sm text-slate-900 dark:text-white">{phoneNumber.agentName}</div>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    openEditModal(phoneNumber);
-                                                                }}
-                                                                className="text-xs text-primary hover:text-primary-dark"
-                                                            >
-                                                                Change
-                                                            </button>
+                                                        <div className="flex items-center">
+                                                            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary mr-3">
+                                                                <UserIcon className="h-4 w-4" />
+                                                            </div>
+                                                            <div>
+                                                                <div className="text-sm font-bold text-slate-900 dark:text-white leading-none mb-1">{phoneNumber.agentName}</div>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); openEditModal(phoneNumber); }}
+                                                                    className="text-[10px] font-black uppercase text-primary hover:underline tracking-widest"
+                                                                >
+                                                                    Change Agent
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     ) : (
                                                         <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                openEditModal(phoneNumber);
-                                                            }}
-                                                            className="text-sm text-primary hover:text-primary-dark"
+                                                            onClick={(e) => { e.stopPropagation(); openEditModal(phoneNumber); }}
+                                                            className="flex items-center px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-400 font-bold text-[10px] uppercase tracking-widest hover:bg-primary hover:text-white transition-all border border-slate-100 dark:border-slate-800"
                                                         >
+                                                            <PlusIcon className="h-3.5 w-3.5 mr-2" />
                                                             Assign Agent
                                                         </button>
                                                     )}
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-900 text-green-300">
-                                                        Connected
-                                                    </span>
+                                                <td className="px-8 py-6">
+                                                    <div className="text-sm font-bold text-slate-900 dark:text-white mb-1 uppercase tracking-wider">{phoneNumber.region || 'Global'}</div>
+                                                    <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{phoneNumber.twilioSid?.substring(0, 10) || 'Verified Extension'}</div>
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">
-                                                    <div>{date}</div>
-                                                    <div>{time}</div>
+                                                <td className="px-8 py-6 text-right">
+                                                    <div className="text-sm font-bold text-slate-900 dark:text-white mb-1">{date}</div>
+                                                    <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{time}</div>
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                    <div className="relative inline-block text-left">
-                                                        <button
-                                                            onClick={(e) => handleToggleDropdown(e, phoneNumber.id)}
-                                                            className="dropdown-trigger text-slate-400 hover:text-slate-200"
-                                                        >
-                                                            <svg className="h-5 w-5 pointer-events-none" fill="currentColor" viewBox="0 0 20 20">
-                                                                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                                                            </svg>
-                                                        </button>
-                                                    </div>
+                                                <td className="px-8 py-6 text-right relative">
+                                                    <button
+                                                        onClick={(e) => handleToggleDropdown(e, phoneNumber.id)}
+                                                        className="dropdown-trigger p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+                                                    >
+                                                        <EllipsisVerticalIcon className="h-6 w-6" />
+                                                    </button>
                                                 </td>
                                             </tr>
                                         );
@@ -1025,138 +1045,121 @@ Please check that:
                     )}
                 </div>
 
-                {/* User Twilio Accounts Section */}
-                {userTwilioAccounts.length > 0 && (
-                    <div className="mt-8 bg-white dark:bg-darkbg-light border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-                        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
-                            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Your Twilio Accounts</h2>
-                            <p className="text-slate-600 dark:text-slate-400 text-sm mt-1">Manage phone numbers from your connected Twilio accounts</p>
+                {/* Secondary Sections Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pb-10">
+                    {/* Call History Card */}
+                    {callHistory.length > 0 && (
+                        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden flex flex-col h-full">
+                            <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                    <ClockIcon className="h-5 w-5 text-purple-500" />
+                                    Recent Activity
+                                </h2>
+                                <button className="text-xs font-bold text-primary uppercase tracking-widest hover:underline">View History</button>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left">
+                                    <thead>
+                                        <tr className="bg-slate-50/30 dark:bg-slate-900/30 border-b border-slate-100 dark:border-slate-800">
+                                            <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Routing</th>
+                                            <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
+                                            <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Time</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
+                                        {callHistory.slice(0, 4).map((call) => {
+                                            const { date, time } = formatDateTime(call.timestamp);
+                                            return (
+                                                <tr key={call.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors">
+                                                    <td className="px-6 py-5">
+                                                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200 mb-0.5">{call.toNumber}</div>
+                                                        <div className="text-[10px] text-slate-500 font-medium italic">from {call.fromNumber}</div>
+                                                    </td>
+                                                    <td className="px-6 py-5">
+                                                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider ${call.status === 'completed' ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-900/50' :
+                                                            'bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700'
+                                                            }`}>
+                                                            {call.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-5 text-right font-bold text-[10px] text-slate-400">
+                                                        {time}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
+                    )}
 
-                        <div className="p-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {/* Twilio Accounts Card */}
+                    {userTwilioAccounts.length > 0 && (
+                        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden h-full">
+                            <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                    <SignalIcon className="h-5 w-5 text-blue-500" />
+                                    Twilio Infrastructure
+                                </h2>
+                                <button onClick={() => window.location.href = '/twilio-settings'} className="text-xs font-bold text-primary uppercase tracking-widest hover:underline">Manage Accounts</button>
+                            </div>
+                            <div className="p-8 space-y-4">
                                 {userTwilioAccounts.map((account) => (
-                                    <div key={account.id} className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <h3 className="font-medium text-slate-900 dark:text-white">{account.name}</h3>
-                                                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                                                    SID: {account.accountSid.substring(0, 10)}...{account.accountSid.substring(account.accountSid.length - 4)}
-                                                </p>
+                                    <div key={account.id} className="group p-5 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 hover:border-primary/30 transition-all flex items-center justify-between">
+                                        <div className="flex items-center">
+                                            <div className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-center text-red-500 mr-4 shadow-sm">
+                                                <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" /></svg>
                                             </div>
-                                            <button
-                                                onClick={() => {
-                                                    // Redirect to Twilio Settings page to manage this account
-                                                    window.location.href = '/twilio-settings';
-                                                }}
-                                                className="text-primary hover:text-primary-dark text-sm"
-                                            >
-                                                Manage
-                                            </button>
+                                            <div>
+                                                <div className="text-sm font-bold text-slate-900 dark:text-white leading-none mb-1.5">{account.name}</div>
+                                                <div className="text-[10px] font-mono text-slate-500 font-bold tracking-tighter">
+                                                    SID: {account.accountSid.substring(0, 10)}...{account.accountSid.substring(account.accountSid.length - 4)}
+                                                </div>
+                                            </div>
                                         </div>
+                                        <div className="px-3 py-1 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-[10px] font-black uppercase rounded-lg border border-green-100 dark:border-green-900/30">Verified</div>
                                     </div>
                                 ))}
-                            </div>
-
-                            <div className="mt-6">
                                 <button
                                     onClick={() => window.location.href = '/twilio-settings'}
-                                    className="inline-flex items-center px-4 py-2 border border-slate-300 dark:border-slate-600 shadow-sm text-sm font-medium rounded-md text-slate-700 dark:text-slate-200 bg-white dark:bg-darkbg hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none"
+                                    className="w-full py-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 font-bold text-xs hover:border-primary/50 hover:text-primary transition-all flex items-center justify-center gap-2"
                                 >
-                                    <svg className="-ml-1 mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37.996.608 2.296.07 2.572-1.065z" />
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                    </svg>
-                                    Manage Twilio Accounts
+                                    <PlusIcon className="h-4 w-4" />
+                                    Configure More Accounts
                                 </button>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
+            </div>
 
-                {/* Call History Section */}
-                {callHistory.length > 0 && (
-                    <div className="mt-8 bg-white dark:bg-darkbg-light border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-                        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
-                            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Recent Calls</h2>
-                            <p className="text-slate-600 dark:text-slate-400 text-sm mt-1">Latest call activity from your phone numbers</p>
-                        </div>
-
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-                                <thead className="bg-slate-100 dark:bg-slate-800">
-                                    <tr>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">From</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">To</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">Status</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">Duration</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wider">Date</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white dark:bg-darkbg-light divide-y divide-slate-200 dark:divide-slate-700">
-                                    {callHistory.slice(0, 5).map((call) => {
-                                        const { date, time } = formatDateTime(call.timestamp);
-                                        return (
-                                            <tr key={call.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">{call.fromNumber}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">{call.toNumber}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${call.status === 'completed' ? 'bg-green-900 text-green-300' :
-                                                        call.status === 'failed' ? 'bg-red-900 text-red-300' :
-                                                            call.status === 'busy' ? 'bg-yellow-900 text-yellow-300' :
-                                                                'bg-blue-900 text-blue-300'
-                                                        }`}>
-                                                        {call.status}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">
-                                                    {call.duration > 0 ? `${Math.floor(call.duration / 60)}m ${call.duration % 60}s` : 'N/A'}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">
-                                                    <div>{date}</div>
-                                                    <div>{time}</div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
-            </main>
-
+            {/* Sub-components / Modals Portaled */}
             {activeDropdown && (() => {
                 const phoneNumber = phoneNumbers.find(p => p.id === activeDropdown);
                 if (!phoneNumber) return null;
                 return createPortal(
                     <div
-                        className="dropdown-menu absolute w-56 rounded-md shadow-lg bg-white dark:bg-darkbg-light ring-1 ring-black ring-opacity-5 z-50 border border-slate-200 dark:border-slate-700"
+                        className="dropdown-menu fixed w-64 rounded-2xl shadow-2xl bg-white dark:bg-slate-800/95 backdrop-blur-md border border-slate-200 dark:border-slate-700 z-[9999] py-2 animate-in fade-in slide-in-from-top-2 duration-200"
                         style={{ top: `${dropdownPos.top}px`, left: `${dropdownPos.left}px` }}
                     >
-                        <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
-                            <button
-                                onClick={() => openMakeCallModal(phoneNumber)}
-                                className="block px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 w-full text-left"
-                                role="menuitem"
-                            >
-                                Make Call
-                            </button>
-                            <button
-                                onClick={() => openEditModal(phoneNumber)}
-                                className="block px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 w-full text-left"
-                                role="menuitem"
-                            >
-                                Edit Agent
-                            </button>
-                            <button
-                                onClick={() => handleDeleteNumber(phoneNumber.id)}
-                                className="block px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-700 w-full text-left"
-                                role="menuitem"
-                            >
-                                Delete Number
-                            </button>
+                        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700/50 mb-1">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Quick Actions</p>
+                            <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{phoneNumber.phoneNumber || phoneNumber.number}</p>
                         </div>
+                        <button onClick={() => openMakeCallModal(phoneNumber)} className="w-full text-left flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                            <PhoneIcon className="h-4 w-4 text-slate-400" />
+                            <span className="font-semibold">Initiate Test Call</span>
+                        </button>
+                        <button onClick={() => openEditModal(phoneNumber)} className="w-full text-left flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                            <PencilIcon className="h-4 w-4 text-slate-400" />
+                            <span className="font-semibold">Change Assignment</span>
+                        </button>
+                        <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 mx-2"></div>
+                        <button onClick={() => handleDeleteNumber(phoneNumber.id)} className="w-full text-left flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                            <TrashIcon className="h-4 w-4" />
+                            <span className="font-semibold">Delete Connection</span>
+                        </button>
                     </div>,
                     document.body
                 );
@@ -1168,7 +1171,6 @@ Please check that:
                 onClose={() => setImportModalOpen(false)}
                 user={user}
                 onPhoneNumberImported={(newPhoneNumber) => {
-                    // Add the new phone number to the list
                     setPhoneNumbers(prev => [...prev, newPhoneNumber]);
                 }}
             />
@@ -1178,7 +1180,6 @@ Please check that:
                 onClose={() => setAddTwilioModalOpen(false)}
                 user={user}
                 onNumberAdded={() => {
-                    // Refresh the phone numbers list
                     loadPhoneNumbers();
                     loadTwilioPhoneNumbers();
                 }}
@@ -1193,50 +1194,58 @@ Please check that:
                     }}
                     title="Assign Voice Agent"
                 >
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    <div className="space-y-6">
+                        <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
                                 Phone Number
                             </label>
-                            <div className="text-slate-900 dark:text-white font-medium">
+                            <div className="text-lg font-black text-slate-900 dark:text-white">
                                 {editingPhoneNumber.phoneNumber || editingPhoneNumber.number || editingPhoneNumber.phone_number}
                             </div>
                         </div>
 
                         <div>
-                            <label htmlFor="agentSelect" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                            <label htmlFor="agentSelect" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
                                 Select Voice Agent
                             </label>
-                            <select
-                                id="agentSelect"
-                                value={selectedAgentId}
-                                onChange={(e) => setSelectedAgentId(e.target.value)}
-                                className="w-full bg-white dark:bg-darkbg border border-slate-300 dark:border-slate-600 rounded-md px-3 py-2 text-slate-900 dark:text-white focus:ring-primary focus:border-primary"
-                            >
-                                <option value="">Unassign Agent</option>
-                                {agents.map((agent) => (
-                                    <option key={agent.id} value={agent.id}>
-                                        {agent.name} ({agent.status})
-                                    </option>
-                                ))}
-                            </select>
+                            <div className="relative group">
+                                <select
+                                    id="agentSelect"
+                                    value={selectedAgentId}
+                                    onChange={(e) => setSelectedAgentId(e.target.value)}
+                                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-3.5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all appearance-none font-bold"
+                                >
+                                    <option value="">No Agent Assigned</option>
+                                    {agents.map((agent) => (
+                                        <option key={agent.id} value={agent.id}>
+                                            {agent.name} ({agent.status})
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                    <ChevronDownIcon className="h-5 w-5" />
+                                </div>
+                            </div>
+                            <p className="mt-2 text-[10px] text-slate-500 font-medium leading-relaxed italic">
+                                Heads up: Calls to this number will be handled by the selected agent immediately.
+                            </p>
                         </div>
 
-                        <div className="flex justify-end space-x-3 pt-4">
+                        <div className="flex justify-end space-x-3 pt-6 border-t border-slate-100 dark:border-slate-800">
                             <button
                                 onClick={() => {
                                     setEditModalOpen(false);
                                     setEditingPhoneNumber(null);
                                 }}
-                                className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-md text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                                className="px-6 py-2.5 rounded-xl text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-all text-sm"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleSaveAgentAssignment}
-                                className="px-4 py-2 bg-primary rounded-md text-white hover:bg-primary-dark"
+                                className="px-8 py-2.5 bg-primary rounded-xl text-white font-black shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all text-sm"
                             >
-                                Save
+                                Save Assignment
                             </button>
                         </div>
                     </div>
@@ -1244,9 +1253,10 @@ Please check that:
             )}
 
             {selectedPhoneNumber && isCallModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white dark:bg-darkbg-light rounded-lg shadow-xl max-w-md w-full mx-4">
-                        <div className="p-6">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in duration-300" onClick={() => setCallModalOpen(false)}>
+                    <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+                        <div className="h-1.5 bg-primary w-full"></div>
+                        <div className="p-8">
                             <CallInitiator
                                 phoneNumber={selectedPhoneNumber}
                                 agents={agents}
@@ -1264,9 +1274,10 @@ Please check that:
             )}
 
             {selectedPhoneNumber && isMakeCallModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white dark:bg-darkbg-light rounded-lg shadow-xl max-w-md w-full mx-4">
-                        <div className="p-6">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in duration-300" onClick={() => setMakeCallModalOpen(false)}>
+                    <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+                        <div className="h-1.5 bg-primary w-full"></div>
+                        <div className="p-8">
                             <CallInitiator
                                 phoneNumber={selectedPhoneNumber}
                                 agents={agents}
@@ -1282,7 +1293,7 @@ Please check that:
                     </div>
                 </div>
             )}
-        </>
+        </AppLayout>
     );
 };
 

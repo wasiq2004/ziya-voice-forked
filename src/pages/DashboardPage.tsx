@@ -3,6 +3,20 @@ import { useNavigate } from 'react-router-dom';
 import { agentService } from '../services/agentService';
 import { phoneNumberService } from '../services/phoneNumberService';
 import { useAuth } from '../contexts/AuthContext';
+import AppLayout from '../components/AppLayout';
+import {
+    UserGroupIcon,
+    PhoneIcon,
+    SignalIcon,
+    BanknotesIcon,
+    PlusIcon,
+    ChartBarIcon,
+    Cog6ToothIcon,
+    ArrowPathIcon,
+    ClockIcon
+} from '@heroicons/react/24/outline';
+import { fetchCampaigns } from '../utils/api';
+import KPICard from '../components/KPICard';
 
 const DashboardPage: React.FC = () => {
     const navigate = useNavigate();
@@ -10,6 +24,13 @@ const DashboardPage: React.FC = () => {
     const [phoneNumberCount, setPhoneNumberCount] = useState(0);
     const [activeCalls, setActiveCalls] = useState(0);
     const [credits, setCredits] = useState<number | string>('--');
+    const [stats, setStats] = useState({
+        totalCampaigns: 0,
+        activeCampaigns: 0,
+        totalCalls: 0,
+        conversionRate: 0,
+        totalLeads: 0
+    });
     const [loading, setLoading] = useState(true);
     const [isAdmin, setIsAdmin] = useState(false);
     const { user } = useAuth();
@@ -40,6 +61,26 @@ const DashboardPage: React.FC = () => {
             // For now, we'll use a placeholder value
             setActiveCalls(0);
 
+            // Fetch campaigns for analytics
+            const campaignRes = await fetchCampaigns(user!.id);
+            if (campaignRes.success && campaignRes.data) {
+                const camps = campaignRes.data;
+                const totalCampaigns = camps.length;
+                const activeCampaigns = camps.filter((c: any) => c.status === 'running').length;
+                const totalLeads = camps.reduce((sum: number, c: any) => sum + (c.total_contacts || 0), 0);
+                const totalCalls = camps.reduce((sum: number, c: any) => sum + (c.completed_calls || 0), 0);
+                // Mock conversion rate for now (completed calls / leads * 100) or 0
+                const conversionRate = totalLeads > 0 ? Math.round((totalCalls / totalLeads) * 100) : 0;
+
+                setStats({
+                    totalCampaigns,
+                    activeCampaigns,
+                    totalCalls,
+                    conversionRate,
+                    totalLeads
+                });
+            }
+
 
         } catch (error) {
             console.error('Error loading dashboard data:', error);
@@ -50,141 +91,136 @@ const DashboardPage: React.FC = () => {
 
     if (loading) {
         return (
-            <div className="flex justify-center items-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-            </div>
+            <AppLayout
+                breadcrumbs={[{ label: 'Dashboard' }]}
+                pageTitle="Dashboard"
+                pageDescription="Welcome back, let's see what's happening today."
+            >
+                <div className="flex justify-center items-center h-64">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+                </div>
+            </AppLayout>
         );
     }
 
     return (
-        <div className="space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between animate-slide-down">
-                <h1 className="text-3xl md:text-4xl font-bold text-slate-800 dark:text-white">Dashboard</h1>
-            </div>
+        <AppLayout
+            breadcrumbs={[{ label: 'Dashboard' }]}
+            pageTitle="Dashboard"
+            pageDescription="Complete overview of your voice AI agents and campaign performance."
+        >
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 stagger-children">
-                <div className="bg-white dark:bg-darkbg-light rounded-lg shadow-sm p-4 md:p-6 card-animate hover:shadow-lg transition-all duration-300">
+                <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6 card-animate hover:shadow-md transition-all duration-300">
                     <div className="flex items-center">
-                        <div className="rounded-full bg-blue-100 dark:bg-blue-900/30 p-3 animate-pulse-soft">
-                            <svg className="h-6 w-6 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                            </svg>
+                        <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 p-3">
+                            <UserGroupIcon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                         </div>
                         <div className="ml-4">
-                            <h3 className="text-xs md:text-sm font-medium text-slate-500 dark:text-slate-400">Total Agents</h3>
-                            <p className="text-2xl md:text-3xl font-semibold text-slate-800 dark:text-white" style={{ animationDelay: '0.1s' }}>{agentCount}</p>
+                            <h3 className="text-xs md:text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Agents</h3>
+                            <p className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mt-1">{agentCount}</p>
                         </div>
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-darkbg-light rounded-lg shadow-sm p-4 md:p-6 card-animate hover:shadow-lg transition-all duration-300">
+                <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6 card-animate hover:shadow-md transition-all duration-300">
                     <div className="flex items-center">
-                        <div className="rounded-full bg-green-100 dark:bg-green-900/30 p-3 animate-pulse-soft" style={{ animationDelay: '0.2s' }}>
-                            <svg className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
+                        <div className="rounded-xl bg-green-50 dark:bg-green-900/20 p-3">
+                            <PhoneIcon className="h-6 w-6 text-green-600 dark:text-green-400" />
                         </div>
                         <div className="ml-4">
-                            <h3 className="text-xs md:text-sm font-medium text-slate-500 dark:text-slate-400">Active Calls</h3>
-                            <p className="text-2xl md:text-3xl font-semibold text-slate-800 dark:text-white" style={{ animationDelay: '0.2s' }}>{activeCalls}</p>
+                            <h3 className="text-xs md:text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Active Calls</h3>
+                            <p className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mt-1">{activeCalls}</p>
                         </div>
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-darkbg-light rounded-lg shadow-sm p-4 md:p-6 card-animate hover:shadow-lg transition-all duration-300">
+                <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6 card-animate hover:shadow-md transition-all duration-300">
                     <div className="flex items-center">
-                        <div className="rounded-full bg-yellow-100 dark:bg-yellow-900/30 p-3 animate-pulse-soft" style={{ animationDelay: '0.4s' }}>
-                            <svg className="h-6 w-6 text-yellow-600 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
+                        <div className="rounded-xl bg-yellow-50 dark:bg-yellow-900/20 p-3">
+                            <SignalIcon className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
                         </div>
                         <div className="ml-4">
-                            <h3 className="text-xs md:text-sm font-medium text-slate-500 dark:text-slate-400">Phone Numbers</h3>
-                            <p className="text-2xl md:text-3xl font-semibold text-slate-800 dark:text-white" style={{ animationDelay: '0.3s' }}>{phoneNumberCount}</p>
+                            <h3 className="text-xs md:text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Phone Numbers</h3>
+                            <p className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mt-1">{phoneNumberCount}</p>
                         </div>
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-darkbg-light rounded-lg shadow-sm p-4 md:p-6 card-animate hover:shadow-lg transition-all duration-300">
+                <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6 card-animate hover:shadow-md transition-all duration-300">
                     <div className="flex items-center">
-                        <div className="rounded-full bg-purple-100 dark:bg-purple-900/30 p-3 animate-pulse-soft" style={{ animationDelay: '0.6s' }}>
-                            <svg className="h-6 w-6 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                            </svg>
+                        <div className="rounded-xl bg-purple-50 dark:bg-purple-900/20 p-3">
+                            <BanknotesIcon className="h-6 w-6 text-purple-600 dark:text-purple-400" />
                         </div>
                         <div className="ml-4">
-                            <h3 className="text-xs md:text-sm font-medium text-slate-500 dark:text-slate-400">Total Credits</h3>
-                            <p className="text-2xl md:text-3xl font-semibold text-slate-800 dark:text-white" style={{ animationDelay: '0.4s' }}>{credits}</p>
+                            <h3 className="text-xs md:text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Credits</h3>
+                            <p className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mt-1">{credits}</p>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 stagger-children">
-                <div className="bg-white dark:bg-darkbg-light rounded-lg shadow-sm p-4 md:p-6 card-animate">
-                    <h2 className="text-lg md:text-xl font-semibold text-slate-800 dark:text-white mb-4 animate-slide-left">Recent Activity</h2>
-                    <div className="space-y-4">
-                        <div className="flex items-start animate-slide-up" style={{ animationDelay: '0.1s' }}>
-                            <div className="flex-shrink-0">
-                                <div className="h-2 w-2 rounded-full bg-green-500 mt-2 animate-pulse-soft"></div>
-                            </div>
-                            <div className="ml-3">
-                                <p className="text-sm font-medium text-slate-800 dark:text-white">Dashboard loaded</p>
-                                <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400">Just now</p>
-                            </div>
+                <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6">
+                    <h2 className="text-lg md:text-xl font-bold text-slate-800 dark:text-white mb-6">Overall Analytics</h2>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-1">
+                            <KPICard title="Total Campaigns" value={stats.totalCampaigns} color="blue" />
                         </div>
-                        <div className="flex items-start animate-slide-up" style={{ animationDelay: '0.2s' }}>
-                            <div className="flex-shrink-0">
-                                <div className="h-2 w-2 rounded-full bg-blue-500 mt-2 animate-pulse-soft"></div>
-                            </div>
-                            <div className="ml-3">
-                                <p className="text-sm font-medium text-slate-800 dark:text-white">Data refreshed</p>
-                                <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400">Just now</p>
-                            </div>
+                        <div className="col-span-1">
+                            <KPICard title="Active Campaigns" value={stats.activeCampaigns} color="green" />
                         </div>
+                        <div className="col-span-1">
+                            <KPICard title="Total Calls" value={stats.totalCalls} color="gray" />
+                        </div>
+                        <div className="col-span-1">
+                            <KPICard title="Total Leads" value={stats.totalLeads} color="purple" />
+                        </div>
+                    </div>
+                    <div className="mt-4">
+                        <KPICard title="Conversion Rate" value={`${stats.conversionRate}%`} color="red" />
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-darkbg-light rounded-lg shadow-sm p-4 md:p-6 card-animate">
-                    <h2 className="text-lg md:text-xl font-semibold text-slate-800 dark:text-white mb-4 animate-slide-right">Quick Actions</h2>
+                <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6">
+                    <h2 className="text-lg md:text-xl font-bold text-slate-800 dark:text-white mb-6">Quick Actions</h2>
                     <div className="grid grid-cols-2 gap-3 md:gap-4">
                         <button
                             onClick={() => navigate('/agents')}
-                            className="flex flex-col items-center justify-center p-3 md:p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 btn-animate transform hover:scale-110">
-                            <svg className="h-6 md:h-8 w-6 md:w-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                            </svg>
-                            <span className="mt-2 text-xs md:text-sm font-medium text-slate-700 dark:text-slate-300">Create Agent</span>
+                            className="group flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-primary/50 hover:bg-primary/5 transition-all duration-300 transform hover:scale-[1.02]">
+                            <div className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm text-primary group-hover:bg-primary group-hover:text-white transition-all duration-300">
+                                <PlusIcon className="h-6 w-6" />
+                            </div>
+                            <span className="mt-3 text-sm font-bold text-slate-700 dark:text-slate-300 tracking-tight">Create Agent</span>
                         </button>
                         <button
                             onClick={() => navigate('/phone-numbers')}
-                            className="flex flex-col items-center justify-center p-3 md:p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 btn-animate transform hover:scale-110">
-                            <svg className="h-6 md:h-8 w-6 md:w-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                            </svg>
-                            <span className="mt-2 text-xs md:text-sm font-medium text-slate-700 dark:text-slate-300">Import Number</span>
+                            className="group flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-primary/50 hover:bg-primary/5 transition-all duration-300 transform hover:scale-[1.02]">
+                            <div className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm text-primary group-hover:bg-primary group-hover:text-white transition-all duration-300">
+                                <PhoneIcon className="h-6 w-6" />
+                            </div>
+                            <span className="mt-3 text-sm font-bold text-slate-700 dark:text-slate-300 tracking-tight">Import Number</span>
                         </button>
                         <button
                             onClick={() => navigate('/campaigns')}
-                            className="flex flex-col items-center justify-center p-3 md:p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 btn-animate transform hover:scale-110">
-                            <svg className="h-6 md:h-8 w-6 md:w-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                            </svg>
-                            <span className="mt-2 text-xs md:text-sm font-medium text-slate-700 dark:text-slate-300">View Reports</span>
+                            className="group flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-primary/50 hover:bg-primary/5 transition-all duration-300 transform hover:scale-[1.02]">
+                            <div className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm text-primary group-hover:bg-primary group-hover:text-white transition-all duration-300">
+                                <ChartBarIcon className="h-6 w-6" />
+                            </div>
+                            <span className="mt-3 text-sm font-bold text-slate-700 dark:text-slate-300 tracking-tight">View Reports</span>
                         </button>
                         <button
                             onClick={() => navigate('/settings')}
-                            className="flex flex-col items-center justify-center p-3 md:p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 btn-animate transform hover:scale-110">
-                            <svg className="h-6 md:h-8 w-6 md:w-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c-.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            <span className="mt-2 text-xs md:text-sm font-medium text-slate-700 dark:text-slate-300">Settings</span>
+                            className="group flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-primary/50 hover:bg-primary/5 transition-all duration-300 transform hover:scale-[1.02]">
+                            <div className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm text-primary group-hover:bg-primary group-hover:text-white transition-all duration-300">
+                                <Cog6ToothIcon className="h-6 w-6" />
+                            </div>
+                            <span className="mt-3 text-sm font-bold text-slate-700 dark:text-slate-300 tracking-tight">Settings</span>
                         </button>
                     </div>
                 </div>
             </div>
-        </div>
+        </AppLayout>
     );
 };
 

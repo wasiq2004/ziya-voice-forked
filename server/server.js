@@ -7,11 +7,7 @@ const nodeFetch = require('node-fetch');
 const expressWs = require('express-ws');
 const { v4: uuidv4 } = require('uuid');
 const twilio = require('twilio');
-// Load environment variables
 const fs = require('fs');
-
-// Load environment variables
-// Priority: .env.local (root) -> .env (root) -> .env (server dir)
 const rootEnvLocal = path.resolve(__dirname, '../.env.local');
 const rootEnv = path.resolve(__dirname, '../.env');
 const serverEnv = path.resolve(__dirname, '.env');
@@ -34,6 +30,7 @@ const { ExternalApiService } = require('./services/externalApiService.js');
 const { PhoneNumberService } = require('./services/phoneNumberService.js');
 const AgentService = require('./services/agentService.js');
 const CampaignService = require('./services/campaignService.js');
+const CompanyService = require('./services/companyService.js');
 const { AuthService } = require('./services/authService.js');
 const TwilioService = require('./services/twilioService.js');
 const { TwilioBasicService } = require('./services/twilioBasicService.js');
@@ -85,11 +82,10 @@ const campaignService = new CampaignService(mysqlPool, walletService, costCalcul
 const authService = new AuthService(mysqlPool);
 const twilioService = new TwilioService();
 const twilioBasicService = new TwilioBasicService();
+const companyService = new CompanyService(mysqlPool);
 const adminService = new AdminService(mysqlPool);
-//Import Google Sheets Service at the top of server.js
-const googleSheetsService = require('./services/googleSheetsService.js');
-// Initialize Google Sheets on server startup
-googleSheetsService.initialize();
+// Google Sheets service removed
+
 // Initialize MediaStreamHandler for voice call pipeline
 const agentService = new AgentService(mysqlPool);
 
@@ -103,7 +99,6 @@ console.log('✅ Voice Sync Service initialized');
 console.log('✅ WebSocket support enabled on HTTP server');
 
 // Initialize Google Voice Stream Handler
-// Initialize Google Voice Stream Handler
 const GoogleVoiceStreamHandler = require('./services/GoogleVoiceStreamHandler.js');
 const googleVoiceHandler = new GoogleVoiceStreamHandler(voiceSyncService, walletService);
 app.ws('/voice-stream-google', (ws, req) => {
@@ -114,7 +109,7 @@ console.log('✅ Google Voice Stream Handler initialized at /voice-stream-google
 // Initialize Deepgram Browser Handler
 const { DeepgramBrowserHandler } = require('./services/DeepgramBrowserHandler.js');
 const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
-const geminiApiKey = process.env.GOOGLE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 console.log('Deepgram API Key configured:', !!deepgramApiKey);
 console.log('Gemini API Key configured:', !!geminiApiKey);
@@ -137,16 +132,16 @@ if (deepgramApiKey) {
 
 // Initialize BrowserVoiceHandler for production-level browser voice interactions
 const { BrowserVoiceHandler } = require('./services/BrowserVoiceHandler.js');
-const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVENLABS_API_KEY;
+const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY;
 const sarvamApiKey = process.env.SARVAM_API_KEY;
 
 let browserVoiceHandler;
-if (deepgramApiKey) {
+// Initialize if Sarvam API key is available
+if (sarvamApiKey) {
   try {
     browserVoiceHandler = new BrowserVoiceHandler(
-      deepgramApiKey,
       geminiApiKey,
-      openaiApiKey, // Add OpenAI API key
+      openaiApiKey,
       elevenLabsApiKey,
       sarvamApiKey,
       mysqlPool
@@ -155,16 +150,15 @@ if (deepgramApiKey) {
       browserVoiceHandler.handleConnection(ws, req);
     });
     console.log('✅ Browser Voice Handler initialized at /browser-voice-stream');
-    console.log('   - Deepgram STT: ' + (deepgramApiKey ? '✅' : '❌'));
+    console.log('   - Sarvam STT: ✅');
     console.log('   - Gemini LLM: ' + (geminiApiKey ? '✅' : '❌'));
     console.log('   - OpenAI LLM: ' + (openaiApiKey ? '✅' : '❌'));
     console.log('   - ElevenLabs TTS: ' + (elevenLabsApiKey ? '✅' : '❌'));
-    console.log('   - Sarvam TTS: ' + (sarvamApiKey ? '✅' : '❌'));
   } catch (error) {
     console.error('Failed to initialize BrowserVoiceHandler:', error.message);
   }
 } else {
-  console.warn('⚠️ BrowserVoiceHandler not initialized (missing Deepgram API key)');
+  console.warn('⚠️ BrowserVoiceHandler not initialized (missing SARVAM_API_KEY)');
 }
 
 // === ADD THIS BLOCK ===
@@ -175,16 +169,11 @@ if (!process.env.ELEVEN_LABS_API_KEY) {
 }
 console.log("Twilio Basic Service initialized");
 // ================= CORS ==================
-// ================= CORS ==================
-const FRONTEND_URL = process.env.FRONTEND_URL || "https://ziyavoice1.netlify.app";
+const FRONTEND_URL = process.env.FRONTEND_URL;
 
 const corsOptions = {
   origin: [
     FRONTEND_URL,
-    "https://ziyavoice1.netlify.app", // Keep old one just in case
-    /\.netlify\.app$/,
-    /\.vercel\.app$/, // Allow Vercel deployments
-    /\.railway\.app$/ // Allow Railway internal calls if needed
   ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -225,7 +214,7 @@ const sessionStore = new MySQLStore({
 
 // Session middleware (required for Passport)
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'ziya-voice-secret-key-change-in-production',
+  secret: process.env.SESSION_SECRET,
   store: sessionStore,
   resave: false,
   saveUninitialized: false,
@@ -252,7 +241,7 @@ app.get('/api/auth/google/callback',
     console.log('✅ Google OAuth successful for:', user.email);
 
     // Redirect to frontend with user data
-    const frontendUrl = process.env.FRONTEND_URL || 'https://ziyavoice-production-5e44.up.railway.app';
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5000';
     res.redirect(`${frontendUrl}/login?user=${encodeURIComponent(JSON.stringify(user))}`);
   }
 );
@@ -275,10 +264,14 @@ app.set('mysqlPool', mysqlPool); // Make pool available to routes
 app.use('/api/calls', callRoutes);
 console.log('✅ Call API routes mounted at /api/calls');
 
-// Initialize and mount document routes
 const documentRoutes = require('./routes/documentRoutes.js')(mysqlPool);
 app.use('/api/documents', documentRoutes);
 console.log('✅ Document API routes mounted at /api/documents');
+
+// Initialize and mount company routes
+const companyRoutes = require('./routes/companyRoutes.js')(companyService);
+app.use('/api/companies', companyRoutes);
+console.log('✅ Company API routes mounted at /api/companies');
 
 // Trigger initial voice sync
 voiceSyncService.syncAllProviders()
@@ -379,14 +372,15 @@ app.get('/api/wallet/pricing', async (req, res) => {
 // ==================== ADMIN WALLET ENDPOINTS ====================
 
 // Add credits to user wallet (admin only)
+// Accepts amount in INR; converts to Credits internally
 app.post('/api/admin/wallet/add-credits', async (req, res) => {
   try {
-    const { userId, amount, description, adminId } = req.body;
+    const { userId, amount, description, adminId } = req.body; // amount is in INR
 
     if (!userId || !amount || !adminId) {
       return res.status(400).json({
         success: false,
-        message: 'User ID, amount, and admin ID are required'
+        message: 'User ID, amount (INR), and admin ID are required'
       });
     }
 
@@ -397,25 +391,28 @@ app.post('/api/admin/wallet/add-credits', async (req, res) => {
       });
     }
 
+    // walletService.addCredits now accepts INR and converts to Credits
     const result = await walletService.addCredits(
       userId,
       amount,
-      description || 'Admin credit adjustment',
+      description || `Admin added ₹${amount} INR`,
       adminId
     );
 
-    // Log admin activity
+    // Log admin activity with INR + credits info
     await adminService.logActivity(
       adminId,
       'add_wallet_credits',
       userId,
-      `Added $${amount} to wallet. Reason: ${description || 'N/A'}`,
+      `Added ₹${amount} INR (≈${result.creditsAdded} Credits) to wallet. Reason: ${description || 'N/A'}`,
       req.ip
     );
 
     res.json({
       success: true,
       newBalance: result.newBalance,
+      creditsAdded: result.creditsAdded,
+      inrAmount: parseFloat(amount),
       transaction: result.transaction
     });
   } catch (error) {
@@ -565,22 +562,23 @@ app.get('/api/voice-config-check', (req, res) => {
   const config = {
     timestamp: new Date().toISOString(),
     checks: {
-      deepgram: {
-        configured: !!process.env.DEEPGRAM_API_KEY,
-        keyPreview: process.env.DEEPGRAM_API_KEY
-          ? process.env.DEEPGRAM_API_KEY.substring(0, 8) + '...'
-          : 'NOT SET'
+      sarvam: {
+        configured: !!process.env.SARVAM_API_KEY,
+        keyPreview: process.env.SARVAM_API_KEY
+          ? process.env.SARVAM_API_KEY.substring(0, 8) + '...'
+          : 'NOT SET',
+        note: 'Used for STT in phone call pipeline'
       },
       gemini: {
-        configured: !!process.env.GOOGLE_GEMINI_API_KEY,
-        keyPreview: process.env.GOOGLE_GEMINI_API_KEY
-          ? process.env.GOOGLE_GEMINI_API_KEY.substring(0, 8) + '...'
+        configured: !!process.env.GEMINI_API_KEY,
+        keyPreview: process.env.GEMINI_API_KEY
+          ? process.env.GEMINI_API_KEY.substring(0, 8) + '...'
           : 'NOT SET'
       },
       elevenlabs: {
-        configured: !!(process.env.ELEVEN_LABS_API_KEY || process.env.ELEVENLABS_API_KEY),
-        keyPreview: (process.env.ELEVEN_LABS_API_KEY || process.env.ELEVENLABS_API_KEY)
-          ? (process.env.ELEVEN_LABS_API_KEY || process.env.ELEVENLABS_API_KEY).substring(0, 8) + '...'
+        configured: !!process.env.ELEVEN_LABS_API_KEY,
+        keyPreview: process.env.ELEVEN_LABS_API_KEY
+          ? process.env.ELEVEN_LABS_API_KEY.substring(0, 8) + '...'
           : 'NOT SET'
       },
       appUrl: {
@@ -602,7 +600,7 @@ app.get('/api/voice-config-check', (req, res) => {
   app.get('/api/test-elevenlabs-key', async (req, res) => {
     try {
       const key1 = process.env.ELEVEN_LABS_API_KEY;
-      const key2 = process.env.ELEVENLABS_API_KEY;
+      const key2 = process.env.ELEVEN_LABS_API_KEY;
 
       const result = {
         timestamp: new Date().toISOString(),
@@ -612,7 +610,7 @@ app.get('/api/voice-config-check', (req, res) => {
             preview: key1 ? `${key1.substring(0, 8)}...` : 'NOT SET',
             length: key1 ? key1.length : 0
           },
-          ELEVENLABS_API_KEY: {
+          ELEVEN_LABS_API_KEY: {
             exists: !!key2,
             preview: key2 ? `${key2.substring(0, 8)}...` : 'NOT SET',
             length: key2 ? key2.length : 0
@@ -675,12 +673,12 @@ app.get('/api/voice-config-check', (req, res) => {
       }
 
       const testVoiceId = voiceId || '21m00Tcm4TlvDq8ikWAM';
-      const apiKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVENLABS_API_KEY;
+      const apiKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
 
       if (!apiKey) {
         return res.status(500).json({
           error: 'ElevenLabs API key not configured',
-          fix: 'Set ELEVEN_LABS_API_KEY or ELEVENLABS_API_KEY in Railway environment variables'
+          fix: 'Set ELEVEN_LABS_API_KEY or ELEVEN_LABS_API_KEY in Railway environment variables'
         });
       }
 
@@ -733,7 +731,7 @@ app.get('/api/voice-config-check', (req, res) => {
   });
   // Determine overall status
   const allConfigured =
-    config.checks.deepgram.configured &&
+    config.checks.sarvam.configured &&
     config.checks.gemini.configured &&
     config.checks.elevenlabs.configured &&
     config.checks.appUrl.configured &&
@@ -745,9 +743,9 @@ app.get('/api/voice-config-check', (req, res) => {
 
   // Add missing items
   const missing = [];
-  if (!config.checks.deepgram.configured) missing.push('DEEPGRAM_API_KEY');
-  if (!config.checks.gemini.configured) missing.push('GOOGLE_GEMINI_API_KEY');
-  if (!config.checks.elevenlabs.configured) missing.push('ELEVEN_LABS_API_KEY or ELEVENLABS_API_KEY');
+  if (!config.checks.sarvam.configured) missing.push('SARVAM_API_KEY (required for phone call STT)');
+  if (!config.checks.gemini.configured) missing.push('GEMINI_API_KEY');
+  if (!config.checks.elevenlabs.configured) missing.push('ELEVEN_LABS_API_KEY');
   if (!config.checks.appUrl.configured) missing.push('APP_URL');
   if (config.checks.appUrl.configured && !config.checks.appUrl.isPublic) {
     missing.push('APP_URL must be public (not localhost)');
@@ -789,20 +787,21 @@ app.get('/api/test-voice-pipeline', async (req, res) => {
     }
   }
 
-  // Test 2: Check Deepgram
-  results.tests.deepgram = {
-    configured: !!process.env.DEEPGRAM_API_KEY,
-    keyLength: process.env.DEEPGRAM_API_KEY ? process.env.DEEPGRAM_API_KEY.length : 0
+  // Test 2: Check Sarvam STT (phone call pipeline)
+  results.tests.sarvam = {
+    configured: !!process.env.SARVAM_API_KEY,
+    keyLength: process.env.SARVAM_API_KEY ? process.env.SARVAM_API_KEY.length : 0,
+    note: 'Sarvam STT is used for phone call transcription'
   };
 
   // Test 3: Check Gemini
   results.tests.gemini = {
-    configured: !!process.env.GOOGLE_GEMINI_API_KEY,
-    keyLength: process.env.GOOGLE_GEMINI_API_KEY ? process.env.GOOGLE_GEMINI_API_KEY.length : 0
+    configured: !!process.env.GEMINI_API_KEY,
+    keyLength: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.length : 0
   };
 
   // Test 4: Check ElevenLabs
-  const elevenLabsKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVENLABS_API_KEY;
+  const elevenLabsKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
   results.tests.elevenlabs = {
     configured: !!elevenLabsKey,
     keyLength: elevenLabsKey ? elevenLabsKey.length : 0
@@ -842,7 +841,7 @@ app.get('/api/test-voice-pipeline', async (req, res) => {
   // Overall assessment
   const allPassed =
     results.tests.mediaStreamHandler.exists &&
-    results.tests.deepgram.configured &&
+    results.tests.sarvam.configured &&
     results.tests.gemini.configured &&
     results.tests.elevenlabs.configured &&
     (!results.tests.elevenlabs.apiWorking || results.tests.elevenlabs.apiWorking === true);
@@ -972,6 +971,47 @@ app.post('/api/auth/register', async (req, res) => {
     if (error.message === 'User already exists') {
       return res.status(409).json({ success: false, message: 'User with this email or username already exists' });
     }
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get user profile
+app.get('/api/users/profile/:id', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const [rows] = await mysqlPool.execute(
+      'SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, created_at, updated_at FROM users WHERE id = ?',
+      [userId]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    res.json({ success: true, user: rows[0] });
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Update user profile
+app.put('/api/users/profile/:id', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { email, username, full_name, profile_image, dob, gender } = req.body;
+
+    await mysqlPool.execute(
+      'UPDATE users SET email = ?, username = ?, full_name = ?, profile_image = ?, dob = ?, gender = ? WHERE id = ?',
+      [email || null, username || null, full_name || null, profile_image || null, dob || null, gender || null, userId]
+    );
+
+    const [rows] = await mysqlPool.execute(
+      'SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, created_at, updated_at FROM users WHERE id = ?',
+      [userId]
+    );
+
+    res.json({ success: true, user: rows[0] });
+  } catch (error) {
+    console.error('Error updating user profile:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1512,58 +1552,96 @@ app.post('/api/google-sheets/log-call', async (req, res) => {
 
 app.post('/api/twilio/status', async (req, res) => {
   try {
-    const { callId } = req.query;
-    const { CallSid, CallStatus, CallDuration, RecordingUrl } = req.body;
+    // contactId is the campaign_contacts.id passed in statusCallback URL
+    const { contactId, callId } = req.query;
+    const { CallSid, CallStatus, CallDuration } = req.body;
 
-    console.log('Twilio status callback:', {
+    console.log('📞 Twilio status callback:', {
+      contactId,
       callId,
       callSid: CallSid,
       status: CallStatus,
       duration: CallDuration
     });
 
-    if (callId && CallSid) {
-      const database = require('./config/database.js').default;
-
-      // Update call in database
-      const updateData = {
-        status: CallStatus,
-        call_sid: CallSid
-      };
-
-      if (CallDuration) {
-        updateData.duration = parseInt(CallDuration);
+    // Update campaign_contacts status in real-time via campaignService
+    if (contactId) {
+      try {
+        await campaignService.updateContactStatus(
+          contactId,
+          CallStatus,
+          CallDuration ? parseInt(CallDuration) : null,
+          CallSid
+        );
+      } catch (err) {
+        console.error('Error updating campaign contact status:', err.message);
       }
+    }
 
-      if (RecordingUrl) {
-        updateData.recording_url = RecordingUrl;
+    // Also update the calls table if callId is provided
+    if (callId) {
+      try {
+        const statusMap = {
+          'queued': 'pending',
+          'initiated': 'initiated',
+          'ringing': 'ringing',
+          'in-progress': 'in-progress',
+          'completed': 'completed',
+          'failed': 'failed',
+          'busy': 'busy',
+          'no-answer': 'no-answer',
+          'canceled': 'canceled'
+        };
+        const mappedStatus = statusMap[CallStatus] || CallStatus;
+
+        await mysqlPool.execute(
+          `UPDATE calls SET status = ?, ${CallDuration ? 'duration = ?,' : ''} ${['completed', 'failed', 'busy', 'no-answer'].includes(CallStatus) ? 'ended_at = NOW(),' : ''} call_sid = ? WHERE id = ?`,
+          [
+            mappedStatus,
+            ...(CallDuration ? [parseInt(CallDuration)] : []),
+            CallSid,
+            callId
+          ].filter(v => v !== undefined)
+        );
+      } catch (err) {
+        console.error('Error updating calls table:', err.message);
       }
+    }
 
-      if (CallStatus === 'completed' || CallStatus === 'failed' || CallStatus === 'busy' || CallStatus === 'no-answer') {
-        updateData.ended_at = new Date();
+    // Broadcast status update via WebSocket to connected clients
+    try {
+      if (contactId) {
+        const [contacts] = await mysqlPool.execute(
+          'SELECT campaign_id, status, intent FROM campaign_contacts WHERE id = ?',
+          [contactId]
+        );
+        if (contacts.length > 0) {
+          const campaignId = contacts[0].campaign_id;
+          // Notify all connected WebSocket clients about this update
+          if (global.wssClients) {
+            global.wssClients.forEach(client => {
+              try {
+                client.send(JSON.stringify({
+                  event: 'lead_status_update',
+                  contactId,
+                  campaignId,
+                  status: contacts[0].status,
+                  twilioStatus: CallStatus
+                }));
+              } catch (e) { /* ignore closed sockets */ }
+            });
+          }
+        }
       }
-
-      const fields = Object.keys(updateData).map(key => `${key} = ?`).join(', ');
-      const values = Object.values(updateData);
-      values.push(callId);
-
-      await database.execute(
-        `UPDATE calls SET ${fields} WHERE id = ?`,
-        values
-      );
-
-      // Note: Campaign contact updates and Google Sheets logging are handled by
-      // campaignService.updateContactAfterCall() which is called from the WebSocket handler
-      // when the call completes. This avoids duplicate logic and schema mismatches.
-
-      console.log('Call status updated in database:', callId, CallStatus);
+    } catch (broadcastErr) {
+      console.error('Error broadcasting status update:', broadcastErr.message);
     }
 
     res.status(200).send('OK');
 
   } catch (error) {
     console.error('Error processing Twilio status callback:', error);
-    res.status(200).send('OK');
+    res.status(200).send('OK'); // Always return 200 to Twilio
   }
 });
 
@@ -1802,7 +1880,7 @@ app.post('/api/validate-api-key', async (req, res) => {
 app.get('/api/voices/elevenlabs', async (req, res) => {
   try {
     // Get ElevenLabs API key from environment variables
-    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const apiKey = process.env.ELEVEN_LABS_API_KEY;
     if (!apiKey) {
       console.error('ElevenLabs API key not configured on server');
       return res.status(500).json({ success: false, message: 'ElevenLabs API key not configured on server' });
@@ -1863,7 +1941,7 @@ app.get('/api/voices/elevenlabs', async (req, res) => {
 app.get('/api/credits/elevenlabs/:userId', async (req, res) => {
   try {
     // Use shared ElevenLabs API key from environment
-    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const apiKey = process.env.ELEVEN_LABS_API_KEY;
     if (!apiKey) {
       return res.status(404).json({ success: false, message: 'ElevenLabs API key not configured' });
     }
@@ -1892,7 +1970,7 @@ app.get('/api/credits/elevenlabs/:userId', async (req, res) => {
 // Fetch Google Gemini credits
 app.get('/api/credits/gemini/:userId', async (req, res) => {
   try {
-    const geminiApiKey = process.env.GOOGLE_GEMINI_API_KEY;
+    const geminiApiKey = process.env.GEMINI_API_KEY;
     if (!geminiApiKey) {
       return res.status(404).json({ success: false, message: 'Google Gemini API key not configured' });
     }
@@ -2027,8 +2105,8 @@ app.get('/api/credits/transactions/:userId', async (req, res) => {
   }
 });
 
-// Phone number endpoints
 // Get all phone numbers for a user
+// Returns 'data' (from phone_numbers table, legacy) AND 'phoneNumbers' (from user_twilio_numbers, for campaign dropdowns)
 app.get('/api/phone-numbers', async (req, res) => {
   try {
     const { userId } = req.query;
@@ -2036,8 +2114,24 @@ app.get('/api/phone-numbers', async (req, res) => {
       return res.status(400).json({ success: false, message: 'User ID is required' });
     }
 
+    // Legacy phone_numbers table data
     const phoneNumbers = await PhoneNumberService.getPhoneNumbers(userId);
-    res.json({ success: true, data: phoneNumbers });
+
+    // Also fetch from user_twilio_numbers (for campaign caller phone dropdown)
+    const [twilioRows] = await mysqlPool.execute(
+      `SELECT id, phone_number, region, verified,
+              (twilio_account_sid IS NOT NULL) AS has_credentials
+       FROM user_twilio_numbers
+       WHERE user_id = ?
+       ORDER BY created_at DESC`,
+      [userId]
+    );
+
+    res.json({
+      success: true,
+      data: phoneNumbers,           // legacy
+      phoneNumbers: twilioRows      // for campaign dropdown
+    });
   } catch (error) {
     console.error('Error fetching phone numbers:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -2671,6 +2765,8 @@ app.post('/api/twilio/voice', async (req, res) => {
     stream.parameter({ name: 'callId', value: actualCallId });
     stream.parameter({ name: 'agentId', value: agentId });
     stream.parameter({ name: 'userId', value: userId || '' });
+    stream.parameter({ name: 'contactId', value: req.query.contactId || '' });
+    stream.parameter({ name: 'campaignId', value: campaignId || '' });
 
     const twiml = response.toString();
 
@@ -2765,16 +2861,16 @@ app.get('/api/agents', async (req, res) => {
       });
     }
 
-    // Correct instance call
     const agents = await agentService.getAgents(userId);
 
+    // Return both 'data' (legacy) and 'agents' (new) so all consumers work
     res.json({
       success: true,
-      data: agents
+      data: agents,
+      agents: agents   // ← used by CampaignDetailPage dropdown
     });
   } catch (error) {
     console.error('Error fetching agents:', error);
-
     res.status(500).json({
       success: false,
       message: error.message
@@ -2874,6 +2970,56 @@ app.get('/api/campaigns', async (req, res) => {
   }
 });
 
+app.get('/api/reports', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'User ID is required' });
+    }
+
+    // Fetch user's current company ID
+    const [user] = await mysqlPool.execute('SELECT current_company_id FROM users WHERE id = ?', [userId]);
+    const companyId = user.length > 0 ? user[0].current_company_id : null;
+
+    let query = `
+      SELECT 
+          cc.id, 
+          cc.created_at, 
+          c.name as campaignName, 
+          a.name as agentName, 
+          cc.phone_number as calledNumber, 
+          'Outbound' as type,
+          cc.status, 
+          IFNULL(cc.intent, 'Pending') as result,
+          cc.completed_at,
+          cc.schedule_time,
+          cl.recording_url
+      FROM campaign_contacts cc
+      JOIN campaigns c ON cc.campaign_id = c.id
+      LEFT JOIN agents a ON c.agent_id = a.id
+      LEFT JOIN calls cl ON cc.call_id = cl.call_sid
+      WHERE c.user_id = ?
+    `;
+
+    const params = [userId];
+
+    if (companyId) {
+      query += ' AND c.company_id = ?';
+      params.push(companyId);
+    } else {
+      query += ' AND (c.company_id IS NULL OR c.company_id = "")';
+    }
+
+    query += ' ORDER BY cc.created_at DESC';
+
+    const [rows] = await mysqlPool.execute(query, params);
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Error fetching reports:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Get a specific campaign by ID with records
 app.get('/api/campaigns/:id', async (req, res) => {
   try {
@@ -2898,13 +3044,22 @@ app.get('/api/campaigns/:id', async (req, res) => {
 // Create a new campaign
 app.post('/api/campaigns', async (req, res) => {
   try {
-    const { userId, agentId, phoneNumberId, name, description, contacts } = req.body;
+    const { userId, agentId, phoneNumberId, name, description, contacts, concurrentCalls, retryAttempts } = req.body;
     if (!userId || !name) {
       return res.status(400).json({ success: false, message: 'User ID and campaign name are required' });
     }
 
     // Create the campaign (agentId and phoneNumberId can be null)
-    const result = await campaignService.createCampaign(userId, agentId || null, name, description || '', phoneNumberId || null);
+    // pass concurrentCalls and retryAttempts
+    const result = await campaignService.createCampaign(
+      userId,
+      agentId || null,
+      name,
+      description || '',
+      phoneNumberId || null,
+      concurrentCalls || 1,
+      retryAttempts || 0
+    );
 
     // Add contacts if provided
     if (contacts && contacts.length > 0) {
@@ -2919,21 +3074,9 @@ app.post('/api/campaigns', async (req, res) => {
 });
 
 // Update a campaign
-app.put('/api/campaigns/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { userId, campaign } = req.body;
-    if (!userId || !campaign) {
-      return res.status(400).json({ success: false, message: 'User ID and campaign data are required' });
-    }
-
-    const updatedCampaign = await campaignService.updateCampaign(id, userId, campaign);
-    res.json({ success: true, data: updatedCampaign });
-  } catch (error) {
-    console.error('Error updating campaign:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
+// Update a campaign - REMOVED DUPLICATE BROKEN ENDPOINT
+// The correct PUT /api/campaigns/:id is defined later in the file (around line 4100)
+// and handles updates directly via SQL since campaignService.updateCampaign doesn't exist.
 
 // Delete a campaign
 app.delete('/api/campaigns/:id', async (req, res) => {
@@ -2991,12 +3134,17 @@ app.post('/api/campaigns/:id/import', async (req, res) => {
 app.post('/api/campaigns/:id/records', async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId, phone } = req.body;
+    const { userId, phone, name, email } = req.body;
+    console.log('Adding lead record:', { id, userId, phone, name, email });
     if (!userId || !phone) {
       return res.status(400).json({ success: false, message: 'User ID and phone number are required' });
     }
 
-    const result = await campaignService.addContacts(id, [{ phone_number: phone }]);
+    const result = await campaignService.addContacts(id, [{
+      phone_number: phone,
+      name: name || null,
+      email: email || null
+    }]);
     res.json(result);
   } catch (error) {
     console.error('Error adding record:', error);
@@ -3042,28 +3190,12 @@ app.delete('/api/campaigns/:campaignId/records/:recordId', async (req, res) => {
   }
 });
 
-// Google Sheets endpoint for appending data
-app.post('/api/tools/google-sheets/append', async (req, res) => {
-  try {
-    const { spreadsheetId, data, sheetName } = req.body;
-    if (!spreadsheetId || !data) {
-      return res.status(400).json({ success: false, message: 'Spreadsheet ID and data are required' });
-    }
+// Google Sheets endpoint removed
 
-    // In a real implementation, you would use the Google Sheets API here
-    // For now, we'll just log the data and return success
-    console.log('Google Sheets append request:', { spreadsheetId, data, sheetName });
-
-    res.json({ success: true, message: 'Data appended successfully' });
-  } catch (error) {
-    console.error('Error appending data to Google Sheets:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
 // Get available voices from ElevenLabs
 app.get('/api/voices/elevenlabs', async (req, res) => {
   try {
-    const apiKey = process.env.ELEVEN_LABS_API_KEY || process.env.VITE_ELEVEN_LABS_API_KEY;
+    const apiKey = process.env.ELEVEN_LABS_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ success: false, message: 'ElevenLabs API key not configured' });
     }
@@ -3098,7 +3230,7 @@ app.get('/api/voices/elevenlabs', async (req, res) => {
 app.get('/api/voices/elevenlabs/list', async (req, res) => {
   try {
     // Get ElevenLabs API key from environment variables
-    const apiKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVENLABS_API_KEY;
+    const apiKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
 
     if (!apiKey) {
       console.error('❌ ElevenLabs API key not configured on server');
@@ -3194,17 +3326,17 @@ app.post('/api/voices/elevenlabs/preview', async (req, res) => {
   }
 });
 
-if (process.env.DEEPGRAM_API_KEY && process.env.GOOGLE_GEMINI_API_KEY) {
+if (process.env.SARVAM_API_KEY && process.env.GEMINI_API_KEY) {
   mediaStreamHandler = new MediaStreamHandler(
-    process.env.DEEPGRAM_API_KEY,
-    process.env.GOOGLE_GEMINI_API_KEY,
-    process.env.OPENAI_API_KEY, // Add OpenAI API key
+    process.env.GEMINI_API_KEY,
+    process.env.OPENAI_API_KEY,
     campaignService,
-    mysqlPool
+    mysqlPool,
+    process.env.SARVAM_API_KEY
   );
-  console.log("MediaStreamHandler initialized with Deepgram + Gemini + OpenAI + Cost Tracking");
+  console.log("✅ MediaStreamHandler initialized with Sarvam STT + Gemini + OpenAI + Cost Tracking");
 } else {
-  console.warn("Voice call feature disabled — missing DEEPGRAM_API_KEY or GOOGLE_GEMINI_API_KEY");
+  console.warn("⚠️ Voice call feature disabled — missing SARVAM_API_KEY or GEMINI_API_KEY");
 }
 // WebSocket endpoint for ElevenLabs STT
 app.ws('/api/stt', function (ws, req) {
@@ -3226,8 +3358,8 @@ app.ws('/voice-stream', async function (ws, req) {  // ✅ ADDED async
   const audioBuffer = [];
   let isProcessing = false; // Flag to prevent overlapping responses
   const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
-  const geminiApiKey = process.env.GOOGLE_GEMINI_API_KEY;
-  const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY || process.env.VITE_ELEVEN_LABS_API_KEY;
+  const geminiApiKey = process.env.GEMINI_API_KEY;
+  const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY;
 
   // Determine if this is a Twilio call or frontend chat
   const callId = req.query?.callId;
@@ -3283,7 +3415,7 @@ app.ws('/voice-stream', async function (ws, req) {  // ✅ ADDED async
     console.warn('WARNING: DEEPGRAM_API_KEY is not configured. Speech-to-text will not work.');
   }
   if (!geminiApiKey) {
-    console.warn('WARNING: GOOGLE_GEMINI_API_KEY is not configured. AI responses will not work.');
+    console.warn('WARNING: GEMINI_API_KEY is not configured. AI responses will not work.');
   }
   if (!elevenLabsApiKey) {
     console.warn('WARNING: ELEVEN_LABS_API_KEY is not configured. Text-to-speech will not work.');
@@ -3774,32 +3906,16 @@ app.post('/api/campaigns/:id/start', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
-    // Check if phone number is set
-    if (!campaign.phone_number_id) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please set a caller phone number before starting the campaign'
-      });
-    }
-
-    // Check if agent is set
-    if (!campaign.agent_id) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please select an agent for this campaign'
-      });
-    }
-
-    // Get all pending contacts
+    // Get all pending or retryable contacts
     const [contacts] = await mysqlPool.execute(
-      'SELECT * FROM campaign_contacts WHERE campaign_id = ? AND status = ?',
-      [id, 'pending']
+      'SELECT id FROM campaign_contacts WHERE campaign_id = ? AND status IN (?, ?)',
+      [id, 'pending', 'failed']
     );
 
     if (contacts.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'No pending contacts found. Please add contacts to the campaign.'
+        message: 'No pending or retryable contacts found. Please add contacts to the campaign.'
       });
     }
 
@@ -3838,6 +3954,38 @@ app.post('/api/campaigns/:id/stop', async (req, res) => {
   }
   catch (error) {
     console.error('Error stopping campaign:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Update concurrent calls limit for campaign
+app.put('/api/campaigns/:id/concurrent-calls', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, concurrentCalls } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'User ID is required' });
+    }
+
+    if (!concurrentCalls || concurrentCalls < 1 || concurrentCalls > 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'Concurrent calls must be between 1 and 10'
+      });
+    }
+
+    // Update campaign concurrent calls
+    await mysqlPool.execute(
+      'UPDATE campaigns SET concurrent_calls = ? WHERE id = ? AND user_id = ?',
+      [concurrentCalls, id, userId]
+    );
+
+    const updatedCampaign = await campaignService.getCampaign(id);
+    res.json({ success: true, data: updatedCampaign });
+  }
+  catch (error) {
+    console.error('Error updating concurrent calls:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -3909,6 +4057,443 @@ async function processCampaignCalls(campaignId, userId, campaign, records) {
   console.log(`Campaign ${campaignId} processing complete`);
 }
 
+// Schema Migration Endpoint
+app.get('/api/admin/migrate-schema', async (req, res) => {
+  try {
+    const checkColumn = async (table, column) => {
+      const [rows] = await mysqlPool.execute(
+        `SHOW COLUMNS FROM ${table} LIKE '${column}'`
+      );
+      return rows.length > 0;
+    };
+
+    const [tables] = await mysqlPool.execute("SHOW TABLES LIKE 'campaigns'");
+    if (tables.length === 0) return res.status(404).json({ message: 'campaigns table not found' });
+
+    const alterQueries = [];
+
+    // ── campaigns table ──
+    if (!(await checkColumn('campaigns', 'agent_id')))
+      alterQueries.push("ALTER TABLE campaigns ADD COLUMN agent_id VARCHAR(50) NULL");
+    if (!(await checkColumn('campaigns', 'phone_number_id')))
+      alterQueries.push("ALTER TABLE campaigns ADD COLUMN phone_number_id VARCHAR(50) NULL");
+    if (!(await checkColumn('campaigns', 'concurrent_calls')))
+      alterQueries.push("ALTER TABLE campaigns ADD COLUMN concurrent_calls INT DEFAULT 1");
+    if (!(await checkColumn('campaigns', 'retry_attempts')))
+      alterQueries.push("ALTER TABLE campaigns ADD COLUMN retry_attempts INT DEFAULT 0");
+
+    // ── campaign_contacts table ──
+    const [ccTables] = await mysqlPool.execute("SHOW TABLES LIKE 'campaign_contacts'");
+    if (ccTables.length > 0) {
+      if (!(await checkColumn('campaign_contacts', 'email')))
+        alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN email VARCHAR(255) NULL AFTER name");
+      if (!(await checkColumn('campaign_contacts', 'intent')))
+        alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN intent VARCHAR(100) NULL AFTER status");
+      if (!(await checkColumn('campaign_contacts', 'schedule_time')))
+        alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN schedule_time DATETIME NULL AFTER intent");
+      if (!(await checkColumn('campaign_contacts', 'transcript')))
+        alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN transcript TEXT NULL AFTER schedule_time");
+      if (!(await checkColumn('campaign_contacts', 'meet_link')))
+        alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN meet_link VARCHAR(255) NULL AFTER transcript");
+      if (!(await checkColumn('campaign_contacts', 'call_duration')))
+        alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN call_duration INT DEFAULT 0 AFTER transcript");
+      if (!(await checkColumn('campaign_contacts', 'call_cost')))
+        alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN call_cost DECIMAL(10,4) DEFAULT 0 AFTER call_duration");
+      if (!(await checkColumn('campaign_contacts', 'call_id')))
+        alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN call_id VARCHAR(100) NULL AFTER call_cost");
+      if (!(await checkColumn('campaign_contacts', 'error_message')))
+        alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN error_message TEXT NULL");
+      if (!(await checkColumn('campaign_contacts', 'last_attempt_at')))
+        alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN last_attempt_at DATETIME NULL");
+      if (!(await checkColumn('campaign_contacts', 'completed_at')))
+        alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN completed_at DATETIME NULL");
+    }
+
+    const results = [];
+    for (const query of alterQueries) {
+      try {
+        await mysqlPool.execute(query);
+        results.push(`✅ Executed: ${query}`);
+      } catch (alterErr) {
+        results.push(`❌ Failed: ${query} — ${alterErr.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      changes: results,
+      message: results.length ? `Applied ${results.length} schema changes` : 'Schema already up to date'
+    });
+  } catch (error) {
+    console.error('Migration error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
+// Import CSV Endpoint
+app.post('/api/campaigns/:id/import-csv', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, csvContent } = req.body;
+    // require csvParser here to ensure it uses the latest version
+    const csvParser = require('./csvParser');
+
+    const records = csvParser.parseCSV(csvContent);
+    let successCount = 0;
+
+    // Insert into DB
+    for (const record of records) {
+      if (!record.phone_number) continue;
+
+      try {
+        await mysqlPool.execute(
+          `INSERT INTO campaign_contacts 
+           (id, campaign_id, phone_number, name, email, status, created_at, updated_at) 
+           VALUES (UUID(), ?, ?, ?, ?, 'pending', NOW(), NOW())`,
+          [id, record.phone_number, record.name || '', record.email || '']
+        );
+        successCount++;
+      } catch (err) {
+        console.error('Insert error for record:', record, err);
+      }
+    }
+
+    res.json({ success: true, count: successCount });
+  } catch (error) {
+    console.error('Import CSV error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update Campaign Endpoint (for Agent Assignment, Phone Number, etc.)
+app.put('/api/campaigns/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, agent_id, phone_number_id, name, description, concurrent_calls, max_retry_attempts } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'User ID is required' });
+    }
+
+    // Verify campaign belongs to user first
+    const [existing] = await mysqlPool.execute(
+      'SELECT id FROM campaigns WHERE id = ? AND user_id = ?',
+      [id, userId]
+    );
+    if (existing.length === 0) {
+      return res.status(404).json({ success: false, message: 'Campaign not found' });
+    }
+
+    // Build dynamic UPDATE — only set columns that were provided
+    const updates = [];
+    const values = [];
+
+    if (agent_id !== undefined) { updates.push('agent_id = ?'); values.push(agent_id || null); }
+    if (phone_number_id !== undefined) { updates.push('phone_number_id = ?'); values.push(phone_number_id || null); }
+    if (name !== undefined) { updates.push('name = ?'); values.push(name); }
+    if (description !== undefined) { updates.push('description = ?'); values.push(description); }
+    if (concurrent_calls !== undefined) { updates.push('concurrent_calls = ?'); values.push(concurrent_calls); }
+    if (max_retry_attempts !== undefined) { updates.push('max_retry_attempts = ?'); values.push(max_retry_attempts); }
+
+    if (updates.length === 0) {
+      return res.json({ success: true, message: 'No fields to update' });
+    }
+
+    values.push(id, userId);
+    await mysqlPool.execute(
+      `UPDATE campaigns SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ? AND user_id = ?`,
+      values
+    );
+
+    // Return updated campaign
+    const [updated] = await mysqlPool.execute(
+      'SELECT * FROM campaigns WHERE id = ?',
+      [id]
+    );
+
+    res.json({ success: true, data: updated[0] });
+  } catch (error) {
+    console.error('Update Campaign error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// fetch Scheduled calls
+app.get('/api/scheduled-calls', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ success: false, message: 'User ID required' });
+
+    const [rows] = await mysqlPool.execute(`
+      SELECT cc.*, c.name as campaignName, a.name as agentName, a.id as agentId
+      FROM campaign_contacts cc
+      JOIN campaigns c ON cc.campaign_id = c.id
+      LEFT JOIN agents a ON c.agent_id = a.id
+      WHERE c.user_id = ? AND cc.schedule_time IS NOT NULL AND cc.intent IN ('needs_demo', 'scheduled_meeting', '1_on_1_session_requested')
+      ORDER BY cc.schedule_time ASC
+    `, [userId]);
+
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Error fetching scheduled calls:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Delete Scheduled call
+app.delete('/api/scheduled-calls/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [result] = await mysqlPool.execute('DELETE FROM campaign_contacts WHERE id = ?', [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Scheduled call not found' });
+    }
+
+    res.json({ success: true, message: 'Scheduled call deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting scheduled call:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Reschedule Call
+app.post('/api/scheduled-calls/reschedule', async (req, res) => {
+  try {
+    const { contactId, newTime } = req.body;
+    if (!contactId || !newTime) return res.status(400).json({ success: false, message: 'Contact ID and new time required' });
+
+    const [rows] = await mysqlPool.execute(`
+      SELECT cc.email, cc.name, cc.campaign_id, c.user_id 
+      FROM campaign_contacts cc
+      JOIN campaigns c ON cc.campaign_id = c.id
+      WHERE cc.id = ?
+    `, [contactId]);
+
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Lead not found' });
+    const contactInfo = rows[0];
+
+    // Attempt to generate meet link and send email if email exists
+    let newMeetLink = null;
+    if (contactInfo.email) {
+      try {
+        const emailService = require('./services/emailService.js');
+        const [campRows] = await mysqlPool.execute(
+          'SELECT a.name as agent_name FROM campaigns c JOIN agents a ON c.agent_id = a.id WHERE c.id = ?',
+          [contactInfo.campaign_id]
+        );
+        const agentName = campRows.length > 0 ? campRows[0].agent_name : 'Ziya Voice Agent';
+
+        newMeetLink = emailService.generateMeetLink();
+        await emailService.sendMeetingInvite(
+          contactInfo.email,
+          contactInfo.name,
+          agentName,
+          newTime,
+          newMeetLink
+        );
+      } catch (err) {
+        console.error('Error sending reschedule email:', err);
+      }
+    }
+
+    // Update DB
+    const updateQuery = `
+      UPDATE campaign_contacts
+      SET schedule_time = ?, meet_link = ?, status = 'Rescheduled'
+      WHERE id = ?
+    `;
+    await mysqlPool.execute(updateQuery, [newTime, newMeetLink || null, contactId]);
+
+    res.json({ success: true, message: 'Meeting rescheduled successfully', meetLink: newMeetLink });
+  } catch (error) {
+    console.error('Error rescheduling call:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get User Phone Numbers (from user_twilio_numbers) — for campaign dropdown
+app.get('/api/phone-numbers', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ success: false, message: 'User ID required' });
+
+    // Columns that actually exist in user_twilio_numbers:
+    // id, user_id, phone_number, region, provider, verified,
+    // verification_code, verification_expires_at, twilio_account_sid, twilio_auth_token, created_at
+    const [rows] = await mysqlPool.execute(
+      `SELECT id, phone_number, region, verified,
+      (twilio_account_sid IS NOT NULL) AS has_credentials
+       FROM user_twilio_numbers
+       WHERE user_id = ?
+  ORDER BY created_at DESC`,
+      [userId]
+    );
+
+    res.json({ success: true, phoneNumbers: rows });
+  } catch (error) {
+    console.error('Error fetching phone numbers:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get User Agents (for campaign creation)
+app.get('/api/agents', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ success: false, message: 'User ID required' });
+
+    const [agents] = await mysqlPool.execute(
+      'SELECT id, name, status FROM agents WHERE user_id = ? ORDER BY created_at DESC',
+      [userId]
+    );
+    res.json({ success: true, agents });
+  } catch (error) {
+    console.error('Error fetching agents:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Export Campaign Leads to CSV
+app.get('/api/campaigns/:id/export', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.query;
+
+    if (!userId) return res.status(400).json({ success: false, message: 'User ID required' });
+
+    // Verify ownership
+    const [campaigns] = await mysqlPool.execute('SELECT name FROM campaigns WHERE id = ? AND user_id = ?', [id, userId]);
+    if (campaigns.length === 0) return res.status(404).json({ success: false, message: 'Campaign not found' });
+
+    const campaignName = campaigns[0].name;
+
+    // Get contacts
+    const [contacts] = await mysqlPool.execute(
+      'SELECT name, phone_number, email, status, attempts, created_at, call_duration, call_cost FROM campaign_contacts WHERE campaign_id = ? ORDER BY created_at ASC',
+      [id]
+    );
+
+    // Convert to CSV
+    const headers = ['Name', 'Phone', 'Email', 'Status', 'Attempts', 'Call Duration (s)', 'Cost ($)', 'Date Added'];
+    const csvRows = [headers.join(',')];
+
+    contacts.forEach(c => {
+      const row = [
+        c.name ? `"${c.name.replace(/"/g, '""')}"` : '',
+        `"${c.phone_number}"`,
+        c.email ? `"${c.email}"` : '',
+        c.status || 'pending',
+        c.attempts || 0,
+        c.call_duration || 0,
+        c.call_cost || 0,
+        c.created_at ? new Date(c.created_at).toLocaleDateString() : ''
+      ];
+      csvRows.push(row.join(','));
+    });
+
+    const csvString = csvRows.join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${campaignName.replace(/[^a-z0-9]/gi, '_')}_leads.csv"`);
+    res.send(csvString);
+
+  } catch (error) {
+    console.error('Error exporting campaign:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get Failed Campaign Notifications
+app.get('/api/notifications/failures', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'User ID required' });
+    }
+
+    // A campaign is considered "failed" if it hit an error. Usually this manifests either as status='error' or 'failed' on the campaign itself,
+    // OR it has contacts with status='failed'.
+    const query = `
+      SELECT 
+        c.id as campaign_id, 
+        c.name as campaign_name, 
+        COUNT(cc.id) as failed_calls, 
+        MAX(cc.error_message) as last_error, 
+        MAX(cc.updated_at) as last_failed_at
+      FROM campaigns c
+      JOIN campaign_contacts cc ON c.id = cc.campaign_id
+      WHERE c.user_id = ? AND cc.status = 'failed'
+      GROUP BY c.id, c.name
+      ORDER BY last_failed_at DESC
+      LIMIT 10
+    `;
+    const [failedContacts] = await mysqlPool.execute(query, [userId]);
+
+    // Also get campaigns where the campaign itself failed (just in case)
+    const [failedCampaigns] = await mysqlPool.execute(
+      `SELECT id as campaign_id, name as campaign_name, updated_at as last_failed_at, 'Campaign stopped unexpectedly' as last_error 
+       FROM campaigns WHERE user_id = ? AND status IN ('error', 'failed') ORDER BY updated_at DESC LIMIT 5`,
+      [userId]
+    );
+
+    // Merge them and format into notifications
+    const notificationsMap = new Map();
+
+    failedCampaigns.forEach(c => {
+      notificationsMap.set(c.campaign_id, {
+        id: 'camp_' + c.campaign_id,
+        title: `Campaign Failed: ${c.campaign_name}`,
+        message: c.last_error || 'An unexpected error occurred.',
+        timeRaw: c.last_failed_at,
+        read: false
+      });
+    });
+
+    failedContacts.forEach(f => {
+      if (!notificationsMap.has(f.campaign_id)) {
+        notificationsMap.set(f.campaign_id, {
+          id: 'camp_calls_' + f.campaign_id,
+          title: `Campaign Calls Failed: ${f.campaign_name}`,
+          message: `${f.failed_calls} call(s) failed. Error: ${f.last_error || 'Unknown error'}`,
+          timeRaw: f.last_failed_at,
+          read: false
+        });
+      }
+    });
+
+    let notifications = Array.from(notificationsMap.values());
+    notifications.sort((a, b) => new Date(b.timeRaw).getTime() - new Date(a.timeRaw).getTime());
+
+    // Format human readable time for frontend
+    notifications = notifications.map(n => {
+      const diff = Date.now() - new Date(n.timeRaw).getTime();
+      const mins = Math.floor(diff / 60000);
+      const hours = Math.floor(mins / 60);
+      const days = Math.floor(hours / 24);
+      let timeStr = 'Just now';
+      if (days > 0) timeStr = `${days} day(s) ago`;
+      else if (hours > 0) timeStr = `${hours} hour(s) ago`;
+      else if (mins > 0) timeStr = `${mins} min(s) ago`;
+
+      return {
+        id: n.id,
+        title: n.title,
+        message: n.message,
+        time: timeStr,
+        timeRaw: n.timeRaw,
+        read: n.read
+      };
+    });
+
+    res.json({ success: true, notifications });
+  } catch (error) {
+    console.error('Error fetching failure notifications:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 app.get("/db-conn-status", async (req, res) => {
   try {
     const conn = await mysqlPool.getConnection();
@@ -3939,7 +4524,6 @@ app.use((req, res, next) => {
 // Start server and bind to 0.0.0.0 for Railway
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server listening on port ${PORT}`);
-  console.log(`📡 WebSocket endpoint: wss://ziyavoice-production-5e44.up.railway.app/api/call`);
   console.log(`🌐 Frontend URL: ${FRONTEND_URL}`);
   console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
 });

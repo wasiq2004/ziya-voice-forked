@@ -1,7 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import Header from '../components/Header';
+import AppLayout from '../components/AppLayout';
 import { useAuth } from '../contexts/AuthContext';
 import { getApiBaseUrl } from '../utils/api';
+import {
+  BanknotesIcon,
+  CreditCardIcon,
+  ArrowTrendingUpIcon,
+  ClockIcon,
+  CurrencyDollarIcon,
+  ArrowPathIcon,
+  ChartBarIcon
+} from '@heroicons/react/24/outline';
 
 interface Transaction {
   id: string;
@@ -107,34 +116,25 @@ const CreditsPage: React.FC = () => {
     return new Date(dateString).toLocaleString();
   };
 
-  const getServiceIcon = (service: string) => {
-    switch (service) {
-      case 'elevenlabs':
-        return '🔊';
-      case 'deepgram':
-        return '🎤';
-      case 'gemini':
-        return '🤖';
-      case 'sarvam':
-        return '🗣️';
-      case 'twilio':
-        return '📞';
-      default:
-        return '💰';
-    }
+  const getServiceLabel = (service: string) => {
+    const s = service.toLowerCase();
+    if (s.includes('elevenlabs') || s.includes('sarvam')) return 'TTS';
+    if (s.includes('deepgram')) return 'STT';
+    if (s.includes('gemini')) return 'LLM';
+    if (s.includes('twilio')) return 'Telephony';
+    return service.toUpperCase();
   };
 
   const getServiceColor = (service: string) => {
-    switch (service) {
-      case 'elevenlabs':
+    const label = getServiceLabel(service);
+    switch (label) {
+      case 'TTS':
         return 'from-blue-500 to-blue-600';
-      case 'deepgram':
+      case 'STT':
         return 'from-orange-500 to-orange-600';
-      case 'gemini':
+      case 'LLM':
         return 'from-purple-500 to-purple-600';
-      case 'sarvam':
-        return 'from-green-500 to-green-600';
-      case 'twilio':
+      case 'Telephony':
         return 'from-red-500 to-red-600';
       default:
         return 'from-gray-500 to-gray-600';
@@ -143,221 +143,172 @@ const CreditsPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-      </div>
+      <AppLayout
+        breadcrumbs={[{ label: 'Dashboard', path: '/dashboard' }, { label: 'Wallet & Usage' }]}
+        pageTitle="Wallet & Usage"
+      >
+        <div className="flex flex-col justify-center items-center h-[60vh]">
+          <div className="relative">
+            <div className="flex items-center justify-center p-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary/20 border-t-primary"></div>
+            </div>
+          </div>
+          <p className="mt-4 text-slate-500 font-medium animate-pulse">Loading wallet data...</p>
+        </div>
+      </AppLayout>
     );
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <Header title="Wallet & Usage">
-        <div className="text-sm text-slate-500 dark:text-slate-400">
-          Contact admin to add credits
+    <AppLayout
+      breadcrumbs={[
+        { label: 'Dashboard', path: '/dashboard' },
+        { label: 'Wallet & Usage' }
+      ]}
+      pageTitle="Wallet & Usage"
+      pageDescription="Track your API credit usage, balance history, and service costs."
+      primaryAction={
+        <div className="flex items-center gap-3">
+          <button
+            onClick={fetchWalletData}
+            className="flex items-center px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-white font-bold text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+          >
+            <ArrowPathIcon className="h-4 w-4 mr-2" />
+            Refresh Data
+          </button>
+          <button
+            onClick={() => setShowTopUpModal(true)}
+            className="flex items-center px-5 py-2.5 rounded-xl bg-primary text-white font-black text-sm hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+          >
+            <BanknotesIcon className="h-4 w-4 mr-2" />
+            Add Fund
+          </button>
         </div>
-      </Header>
-
-      {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-          <p className="text-red-700 dark:text-red-300">{error}</p>
-        </div>
-      )}
-
-      {/* Balance Card */}
-      <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-lg p-8 shadow-xl card-animate">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-emerald-100 text-sm mb-2">Current Balance</div>
-            <div className="text-5xl font-bold text-white mb-2">
-              {formatCurrency(balance)}
+      }
+    >
+      <div className="space-y-8 animate-in fade-in duration-500">
+        {error && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 flex items-center gap-3">
+            <div className="p-2 bg-red-100 dark:bg-red-900/50 rounded-lg text-red-600 dark:text-red-400">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
             </div>
-            <div className="text-emerald-100 text-sm">
-              Available for API usage
+            <p className="text-sm font-bold text-red-700 dark:text-red-300">{error}</p>
+          </div>
+        )}
+
+        {/* Compact KPI Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Main Balance Card - Clean and Simple */}
+          <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 shadow-lg shadow-emerald-500/20 text-white relative overflow-hidden group">
+            <div className="absolute -top-2 -right-2 opacity-10 group-hover:opacity-20 transition-all duration-500 transform group-hover:scale-110">
+              <BanknotesIcon className="h-20 w-20" />
+            </div>
+            <div className="relative z-10">
+              <p className="text-emerald-100 font-bold text-[10px] uppercase tracking-widest mb-1">Available Balance</p>
+              <h2 className="text-4xl font-black tracking-tight">{formatCurrency(balance)}</h2>
             </div>
           </div>
-          <div className="text-6xl opacity-20">💰</div>
-        </div>
-      </div>
 
-      {/* Usage Stats */}
-      <div className="card-animate" style={{ animationDelay: '0.1s' }}>
-        <h2 className="text-xl font-semibold text-slate-800 dark:text-white mb-4">
-          Usage by Service
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {usageStats.length > 0 ? (
-            usageStats.map((stat, index) => (
-              <div
-                key={stat.service}
-                className="bg-white dark:bg-darkbg-light rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow"
-                style={{ animationDelay: `${0.15 + index * 0.05}s` }}
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium capitalize text-slate-800 dark:text-white">
-                    {stat.service}
-                  </h3>
-                  <div className={`text-3xl w-12 h-12 rounded-full bg-gradient-to-br ${getServiceColor(stat.service)} flex items-center justify-center`}>
-                    {getServiceIcon(stat.service)}
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600 dark:text-slate-400">Total Spent</span>
-                    <span className="text-lg font-bold text-slate-900 dark:text-white">
-                      {formatCurrency(stat.totalCost)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600 dark:text-slate-400">Usage Count</span>
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">
-                      {stat.usageCount}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600 dark:text-slate-400">Total Units</span>
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">
-                      {stat.totalUnits.toFixed(2)}
-                    </span>
-                  </div>
-                </div>
+          <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex items-center">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-2xl text-blue-500">
+                <ArrowTrendingUpIcon className="h-6 w-6" />
               </div>
-            ))
-          ) : (
-            <div className="col-span-3 text-center py-12 text-slate-500 dark:text-slate-400">
-              No usage data yet. Start making calls to see your usage statistics.
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">Total Spent</p>
+                <p className="text-2xl font-black text-slate-900 dark:text-white leading-none">
+                  {formatCurrency(usageStats.reduce((acc, curr) => acc + curr.totalCost, 0))}
+                </p>
+              </div>
             </div>
-          )}
-        </div>
-      </div>
+          </div>
 
-      {/* Pricing Information */}
-      <div className="bg-white dark:bg-darkbg-light rounded-lg shadow-sm p-6 card-animate" style={{ animationDelay: '0.3s' }}>
-        <h2 className="text-xl font-semibold text-slate-800 dark:text-white mb-4">
-          Service Pricing
-        </h2>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-            <thead>
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Service
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Cost Per Unit
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Unit Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Description
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-              {pricing.map((p) => (
-                <tr key={p.service_type} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <span className="mr-2">{getServiceIcon(p.service_type)}</span>
-                      <span className="capitalize font-medium text-slate-900 dark:text-white">
-                        {p.service_type}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-slate-700 dark:text-slate-300">
-                    {formatCurrency(p.cost_per_unit)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap capitalize text-slate-600 dark:text-slate-400">
-                    {p.unit_type}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
-                    {p.description}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Transaction History */}
-      <div className="bg-white dark:bg-darkbg-light rounded-lg shadow-sm p-6 card-animate" style={{ animationDelay: '0.4s' }}>
-        <h2 className="text-xl font-semibold text-slate-800 dark:text-white mb-4">
-          Transaction History
-        </h2>
-        <div className="overflow-x-auto">
-          {transactions.length > 0 ? (
-            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-              <thead>
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Service
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Amount
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Balance After
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Description
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                {transactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">
-                      {formatDate(tx.createdAt)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${tx.type === 'credit'
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                        : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
-                        }`}>
-                        {tx.type.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm capitalize text-slate-700 dark:text-slate-300">
-                      {tx.service ? (
-                        <span className="flex items-center">
-                          <span className="mr-2">{getServiceIcon(tx.service)}</span>
-                          {tx.service}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
-                    </td>
-                    <td className={`px-6 py-4 whitespace-nowrap font-semibold ${tx.type === 'credit'
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-red-600 dark:text-red-400'
-                      }`}>
-                      {tx.type === 'credit' ? '+' : '-'}{formatCurrency(tx.amount)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-700 dark:text-slate-300">
-                      {formatCurrency(tx.balanceAfter)}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
-                      {tx.description}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="text-center py-12 text-slate-500 dark:text-slate-400">
-              No transactions yet
+          <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex items-center">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-2xl text-purple-500">
+                <ChartBarIcon className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">Transactions Count</p>
+                <p className="text-2xl font-black text-slate-900 dark:text-white leading-none">{transactions.length}</p>
+              </div>
             </div>
-          )}
+          </div>
+        </div>
+
+
+
+        <div className="grid grid-cols-1 gap-8">
+          {/* Transaction History - Full Width */}
+          <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden flex flex-col h-full">
+            <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                  <ClockIcon className="h-4 w-4 text-slate-400" />
+                  Recharge & Funding History
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 font-medium">Showing successful credit additions and balance top-ups.</p>
+              </div>
+              <button className="text-[10px] font-black text-primary uppercase tracking-widest hover:underline">Download Statements</button>
+            </div>
+            <div className="overflow-x-auto">
+              {transactions.filter(tx => tx.type === 'credit').length > 0 ? (
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50/50 dark:bg-slate-900/50">
+                    <tr>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Transaction Details</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Payment Method</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Credit Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {transactions.filter(tx => tx.type === 'credit').map((tx) => (
+                      <tr key={tx.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30">
+                              +
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-slate-900 dark:text-white mb-0.5">{tx.description || 'Deposit to Wallet'}</p>
+                              <p className="text-[10px] text-slate-500">{formatDate(tx.createdAt)}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-xs font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                            <CreditCardIcon className="h-4 w-4" />
+                            Card Ending •••• 4242
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                            SUCCESSFUL
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <p className="text-sm font-black text-emerald-600">
+                            +{formatCurrency(tx.amount)}
+                          </p>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="p-12 text-center text-slate-500 font-medium text-sm italic">No recent recharge data found</div>
+              )}
+            </div>
+            <div className="p-6 bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800 text-center">
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">End of History</p>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </AppLayout>
   );
 };
 

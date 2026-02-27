@@ -23,6 +23,7 @@ import {
     CheckIcon,
     PencilIcon,
     ClipboardDocumentListIcon,
+    CalendarIcon,
 } from '@heroicons/react/24/outline';
 // FIX: Add missing icon import
 import { PhoneIcon as SolidPhoneIcon, MicrophoneIcon } from '@heroicons/react/24/solid';
@@ -47,6 +48,8 @@ export const WebhookIcon = ArrowUpRightIcon;
 export const PlayIcon = SolidPlayIcon;
 export { CheckIcon, MicrophoneIcon, ArrowUpRightIcon }; // Exporting directly
 
+export const APP_VERSION = '1.2';
+
 
 interface SidebarItem {
     id: Page;
@@ -58,130 +61,16 @@ export const SIDEBAR_ITEMS: SidebarItem[] = [
     { id: Page.Agent, icon: UserGroupIcon },
     { id: Page.PhoneNo, icon: OutlinePhoneIcon },
     { id: Page.Campaigns, icon: ChartBarIcon },
-    { id: Page.CallHistory, icon: ClipboardDocumentListIcon },
+    { id: Page.Schedule, icon: CalendarIcon },
+    { id: Page.Reports, icon: ClipboardDocumentListIcon },
     { id: Page.Settings, icon: CogIcon },
     // { id: Page.API, icon: CodeBracketIcon },
     { id: Page.Credits, icon: CreditCardIcon },
 ];
 
-export const INITIAL_CAMPAIGNS: Campaign[] = [
-    { id: '1', userId: 'user-1', name: 'Q1 Lead Gen', status: CampaignStatus.Active, leads: 120, contacts: 500, includeMetadata: true, createdAt: '2023-03-15' },
-    { id: '2', userId: 'user-1', name: 'Summer Sale Promo', status: CampaignStatus.Paused, leads: 45, contacts: 250, includeMetadata: true, createdAt: '2023-02-20' },
-    { id: '3', userId: 'user-1', name: 'New Product Launch', status: CampaignStatus.Completed, leads: 350, contacts: 1200, includeMetadata: true, createdAt: '2023-01-10' },
-];
 
-export const INITIAL_AGENTS: VoiceAgent[] = [
-    {
-        id: 'agent-1',
-        name: 'ALPS',
-        identity: `[Identity] You are ALPS, a Proactive Outreach Specialist from Aspirentech Business Solutions — a leading provider of AI-driven customer engagement tools.
-[Goal] Conduct proactive outbound calls to potential customers.
 
-[Personality]
-- Friendly and engaging
-- Concise and clear communication
-- Adaptable to customer responses
 
-[Tone & Style]
-- Polite, calm, and friendly
-- Speak slowly and clearly
-- Ask one question at a time
-- Wait for the user's response before continuing`,
-        createdDate: '2025-10-09T13:47:00Z',
-        status: VoiceAgentStatus.Active,
-        model: 'gemini-2.5-flash',
-        voiceId: 'eleven-zara',
-        language: 'ENGLISH',
-        settings: {
-            userStartsFirst: false,
-            greetingLine: "Welcome! How can I help you?",
-            responseDelay: false,
-            inactivityHandling: true,
-            agentCanTerminateCall: false,
-            voicemailDetection: true,
-            callTransfer: true,
-            dtmfDial: false,
-            agentTimezone: 'America/New_York',
-            voiceDetectionConfidenceThreshold: 0.5,
-            overrideVAD: false,
-            backgroundAmbientSound: 'None',
-            callRecording: true,
-            sessionTimeoutFixedDuration: 3600,
-            sessionTimeoutNoVoiceActivity: 300,
-            sessionTimeoutEndMessage: "Your session has ended.",
-            dataPrivacyOptOut: false,
-            doNotCallDetection: true,
-            prefetchDataWebhook: 'https://example.com/prefetch_data_webhook',
-            endOfCallWebhook: 'https://example.com/session_data_webhook',
-            preActionPhrases: ["Let me check", "One sec", "Let me see"],
-            tools: [],
-            knowledgeDocIds: [],
-        },
-    },
-    {
-        id: 'agent-2',
-        name: 'Ziya',
-        identity: `[Identity] You are Zara, a Conversational Commerce Specialist from Aspirentech Business Solutions — a leading provider of AI-driven customer engagement tools.
-[Goal] Qualify leads, recommend products, and schedule consultations.`,
-        createdDate: '2025-10-03T13:55:00Z',
-        status: VoiceAgentStatus.Active,
-        model: 'gemini-2.5-flash',
-        voiceId: 'eleven-rachel',
-        language: 'ENGLISH',
-        settings: {
-            userStartsFirst: true,
-            greetingLine: "Thanks for calling Aspirentech, you're speaking with Zara.",
-            responseDelay: true,
-            inactivityHandling: true,
-            agentCanTerminateCall: true,
-            voicemailDetection: false,
-            callTransfer: false,
-            dtmfDial: true,
-            agentTimezone: 'Europe/London',
-            voiceDetectionConfidenceThreshold: 0.6,
-            overrideVAD: true,
-            backgroundAmbientSound: 'Office',
-            callRecording: false,
-            sessionTimeoutFixedDuration: 1800,
-            sessionTimeoutNoVoiceActivity: 600,
-            sessionTimeoutEndMessage: "It seems we've been disconnected. Goodbye.",
-            dataPrivacyOptOut: true,
-            doNotCallDetection: false,
-            prefetchDataWebhook: 'https://example.com/prefetch_ziya',
-            endOfCallWebhook: 'https://example.com/session_ziya',
-            preActionPhrases: ["Just a moment", "I'll look that up"],
-            tools: [],
-            knowledgeDocIds: [],
-        },
-    },
-];
-
-export const INITIAL_PHONE_NUMBERS: PhoneNumber[] = [
-    {
-        id: 'pn-1',
-        number: '+18702763987',
-        countryCode: 'us',
-        source: 'Imported:twilio',
-        agentName: 'Ziya',
-        agentId: 'agent-2',
-        region: 'us-west',
-        createdDate: '2025-10-03T14:01:00Z',
-        nextCycle: '2025-11-03',
-        provider: PhoneProvider.Twilio,
-    },
-    {
-        id: 'pn-2',
-        number: '+442079460958',
-        countryCode: 'gb',
-        source: 'Evotel',
-        agentName: 'ALPS',
-        agentId: 'agent-1',
-        region: 'eu-central-1',
-        createdDate: '2025-09-21T10:30:00Z',
-        nextCycle: '2025-10-21',
-        provider: PhoneProvider.Evotel,
-    },
-];
 
 export const AVAILABLE_VOICE_PROVIDERS = [
     { id: 'eleven-labs', name: 'ElevenLabs' },
@@ -261,15 +150,15 @@ export const OpenAIIcon = (props: React.SVGProps<SVGSVGElement>) => (
 // FIX: Add missing data exports required by AgentDetailPage
 export const AVAILABLE_MODELS = [
     // Gemini Models
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', description: 'Latest Gemini model, fast and efficient', icon: GoogleIcon, provider: 'gemini' },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', description: 'Previous generation, reliable and cost-effective', icon: GoogleIcon, provider: 'gemini' },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', description: 'More capable, better for complex tasks', icon: GoogleIcon, provider: 'gemini' },
+    { id: 'gemini-2.0-flash', name: 'Ziya-2.0-flash', description: 'Latest Gemini model, fast and efficient', icon: GoogleIcon, provider: 'gemini' },
+    { id: 'gemini-1.5-flash', name: 'Ziya-LLM', description: 'Previous generation, reliable and cost-effective', icon: GoogleIcon, provider: 'gemini' },
+    { id: 'gemini-1.5-pro', name: 'Salman-LLM(Highly Efficient)', description: 'More capable, better for complex tasks', icon: GoogleIcon, provider: 'gemini' },
 
-    // OpenAI Models
-    { id: 'gpt-4o', name: 'GPT-4o', description: 'Most capable OpenAI model, best quality', icon: OpenAIIcon, provider: 'openai' },
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and affordable, great for most tasks', icon: OpenAIIcon, provider: 'openai' },
-    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'Previous generation flagship model', icon: OpenAIIcon, provider: 'openai' },
-    { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Most cost-effective OpenAI model', icon: OpenAIIcon, provider: 'openai' },
+    //     // OpenAI Models
+    //     { id: 'gpt-4o', name: 'GPT-4o', description: 'Most capable OpenAI model, best quality', icon: OpenAIIcon, provider: 'openai' },
+    //     { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and affordable, great for most tasks', icon: OpenAIIcon, provider: 'openai' },
+    //     { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'Previous generation flagship model', icon: OpenAIIcon, provider: 'openai' },
+    //     { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Most cost-effective OpenAI model', icon: OpenAIIcon, provider: 'openai' },
 ];
 
 export const AVAILABLE_LANGUAGES = [
