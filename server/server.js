@@ -932,6 +932,12 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
+    // Check account status
+    if (user.status && user.status !== 'active') {
+      const reason = user.status === 'locked' ? 'account is locked' : 'account is inactive';
+      return res.status(403).json({ success: false, message: `Access denied: Your ${reason}` });
+    }
+
     res.json({ success: true, user });
   } catch (error) {
     console.error('Login error:', error);
@@ -1103,6 +1109,19 @@ app.post('/api/admin/login', async (req, res) => {
   }
 });
 
+// Get audit logs
+app.get('/api/admin/logs', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const logsData = await adminService.getAuditLogs(page, limit);
+    res.json({ success: true, ...logsData });
+  } catch (error) {
+    console.error('Error fetching audit logs:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Get dashboard statistics
 app.get('/api/admin/stats', async (req, res) => {
   try {
@@ -1137,6 +1156,80 @@ app.get('/api/admin/users/:userId', async (req, res) => {
     res.json({ success: true, ...userDetails });
   } catch (error) {
     console.error('Error fetching user details:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get user resources (Agents, Campaigns)
+app.get('/api/admin/users/:userId/resources', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const resources = await adminService.getUserResources(userId);
+    res.json({ success: true, ...resources });
+  } catch (error) {
+    console.error('Error fetching user resources:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Impersonate User
+app.get('/api/admin/users/:userId/impersonate', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { adminId } = req.query;
+
+    if (!adminId) {
+      return res.status(400).json({ success: false, message: 'Admin ID required' });
+    }
+
+    const userData = await adminService.getImpersonateUser(userId, adminId);
+    res.json({ success: true, user: userData });
+  } catch (error) {
+    console.error('Error in impersonation endpoint:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Update user status
+app.patch('/api/admin/users/:userId/status', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { status, adminId } = req.body;
+
+    if (!status || !['active', 'inactive', 'locked'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status' });
+    }
+
+    if (!adminId) {
+      return res.status(400).json({ success: false, message: 'Admin ID is required' });
+    }
+
+    const result = await adminService.updateUserStatus(userId, status, adminId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error updating user status:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Admin-led Password Reset
+app.post('/api/admin/users/:userId/reset-password', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { newPassword, adminId } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+
+    if (!adminId) {
+      return res.status(400).json({ success: false, message: 'Admin ID is required' });
+    }
+
+    const result = await adminService.resetUserPassword(userId, newPassword, adminId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error resetting user password:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -4125,6 +4218,13 @@ app.get('/api/admin/migrate-schema', async (req, res) => {
         alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN last_attempt_at DATETIME NULL");
       if (!(await checkColumn('campaign_contacts', 'completed_at')))
         alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN completed_at DATETIME NULL");
+    }
+
+    // ── users table ──
+    const [userTables] = await mysqlPool.execute("SHOW TABLES LIKE 'users'");
+    if (userTables.length > 0) {
+      if (!(await checkColumn('users', 'status')))
+        alterQueries.push("ALTER TABLE users ADD COLUMN status ENUM('active', 'inactive', 'locked') DEFAULT 'active' AFTER role");
     }
 
     const results = [];

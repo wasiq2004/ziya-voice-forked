@@ -20,6 +20,7 @@ import LoginPage from './pages/LoginPage';
 import AdminLoginPage from './pages/AdminLoginPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminUserDetailPage from './pages/AdminUserDetailPage';
+import AdminAuditLogsPage from './pages/AdminAuditLogsPage';
 
 const App: React.FC = () => {
     return (
@@ -31,6 +32,7 @@ const App: React.FC = () => {
                     <Route path="/admin/login" element={<AdminLoginPage />} />
                     <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
                     <Route path="/admin/users/:userId" element={<AdminUserDetailPage />} />
+                    <Route path="/admin/logs" element={<AdminAuditLogsPage />} />
                     {/* User Routes */}
                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />

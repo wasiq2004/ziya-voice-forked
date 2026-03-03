@@ -12,6 +12,7 @@ import {
   ChartBarIcon,
   CircleStackIcon
 } from '@heroicons/react/24/outline';
+import Skeleton from '../components/Skeleton';
 
 interface Transaction {
   id: string;
@@ -146,13 +147,38 @@ const CreditsPage: React.FC = () => {
         breadcrumbs={[{ label: 'Dashboard', path: '/dashboard' }, { label: 'Wallet & Usage' }]}
         pageTitle="Wallet & Usage"
       >
-        <div className="flex flex-col justify-center items-center h-[60vh]">
-          <div className="relative">
-            <div className="flex items-center justify-center p-4">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary/20 border-t-primary"></div>
+        <div className="space-y-8">
+          {/* KPI Skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Skeleton width="100%" height={120} variant="rounded" />
+            <Skeleton width="100%" height={120} variant="rounded" />
+            <Skeleton width="100%" height={120} variant="rounded" />
+          </div>
+
+          {/* Table Skeleton */}
+          <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden">
+            <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+              <div className="space-y-2">
+                <Skeleton width={200} height={16} variant="text" />
+                <Skeleton width={300} height={12} variant="text" />
+              </div>
+              <Skeleton width={120} height={10} variant="text" />
+            </div>
+            <div className="p-6 space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-3">
+                    <Skeleton width={32} height={32} variant="rounded" />
+                    <div className="space-y-2">
+                      <Skeleton width={150} height={14} variant="text" />
+                      <Skeleton width={100} height={10} variant="text" />
+                    </div>
+                  </div>
+                  <Skeleton width={80} height={14} variant="text" />
+                </div>
+              ))}
             </div>
           </div>
-          <p className="mt-4 text-slate-500 font-medium animate-pulse">Loading wallet data...</p>
         </div>
       </AppLayout>
     );

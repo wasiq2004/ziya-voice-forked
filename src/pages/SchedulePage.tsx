@@ -9,6 +9,7 @@ import {
     EllipsisVerticalIcon,
     XMarkIcon
 } from '@heroicons/react/24/outline';
+import Skeleton from '../components/Skeleton';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchScheduledCalls, fetchCampaigns, rescheduleCall, deleteScheduledCall } from '../utils/api';
 
@@ -39,6 +40,7 @@ const SchedulePage: React.FC = () => {
     const [filterCampaign, setFilterCampaign] = useState<string>('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [expandedCampaigns, setExpandedCampaigns] = useState<Record<string, boolean>>({});
+    const [loading, setLoading] = useState(true);
 
     const [allCampaigns, setAllCampaigns] = useState<string[]>([]);
 
@@ -49,6 +51,7 @@ const SchedulePage: React.FC = () => {
     const loadData = async () => {
         if (!user?.id) return;
         try {
+            setLoading(true);
             const [callsRes, campsRes] = await Promise.all([
                 fetchScheduledCalls(user.id),
                 fetchCampaigns(user.id)
@@ -89,6 +92,8 @@ const SchedulePage: React.FC = () => {
             }
         } catch (err) {
             console.error('Failed to load schedule data', err);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -224,153 +229,192 @@ const SchedulePage: React.FC = () => {
                 {/* Table */}
                 {/* Accordion Grouped Tables */}
                 <div className="space-y-6">
-                    {Object.entries(groupedCalls).map(([campaign, campaignCalls]) => (
-                        <div key={campaign} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm transition-all duration-300">
-                            {/* Accordion Header */}
-                            <button
-                                onClick={() => toggleCampaign(campaign)}
-                                className="w-full flex items-center justify-between p-6 bg-slate-50/50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                            >
-                                <div className="flex items-center space-x-3">
-                                    <div className={`p-2 rounded-lg ${campaign === 'Unassigned' ? 'bg-slate-200 dark:bg-slate-700 text-slate-500' : 'bg-primary/10 text-primary'
-                                        }`}>
-                                        <CalendarIcon className="h-5 w-5" />
+                    {loading ? (
+                        <div className="space-y-4">
+                            {[...Array(3)].map((_, i) => (
+                                <div key={i} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden">
+                                    <div className="p-6 flex items-center justify-between">
+                                        <div className="flex items-center space-x-3">
+                                            <Skeleton width={36} height={36} variant="rounded" />
+                                            <Skeleton width={150} height={20} variant="text" />
+                                            <Skeleton width={32} height={20} variant="rounded" />
+                                        </div>
+                                        <Skeleton width={20} height={20} variant="rounded" />
                                     </div>
-                                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">{campaign}</h3>
-                                    <span className="px-2.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300">
-                                        {campaignCalls.length}
-                                    </span>
+                                    <div className="p-6 border-t border-slate-100 dark:border-slate-800 space-y-4">
+                                        <div className="flex justify-between border-b pb-4">
+                                            <Skeleton width={100} height={10} variant="text" />
+                                            <Skeleton width={100} height={10} variant="text" />
+                                            <Skeleton width={100} height={10} variant="text" />
+                                            <Skeleton width={100} height={10} variant="text" />
+                                        </div>
+                                        {[...Array(2)].map((_, j) => (
+                                            <div key={j} className="flex justify-between items-center py-2">
+                                                <div className="space-y-2">
+                                                    <Skeleton width={120} height={14} variant="text" />
+                                                    <Skeleton width={80} height={10} variant="text" />
+                                                </div>
+                                                <Skeleton width={80} height={20} variant="rounded" />
+                                                <div className="space-y-2">
+                                                    <Skeleton width={100} height={14} variant="text" />
+                                                    <Skeleton width={100} height={10} variant="text" />
+                                                </div>
+                                                <Skeleton width={80} height={24} variant="rounded" />
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                                <ChevronDownIcon
-                                    className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${expandedCampaigns[campaign] ? 'rotate-180' : ''}`}
-                                />
-                            </button>
-
-                            {/* Accordion Body */}
-                            {expandedCampaigns[campaign] && (
-                                <div className="border-t border-slate-100 dark:border-slate-800 animate-in slide-in-from-top-2 duration-200">
-                                    <table className="w-full text-left">
-                                        <thead className="bg-slate-50/30 dark:bg-slate-900/30 border-b border-slate-100 dark:border-slate-800/50">
-                                            <tr>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Lead Details</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Campaign</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Scheduled For</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Assigned Agent</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Result/Feedback</th>
-                                                <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
-                                            {campaignCalls.map((call) => (
-                                                <tr key={call.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors">
-                                                    <td className="px-6 py-4">
-                                                        <p className="font-bold text-slate-900 dark:text-white">{call.leadName}</p>
-                                                        <div className="flex items-center text-xs text-slate-500 mt-1">
-                                                            <PhoneIcon className="h-3 w-3 mr-1" />
-                                                            {call.phoneNumber}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <span className="text-xs font-black text-primary px-2 py-1 bg-primary/5 rounded-lg border border-primary/10">
-                                                            {call.campaignName || 'Unassigned'}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex items-center text-sm text-slate-700 dark:text-slate-300">
-                                                            <CalendarIcon className="h-4 w-4 mr-2 text-primary" />
-                                                            {new Date(call.scheduledTime).toLocaleDateString()}
-                                                        </div>
-                                                        <div className="flex items-center text-xs text-slate-500 mt-1 ml-6">
-                                                            <ClockIcon className="h-3 w-3 mr-1" />
-                                                            {new Date(call.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex items-center space-x-2">
-                                                            <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/50 flex items-center justify-center text-violet-600 dark:text-violet-300 font-bold text-xs">
-                                                                {call.agentName.charAt(0)}
-                                                            </div>
-                                                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{call.agentName}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${getStatusColor(call.status)}`}>
-                                                            {call.status}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex flex-col space-y-2">
-                                                            {call.outcome ? (
-                                                                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{call.outcome}</span>
-                                                            ) : (
-                                                                <span className="text-xs text-slate-400 italic">No feedback yet</span>
-                                                            )}
-                                                            {call.meetLink && (
-                                                                <span className="text-xs text-slate-500 truncate max-w-[150px]">
-                                                                    Meeting Assigned
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-right relative">
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setActionMenuOpen(actionMenuOpen === call.id ? null : call.id);
-                                                            }}
-                                                            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
-                                                        >
-                                                            <EllipsisVerticalIcon className="w-5 h-5 text-slate-500" />
-                                                        </button>
-
-                                                        {actionMenuOpen === call.id && (
-                                                            <div className="absolute right-8 top-10 mt-2 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 py-2 z-50">
-                                                                {call.meetLink && (
-                                                                    <a
-                                                                        href={call.meetLink}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        className="block px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-primary transition-colors text-left"
-                                                                    >
-                                                                        Join Google Meet
-                                                                    </a>
-                                                                )}
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setRescheduleModal({
-                                                                            isOpen: true,
-                                                                            contactId: call.id,
-                                                                            leadName: call.leadName,
-                                                                            date: ''
-                                                                        });
-                                                                        setActionMenuOpen(null);
-                                                                    }}
-                                                                    className="w-full block px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-primary transition-colors text-left"
-                                                                >
-                                                                    Reschedule
-                                                                </button>
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        handleDeleteCall(call.id);
-                                                                    }}
-                                                                    className="w-full block px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left"
-                                                                >
-                                                                    Delete
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
+                            ))}
                         </div>
-                    ))}
-                    {Object.keys(groupedCalls).length === 0 && (
+                    ) : (
+                        Object.entries(groupedCalls).map(([campaign, campaignCalls]) => (
+                            <div key={campaign} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm transition-all duration-300">
+                                {/* Accordion Header */}
+                                <button
+                                    onClick={() => toggleCampaign(campaign)}
+                                    className="w-full flex items-center justify-between p-6 bg-slate-50/50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                >
+                                    <div className="flex items-center space-x-3">
+                                        <div className={`p-2 rounded-lg ${campaign === 'Unassigned' ? 'bg-slate-200 dark:bg-slate-700 text-slate-500' : 'bg-primary/10 text-primary'
+                                            }`}>
+                                            <CalendarIcon className="h-5 w-5" />
+                                        </div>
+                                        <h3 className="text-lg font-bold text-slate-900 dark:text-white">{campaign}</h3>
+                                        <span className="px-2.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300">
+                                            {campaignCalls.length}
+                                        </span>
+                                    </div>
+                                    <ChevronDownIcon
+                                        className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${expandedCampaigns[campaign] ? 'rotate-180' : ''}`}
+                                    />
+                                </button>
+
+                                {/* Accordion Body */}
+                                {expandedCampaigns[campaign] && (
+                                    <div className="border-t border-slate-100 dark:border-slate-800 animate-in slide-in-from-top-2 duration-200">
+                                        <table className="w-full text-left">
+                                            <thead className="bg-slate-50/30 dark:bg-slate-900/30 border-b border-slate-100 dark:border-slate-800/50">
+                                                <tr>
+                                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Lead Details</th>
+                                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Campaign</th>
+                                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Scheduled For</th>
+                                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Assigned Agent</th>
+                                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Result/Feedback</th>
+                                                    <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
+                                                {campaignCalls.map((call) => (
+                                                    <tr key={call.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors">
+                                                        <td className="px-6 py-4">
+                                                            <p className="font-bold text-slate-900 dark:text-white">{call.leadName}</p>
+                                                            <div className="flex items-center text-xs text-slate-500 mt-1">
+                                                                <PhoneIcon className="h-3 w-3 mr-1" />
+                                                                {call.phoneNumber}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <span className="text-xs font-black text-primary px-2 py-1 bg-primary/5 rounded-lg border border-primary/10">
+                                                                {call.campaignName || 'Unassigned'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex items-center text-sm text-slate-700 dark:text-slate-300">
+                                                                <CalendarIcon className="h-4 w-4 mr-2 text-primary" />
+                                                                {new Date(call.scheduledTime).toLocaleDateString()}
+                                                            </div>
+                                                            <div className="flex items-center text-xs text-slate-500 mt-1 ml-6">
+                                                                <ClockIcon className="h-3 w-3 mr-1" />
+                                                                {new Date(call.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex items-center space-x-2">
+                                                                <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/50 flex items-center justify-center text-violet-600 dark:text-violet-300 font-bold text-xs">
+                                                                    {call.agentName.charAt(0)}
+                                                                </div>
+                                                                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{call.agentName}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${getStatusColor(call.status)}`}>
+                                                                {call.status}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex flex-col space-y-2">
+                                                                {call.outcome ? (
+                                                                    <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{call.outcome}</span>
+                                                                ) : (
+                                                                    <span className="text-xs text-slate-400 italic">No feedback yet</span>
+                                                                )}
+                                                                {call.meetLink && (
+                                                                    <span className="text-xs text-slate-500 truncate max-w-[150px]">
+                                                                        Meeting Assigned
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right relative">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setActionMenuOpen(actionMenuOpen === call.id ? null : call.id);
+                                                                }}
+                                                                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                                                            >
+                                                                <EllipsisVerticalIcon className="w-5 h-5 text-slate-500" />
+                                                            </button>
+
+                                                            {actionMenuOpen === call.id && (
+                                                                <div className="absolute right-8 top-10 mt-2 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 py-2 z-50">
+                                                                    {call.meetLink && (
+                                                                        <a
+                                                                            href={call.meetLink}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="block px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-primary transition-colors text-left"
+                                                                        >
+                                                                            Join Google Meet
+                                                                        </a>
+                                                                    )}
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setRescheduleModal({
+                                                                                isOpen: true,
+                                                                                contactId: call.id,
+                                                                                leadName: call.leadName,
+                                                                                date: ''
+                                                                            });
+                                                                            setActionMenuOpen(null);
+                                                                        }}
+                                                                        className="w-full block px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-primary transition-colors text-left"
+                                                                    >
+                                                                        Reschedule
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleDeleteCall(call.id);
+                                                                        }}
+                                                                        className="w-full block px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left"
+                                                                    >
+                                                                        Delete
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        ))
+                    )}
+                    {!loading && Object.keys(groupedCalls).length === 0 && (
                         <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center text-slate-500">
                             No calls found match your criteria.
                         </div>

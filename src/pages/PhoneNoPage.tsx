@@ -27,6 +27,7 @@ import {
     CheckCircleIcon,
     SignalIcon
 } from '@heroicons/react/24/outline';
+import Skeleton from '../components/Skeleton';
 
 const ImportPhoneNumberModal: React.FC<{
     isOpen: boolean;
@@ -857,13 +858,80 @@ Please check that:
                 breadcrumbs={[{ label: 'Dashboard', path: '/dashboard' }, { label: 'Phone Numbers' }]}
                 pageTitle="Phone Numbers"
             >
-                <div className="flex flex-col justify-center items-center h-[60vh]">
-                    <div className="relative">
-                        <div className="flex items-center justify-center p-4">
-                            <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary/20 border-t-primary"></div>
+                <div className="space-y-8">
+                    {/* Metrics Skeleton */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {[...Array(3)].map((_, i) => (
+                            <div key={i} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 p-5 rounded-3xl shadow-sm">
+                                <div className="flex items-center justify-between mb-4">
+                                    <Skeleton width={44} height={44} variant="rounded" />
+                                    <Skeleton width={80} height={10} variant="text" />
+                                </div>
+                                <Skeleton width={60} height={28} variant="text" className="mb-2" />
+                                <Skeleton width={100} height={12} variant="text" />
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Table Skeleton */}
+                    <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden">
+                        <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                            <div className="space-y-2">
+                                <Skeleton width={150} height={20} variant="text" />
+                                <Skeleton width={250} height={14} variant="text" />
+                            </div>
+                            <Skeleton width={32} height={32} variant="rounded" />
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800">
+                                        <th className="px-8 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Connection</th>
+                                        <th className="px-8 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Integrated Agent</th>
+                                        <th className="px-8 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Region & Type</th>
+                                        <th className="px-8 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Added On</th>
+                                        <th className="px-8 py-5"></th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                    {[...Array(5)].map((_, i) => (
+                                        <tr key={i}>
+                                            <td className="px-8 py-6">
+                                                <div className="flex items-center">
+                                                    <Skeleton width={48} height={48} variant="rounded" />
+                                                    <div className="ml-4 space-y-2">
+                                                        <Skeleton width={120} height={16} variant="text" />
+                                                        <Skeleton width={80} height={10} variant="text" />
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-8 py-6">
+                                                <div className="flex items-center">
+                                                    <Skeleton width={32} height={32} variant="rounded" className="mr-3" />
+                                                    <Skeleton width={100} height={14} variant="text" />
+                                                </div>
+                                            </td>
+                                            <td className="px-8 py-6">
+                                                <div className="space-y-2">
+                                                    <Skeleton width={80} height={14} variant="text" />
+                                                    <Skeleton width={60} height={10} variant="text" />
+                                                </div>
+                                            </td>
+                                            <td className="px-8 py-6 text-right">
+                                                <div className="flex flex-col items-end space-y-2">
+                                                    <Skeleton width={80} height={14} variant="text" />
+                                                    <Skeleton width={60} height={10} variant="text" />
+                                                </div>
+                                            </td>
+                                            <td className="px-8 py-6 text-right">
+                                                <Skeleton width={32} height={32} variant="rounded" className="ml-auto" />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
-                    <p className="mt-4 text-slate-500 font-medium animate-pulse">Loading phone numbers...</p>
                 </div>
             </AppLayout>
         );

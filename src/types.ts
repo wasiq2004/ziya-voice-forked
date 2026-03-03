@@ -10,6 +10,8 @@ export enum Page {
     Credits = 'Credits',
     Schedule = 'Schedule',
     Reports = 'Reports',
+    AdminDashboard = 'Admin Dashboard',
+    AdminUsers = 'Admin Users',
 }
 
 export enum CampaignStatus {
@@ -121,6 +123,7 @@ export interface VoiceAgent {
     voiceId: string;
     language: string;
     settings: VoiceAgentSettings;
+    hasPhoneNumber?: boolean; // true if a phone number is mapped to this agent
 }
 
 export enum PhoneProvider {
@@ -131,6 +134,8 @@ export enum PhoneProvider {
 export interface PhoneNumber {
     id: string;
     number: string;
+    phoneNumber?: string; // Some parts of the code use this
+    phone_number?: string; // Some parts of the code use this
     countryCode: string;
     source: string;
     agentName: string;
@@ -139,6 +144,7 @@ export interface PhoneNumber {
     createdDate: string; // ISO string
     nextCycle: string;
     provider: PhoneProvider;
+    twilioSid?: string;
 }
 
 export interface AppSettings {

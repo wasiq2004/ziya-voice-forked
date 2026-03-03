@@ -48,6 +48,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({
                 pageDescription={pageDescription}
                 isSidebarCollapsed={isSidebarCollapsed}
                 primaryAction={primaryAction}
+                toggleSidebar={toggleSidebar}
             />
 
             {/* Main Content Area */}

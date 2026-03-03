@@ -68,6 +68,11 @@ export const SIDEBAR_ITEMS: SidebarItem[] = [
     { id: Page.Credits, icon: CircleStackIcon },
 ];
 
+export const ADMIN_SIDEBAR_ITEMS: SidebarItem[] = [
+    { id: Page.AdminDashboard, icon: ChartBarIcon },
+    { id: Page.AdminUsers, icon: UserGroupIcon },
+];
+
 
 
 

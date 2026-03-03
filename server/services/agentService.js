@@ -8,39 +8,45 @@ class AgentService {
     // Get all agents
     async getAgents(userId, companyId = null) {
         try {
-            let query = 'SELECT * FROM agents WHERE user_id = ?';
+            let query = `
+                SELECT a.*,
+                    (SELECT COUNT(*) FROM phone_numbers pn WHERE pn.agent_id = a.id LIMIT 1) AS phone_count,
+                    (SELECT COUNT(*) FROM user_twilio_numbers utn WHERE utn.agent_id = a.id LIMIT 1) AS twilio_phone_count
+                FROM agents a
+                WHERE a.user_id = ?`;
             let params = [userId];
 
             if (companyId) {
-                query += ' AND company_id = ?';
+                // Show agents belonging to the company OR agents belonging to the user with no company
+                query += ' AND (a.company_id = ? OR a.company_id IS NULL OR a.company_id = "")';
                 params.push(companyId);
             } else {
                 // Fetch user's current company ID if none provided
                 const [user] = await this.pool.execute('SELECT current_company_id FROM users WHERE id = ?', [userId]);
                 if (user.length > 0 && user[0].current_company_id) {
-                    query += ' AND company_id = ?';
+                    query += ' AND (a.company_id = ? OR a.company_id IS NULL OR a.company_id = "")';
                     params.push(user[0].current_company_id);
-                } else {
-                    // If no company selected, only show those without a company_id
-                    query += ' AND (company_id IS NULL OR company_id = "")';
                 }
+                // If user has no current company, we don't add additional filters by default
+                // letting them see all their agents (mostly NULL company_id ones)
             }
 
-            query += ' ORDER BY created_at DESC';
+            query += ' ORDER BY a.created_at DESC';
             const [rows] = await this.pool.execute(query, params);
 
             return rows.map(agent => ({
                 id: agent.id,
                 user_id: agent.user_id,
-                name: agent.name,
-                identity: agent.identity,
+                name: agent.name || 'Unnamed Agent',
+                identity: agent.identity || '',
                 createdDate: agent.created_at,
-                status: agent.status,
-                model: agent.model,
-                voiceId: agent.voice_id,
-                language: agent.language,
+                status: agent.status || 'Inactive',
+                model: agent.model || 'gpt-4',
+                voiceId: agent.voice_id || 'eleven-rachel',
+                language: agent.language || 'en-US',
                 settings: agent.settings ? this.parseJsonSafely(agent.settings) : this.getDefaultSettings(),
-                updatedDate: agent.updated_at
+                updatedDate: agent.updated_at || agent.created_at,
+                hasPhoneNumber: (parseInt(agent.phone_count || 0) + parseInt(agent.twilio_phone_count || 0)) > 0
             }));
         } catch (err) {
             console.error("Error fetching agents:", err);
@@ -63,15 +69,15 @@ class AgentService {
             return {
                 id: agent.id,
                 user_id: agent.user_id,
-                name: agent.name,
-                identity: agent.identity,
+                name: agent.name || 'Unnamed Agent',
+                identity: agent.identity || '',
                 createdDate: agent.created_at,
-                status: agent.status,
-                model: agent.model,
-                voiceId: agent.voice_id,
-                language: agent.language,
+                status: agent.status || 'Inactive',
+                model: agent.model || 'gpt-4',
+                voiceId: agent.voice_id || 'eleven-rachel',
+                language: agent.language || 'en-US',
                 settings: agent.settings ? this.parseJsonSafely(agent.settings) : this.getDefaultSettings(),
-                updatedDate: agent.updated_at
+                updatedDate: agent.updated_at || agent.created_at
             };
         } catch (err) {
             console.error("Error fetching agent:", err);

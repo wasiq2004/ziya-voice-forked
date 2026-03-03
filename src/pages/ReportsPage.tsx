@@ -16,6 +16,7 @@ import {
     TrashIcon,
     ArrowDownOnSquareIcon
 } from '@heroicons/react/24/outline';
+import Skeleton from '../components/Skeleton';
 import { useAuth } from '../contexts/AuthContext';
 import { getApiBaseUrl } from '../utils/api';
 
@@ -290,8 +291,50 @@ const ReportsPage: React.FC = () => {
                 {/* Data Table */}
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-visible min-h-[400px]">
                     {isLoading ? (
-                        <div className="flex items-center justify-center h-full py-20">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                        <div className="overflow-hidden">
+                            <table className="w-full text-left border-collapse">
+                                <thead className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
+                                    <tr>
+                                        <th className="px-6 py-4 text-center w-20 text-[11px] font-bold text-slate-500 uppercase tracking-widest">S.No</th>
+                                        <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">Date / Day</th>
+                                        <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">Campaign Name</th>
+                                        <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">Agent</th>
+                                        <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">Phone / Type</th>
+                                        <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">Status</th>
+                                        <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">Result</th>
+                                        <th className="px-6 py-4 text-right pr-6 text-[11px] font-bold text-slate-500 uppercase tracking-widest">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                                    {[...Array(8)].map((_, i) => (
+                                        <tr key={i}>
+                                            <td className="px-6 py-4 text-center"><Skeleton width={32} height={14} variant="text" className="mx-auto" /></td>
+                                            <td className="px-6 py-4">
+                                                <div className="space-y-1">
+                                                    <Skeleton width={80} height={14} variant="text" />
+                                                    <Skeleton width={40} height={10} variant="text" />
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4"><Skeleton width={100} height={24} variant="rounded" /></td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center space-x-2">
+                                                    <Skeleton width={28} height={28} variant="rounded" />
+                                                    <Skeleton width={80} height={14} variant="text" />
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="space-y-1">
+                                                    <Skeleton width={100} height={14} variant="text" />
+                                                    <Skeleton width={60} height={10} variant="text" />
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4"><Skeleton width={70} height={14} variant="text" /></td>
+                                            <td className="px-6 py-4"><Skeleton width={80} height={20} variant="rounded" /></td>
+                                            <td className="px-6 py-4 text-right"><Skeleton width={32} height={32} variant="rounded" className="ml-auto" /></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     ) : (
                         <>
@@ -413,8 +456,8 @@ const ReportsPage: React.FC = () => {
                                                                         setOpenActionId(null);
                                                                     }}
                                                                     className={`w-full px-4 py-2.5 text-left text-sm font-bold flex items-center space-x-3 transition-colors ${row.recordingUrl
-                                                                            ? 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50'
-                                                                            : 'text-slate-400 opacity-50 cursor-not-allowed'
+                                                                        ? 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                                                                        : 'text-slate-400 opacity-50 cursor-not-allowed'
                                                                         }`}
                                                                 >
                                                                     <ArrowDownOnSquareIcon className={`w-4 h-4 ${row.recordingUrl ? 'text-primary' : 'text-slate-400'}`} />

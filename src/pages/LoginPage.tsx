@@ -358,7 +358,7 @@ const LoginPage: React.FC = () => {
           </form>
 
           {/* Admin Panel Link */}
-          <div className="text-center mt-4">
+          {/* <div className="text-center mt-4">
             <button
               type="button"
               onClick={() => navigate('/admin/login')}
@@ -366,7 +366,7 @@ const LoginPage: React.FC = () => {
             >
               Admin Panel Login →
             </button>
-          </div>
+          </div> */}
 
           {/* Divider */}
           <div className="relative">
