@@ -55,12 +55,7 @@ var ToolExecutionService = /** @class */ (function () {
     function ToolExecutionService() {
         this.googleSheetsService = new googleSheetsService_js_1.default();
     }
-    /**
-     * Execute a tool based on its type
-     * @param tool The tool to execute
-     * @param collectedData The data collected from the user
-     * @returns Promise<boolean> indicating success
-     */
+   
     ToolExecutionService.prototype.executeTool = function (tool, collectedData) {
         return __awaiter(this, void 0, void 0, function () {
             return __generator(this, function (_a) {
