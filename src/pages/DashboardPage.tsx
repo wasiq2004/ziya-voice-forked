@@ -8,7 +8,7 @@ import {
     UserGroupIcon,
     PhoneIcon,
     SignalIcon,
-    BanknotesIcon,
+    CircleStackIcon,
     PlusIcon,
     ChartBarIcon,
     Cog6ToothIcon,
@@ -17,6 +17,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { fetchCampaigns } from '../utils/api';
 import KPICard from '../components/KPICard';
+import Skeleton from '../components/Skeleton';
 
 const DashboardPage: React.FC = () => {
     const navigate = useNavigate();
@@ -96,8 +97,51 @@ const DashboardPage: React.FC = () => {
                 pageTitle="Dashboard"
                 pageDescription="Welcome back, let's see what's happening today."
             >
-                <div className="flex justify-center items-center h-64">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+                {/* Stats Grid Skeleton */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 stagger-children mb-8">
+                    {[...Array(4)].map((_, i) => (
+                        <div key={i} className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6">
+                            <div className="flex items-center">
+                                <Skeleton width={48} height={48} variant="rounded" />
+                                <div className="ml-4 space-y-2">
+                                    <Skeleton width={80} height={12} variant="text" />
+                                    <Skeleton width={40} height={24} variant="text" />
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 stagger-children">
+                    {/* Analytics Skeleton */}
+                    <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6">
+                        <Skeleton width={150} height={24} variant="text" className="mb-6" />
+                        <div className="grid grid-cols-2 gap-4">
+                            {[...Array(4)].map((_, i) => (
+                                <div key={i} className="col-span-1 border border-slate-100 dark:border-slate-800 rounded-2xl p-4">
+                                    <Skeleton width={100} height={12} variant="text" className="mb-2" />
+                                    <Skeleton width={60} height={28} variant="text" />
+                                </div>
+                            ))}
+                        </div>
+                        <div className="mt-4 border border-slate-100 dark:border-slate-800 rounded-2xl p-4">
+                            <Skeleton width={120} height={12} variant="text" className="mb-2" />
+                            <Skeleton width={80} height={28} variant="text" />
+                        </div>
+                    </div>
+
+                    {/* Quick Actions Skeleton */}
+                    <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6">
+                        <Skeleton width={120} height={24} variant="text" className="mb-6" />
+                        <div className="grid grid-cols-2 gap-3 md:gap-4">
+                            {[...Array(4)].map((_, i) => (
+                                <div key={i} className="flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
+                                    <Skeleton width={48} height={48} variant="rounded" className="mb-3" />
+                                    <Skeleton width={100} height={14} variant="text" />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             </AppLayout>
         );
@@ -150,7 +194,7 @@ const DashboardPage: React.FC = () => {
                 <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6 card-animate hover:shadow-md transition-all duration-300">
                     <div className="flex items-center">
                         <div className="rounded-xl bg-purple-50 dark:bg-purple-900/20 p-3">
-                            <BanknotesIcon className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                            <CircleStackIcon className="h-6 w-6 text-purple-600 dark:text-purple-400" />
                         </div>
                         <div className="ml-4">
                             <h3 className="text-xs md:text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Credits</h3>

@@ -904,7 +904,9 @@ class BrowserVoiceHandler {
                     const result = await costCalculator.recordAndCharge(
                         session.userId,
                         session.callLogId,
-                        usage
+                        usage,
+                        true, // isVoiceCall
+                        duration // durationSeconds
                     );
 
                     console.log('\n📊 Service Breakdown:');

@@ -30,6 +30,7 @@ const { ExternalApiService } = require('./services/externalApiService.js');
 const { PhoneNumberService } = require('./services/phoneNumberService.js');
 const AgentService = require('./services/agentService.js');
 const CampaignService = require('./services/campaignService.js');
+const CompanyService = require('./services/companyService.js');
 const { AuthService } = require('./services/authService.js');
 const TwilioService = require('./services/twilioService.js');
 const { TwilioBasicService } = require('./services/twilioBasicService.js');
@@ -81,6 +82,7 @@ const campaignService = new CampaignService(mysqlPool, walletService, costCalcul
 const authService = new AuthService(mysqlPool);
 const twilioService = new TwilioService();
 const twilioBasicService = new TwilioBasicService();
+const companyService = new CompanyService(mysqlPool);
 const adminService = new AdminService(mysqlPool);
 // Google Sheets service removed
 
@@ -150,7 +152,6 @@ if (sarvamApiKey) {
     console.log('✅ Browser Voice Handler initialized at /browser-voice-stream');
     console.log('   - Sarvam STT: ✅');
     console.log('   - Gemini LLM: ' + (geminiApiKey ? '✅' : '❌'));
-    console.log('   - OpenAI LLM: ' + (openaiApiKey ? '✅' : '❌'));
     console.log('   - ElevenLabs TTS: ' + (elevenLabsApiKey ? '✅' : '❌'));
   } catch (error) {
     console.error('Failed to initialize BrowserVoiceHandler:', error.message);
@@ -262,10 +263,14 @@ app.set('mysqlPool', mysqlPool); // Make pool available to routes
 app.use('/api/calls', callRoutes);
 console.log('✅ Call API routes mounted at /api/calls');
 
-// Initialize and mount document routes
 const documentRoutes = require('./routes/documentRoutes.js')(mysqlPool);
 app.use('/api/documents', documentRoutes);
 console.log('✅ Document API routes mounted at /api/documents');
+
+// Initialize and mount company routes
+const companyRoutes = require('./routes/companyRoutes.js')(companyService);
+app.use('/api/companies', companyRoutes);
+console.log('✅ Company API routes mounted at /api/companies');
 
 // Trigger initial voice sync
 voiceSyncService.syncAllProviders()
@@ -927,6 +932,12 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
+    // Check account status
+    if (user.status && user.status !== 'active') {
+      const reason = user.status === 'locked' ? 'account is locked' : 'account is inactive';
+      return res.status(403).json({ success: false, message: `Access denied: Your ${reason}` });
+    }
+
     res.json({ success: true, user });
   } catch (error) {
     console.error('Login error:', error);
@@ -974,7 +985,7 @@ app.get('/api/users/profile/:id', async (req, res) => {
   try {
     const userId = req.params.id;
     const [rows] = await mysqlPool.execute(
-      'SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, created_at, updated_at FROM users WHERE id = ?',
+      'SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, current_company_id, created_at, updated_at FROM users WHERE id = ?',
       [userId]
     );
     if (rows.length === 0) {
@@ -991,17 +1002,36 @@ app.get('/api/users/profile/:id', async (req, res) => {
 app.put('/api/users/profile/:id', async (req, res) => {
   try {
     const userId = req.params.id;
-    const { email, username, full_name, profile_image, dob, gender } = req.body;
+    const { email, username, full_name, profile_image, dob, gender, current_company_id } = req.body;
 
-    await mysqlPool.execute(
-      'UPDATE users SET email = ?, username = ?, full_name = ?, profile_image = ?, dob = ?, gender = ? WHERE id = ?',
-      [email || null, username || null, full_name || null, profile_image || null, dob || null, gender || null, userId]
-    );
+    // Build query dynamically to only update provided fields
+    const updates = [];
+    const values = [];
+
+    if (email !== undefined) { updates.push('email = ?'); values.push(email); }
+    if (username !== undefined) { updates.push('username = ?'); values.push(username); }
+    if (full_name !== undefined) { updates.push('full_name = ?'); values.push(full_name); }
+    if (profile_image !== undefined) { updates.push('profile_image = ?'); values.push(profile_image); }
+    if (dob !== undefined) { updates.push('dob = ?'); values.push(dob); }
+    if (gender !== undefined) { updates.push('gender = ?'); values.push(gender); }
+    if (current_company_id !== undefined) { updates.push('current_company_id = ?'); values.push(current_company_id); }
+
+    if (updates.length > 0) {
+      values.push(userId);
+      await mysqlPool.execute(
+        `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
+        values
+      );
+    }
 
     const [rows] = await mysqlPool.execute(
-      'SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, created_at, updated_at FROM users WHERE id = ?',
+      'SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, current_company_id, created_at, updated_at FROM users WHERE id = ?',
       [userId]
     );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
 
     res.json({ success: true, user: rows[0] });
   } catch (error) {
@@ -1079,6 +1109,19 @@ app.post('/api/admin/login', async (req, res) => {
   }
 });
 
+// Get audit logs
+app.get('/api/admin/logs', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const logsData = await adminService.getAuditLogs(page, limit);
+    res.json({ success: true, ...logsData });
+  } catch (error) {
+    console.error('Error fetching audit logs:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Get dashboard statistics
 app.get('/api/admin/stats', async (req, res) => {
   try {
@@ -1113,6 +1156,80 @@ app.get('/api/admin/users/:userId', async (req, res) => {
     res.json({ success: true, ...userDetails });
   } catch (error) {
     console.error('Error fetching user details:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get user resources (Agents, Campaigns)
+app.get('/api/admin/users/:userId/resources', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const resources = await adminService.getUserResources(userId);
+    res.json({ success: true, ...resources });
+  } catch (error) {
+    console.error('Error fetching user resources:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Impersonate User
+app.get('/api/admin/users/:userId/impersonate', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { adminId } = req.query;
+
+    if (!adminId) {
+      return res.status(400).json({ success: false, message: 'Admin ID required' });
+    }
+
+    const userData = await adminService.getImpersonateUser(userId, adminId);
+    res.json({ success: true, user: userData });
+  } catch (error) {
+    console.error('Error in impersonation endpoint:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Update user status
+app.patch('/api/admin/users/:userId/status', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { status, adminId } = req.body;
+
+    if (!status || !['active', 'inactive', 'locked'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status' });
+    }
+
+    if (!adminId) {
+      return res.status(400).json({ success: false, message: 'Admin ID is required' });
+    }
+
+    const result = await adminService.updateUserStatus(userId, status, adminId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error updating user status:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Admin-led Password Reset
+app.post('/api/admin/users/:userId/reset-password', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { newPassword, adminId } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+
+    if (!adminId) {
+      return res.status(400).json({ success: false, message: 'Admin ID is required' });
+    }
+
+    const result = await adminService.resetUserPassword(userId, newPassword, adminId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error resetting user password:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -2971,7 +3088,11 @@ app.get('/api/reports', async (req, res) => {
       return res.status(400).json({ success: false, message: 'User ID is required' });
     }
 
-    const query = `
+    // Fetch user's current company ID
+    const [user] = await mysqlPool.execute('SELECT current_company_id FROM users WHERE id = ?', [userId]);
+    const companyId = user.length > 0 ? user[0].current_company_id : null;
+
+    let query = `
       SELECT 
           cc.id, 
           cc.created_at, 
@@ -2989,10 +3110,20 @@ app.get('/api/reports', async (req, res) => {
       LEFT JOIN agents a ON c.agent_id = a.id
       LEFT JOIN calls cl ON cc.call_id = cl.call_sid
       WHERE c.user_id = ?
-      ORDER BY cc.created_at DESC
     `;
 
-    const [rows] = await mysqlPool.execute(query, [userId]);
+    const params = [userId];
+
+    if (companyId) {
+      query += ' AND c.company_id = ?';
+      params.push(companyId);
+    } else {
+      query += ' AND (c.company_id IS NULL OR c.company_id = "")';
+    }
+
+    query += ' ORDER BY cc.created_at DESC';
+
+    const [rows] = await mysqlPool.execute(query, params);
     res.json({ success: true, data: rows });
   } catch (error) {
     console.error('Error fetching reports:', error);
@@ -4087,6 +4218,13 @@ app.get('/api/admin/migrate-schema', async (req, res) => {
         alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN last_attempt_at DATETIME NULL");
       if (!(await checkColumn('campaign_contacts', 'completed_at')))
         alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN completed_at DATETIME NULL");
+    }
+
+    // ── users table ──
+    const [userTables] = await mysqlPool.execute("SHOW TABLES LIKE 'users'");
+    if (userTables.length > 0) {
+      if (!(await checkColumn('users', 'status')))
+        alterQueries.push("ALTER TABLE users ADD COLUMN status ENUM('active', 'inactive', 'locked') DEFAULT 'active' AFTER role");
     }
 
     const results = [];

@@ -19,7 +19,8 @@ import {
     SignalIcon,
     ChevronLeftIcon
 } from '@heroicons/react/24/outline';
-import { INITIAL_AGENTS } from '../constants';
+import Skeleton from '../components/Skeleton';
+// No initial agents fallback
 
 const AgentPage: React.FC = () => {
     const [agents, setAgents] = useState<VoiceAgent[]>([]);
@@ -56,7 +57,7 @@ const AgentPage: React.FC = () => {
         try {
             setLoading(true);
             if (!user) {
-                setAgents(INITIAL_AGENTS);
+                setAgents([]);
                 setLoading(false);
                 return;
             }
@@ -64,11 +65,11 @@ const AgentPage: React.FC = () => {
             if (agentData && agentData.length > 0) {
                 setAgents(agentData);
             } else {
-                setAgents(INITIAL_AGENTS);
+                setAgents([]);
             }
         } catch (error) {
             console.error('Error loading agents:', error);
-            setAgents(INITIAL_AGENTS);
+            setAgents([]);
         } finally {
             setLoading(false);
         }
@@ -330,8 +331,54 @@ const AgentPage: React.FC = () => {
         >
             <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden card-animate">
                 {loading ? (
-                    <div className="p-20 flex justify-center">
-                        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-primary"></div>
+                    <div className="overflow-x-auto overflow-hidden">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800">
+                                <tr>
+                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Agent Persona</th>
+                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Configuration</th>
+                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Added Date</th>
+                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Status</th>
+                                    <th className="px-6 py-4 text-right"></th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                                {[...Array(5)].map((_, i) => (
+                                    <tr key={i}>
+                                        <td className="px-6 py-5">
+                                            <div className="flex items-center space-x-4">
+                                                <Skeleton width={40} height={40} variant="rounded" />
+                                                <div className="space-y-2">
+                                                    <Skeleton width={120} height={14} variant="text" />
+                                                    <Skeleton width={80} height={10} variant="text" />
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <div className="flex items-center space-x-3">
+                                                <div className="flex -space-x-2">
+                                                    <Skeleton width={24} height={24} variant="rounded" className="border border-white dark:border-slate-800" />
+                                                    <Skeleton width={24} height={24} variant="rounded" className="border border-white dark:border-slate-800" />
+                                                </div>
+                                                <Skeleton width={60} height={12} variant="text" />
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <div className="space-y-2">
+                                                <Skeleton width={100} height={14} variant="text" />
+                                                <Skeleton width={60} height={10} variant="text" />
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <Skeleton width={80} height={24} variant="rounded" />
+                                        </td>
+                                        <td className="px-6 py-5 text-right">
+                                            <Skeleton width={32} height={32} variant="rounded" className="ml-auto" />
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 ) : agents.length === 0 ? (
                     <div className="p-20 text-center">
@@ -395,10 +442,17 @@ const AgentPage: React.FC = () => {
                                             </div>
                                         </td>
                                         <td className="px-6 py-5">
-                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-900/50">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse"></span>
-                                                {agent.status}
-                                            </span>
+                                            {agent.hasPhoneNumber ? (
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-900/50">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse"></span>
+                                                    Active
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>
+                                                    Inactive
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-5 text-right">
                                             <button

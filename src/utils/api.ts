@@ -1,13 +1,29 @@
-/**
- * ⭐ SINGLE SOURCE OF TRUTH FOR BACKEND URL ⭐
- * Change this URL to update the backend URL everywhere in the application
- */
+export const getAuthHeaders = (extraHeaders = {}) => {
+  const headers = { ...extraHeaders };
+  const selectedCompany = localStorage.getItem('x-company-id');
+  if (selectedCompany) {
+    headers['x-company-id'] = selectedCompany;
+  }
+  return headers;
+};
+
+export const getAuthParams = () => {
+  try {
+    const userStr = localStorage.getItem('ziya-user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      if (user.role) return `&role=${user.role}`;
+    }
+  } catch (e) { }
+  return '';
+};
+
 export const getApiBaseUrl = () => {
   return "http://localhost:5000";
 };
 
 export const fetchCampaigns = async (userId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns?userId=${userId}`);
+  const response = await fetch(`${getApiBaseUrl()}/api/campaigns?userId=${userId}${getAuthParams()}`);
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
   }
@@ -20,7 +36,7 @@ export const fetchCampaigns = async (userId: string) => {
 };
 
 export const fetchScheduledCalls = async (userId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/scheduled-calls?userId=${userId}`);
+  const response = await fetch(`${getApiBaseUrl()}/api/scheduled-calls?userId=${userId}${getAuthParams()}`);
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
   }
@@ -34,7 +50,7 @@ export const fetchScheduledCalls = async (userId: string) => {
 export const rescheduleCall = async (contactId: string, newTime: string) => {
   const response = await fetch(`${getApiBaseUrl()}/api/scheduled-calls/reschedule`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ contactId, newTime })
   });
   if (!response.ok) {
@@ -58,7 +74,7 @@ export const deleteScheduledCall = async (contactId: string) => {
 export const createCampaign = async (userId: string, name: string, agentId?: string, concurrentCalls?: number, retryAttempts?: number) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId, name, agentId, concurrentCalls, retryAttempts })
   });
   if (!response.ok) {
@@ -73,7 +89,7 @@ export const createCampaign = async (userId: string, name: string, agentId?: str
 };
 
 export const fetchCampaign = async (id: string, userId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}?userId=${userId}`);
+  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}?userId=${userId}${getAuthParams()}`);
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
   }
@@ -88,7 +104,7 @@ export const fetchCampaign = async (id: string, userId: string) => {
 export const updateCampaign = async (id: string, userId: string, data: any) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId, ...data })
   });
   if (!response.ok) {
@@ -101,7 +117,7 @@ export const updateCampaign = async (id: string, userId: string, data: any) => {
 export const setCallerPhone = async (id: string, userId: string, callerPhone: string, agentId?: string) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/set-caller-phone`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId, callerPhone, agentId })
   });
   if (!response.ok) {
@@ -119,9 +135,7 @@ export const setCallerPhone = async (id: string, userId: string, callerPhone: st
 export const importCSV = async (id: string, userId: string, csvContent: string) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/import-csv`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId, csvContent }),
   });
   if (!response.ok) {
@@ -134,7 +148,7 @@ export const importCSV = async (id: string, userId: string, csvContent: string) 
 export const importRecords = async (id: string, userId: string, csvData: any[]) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/import`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId, csvData })
   });
   if (!response.ok) {
@@ -151,7 +165,7 @@ export const importRecords = async (id: string, userId: string, csvData: any[]) 
 export const addRecord = async (id: string, userId: string, phone: string, name?: string, email?: string) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/records`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId, phone, name, email })
   });
   if (!response.ok) {
@@ -168,7 +182,7 @@ export const addRecord = async (id: string, userId: string, phone: string, name?
 export const deleteRecord = async (campaignId: string, recordId: string, userId: string) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${campaignId}/records/${recordId}`, {
     method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId })
   });
   if (!response.ok) {
@@ -185,7 +199,7 @@ export const deleteRecord = async (campaignId: string, recordId: string, userId:
 export const startCampaign = async (id: string, userId: string) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/start`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId })
   });
   if (!response.ok) {
@@ -211,7 +225,7 @@ export const startCampaign = async (id: string, userId: string) => {
 export const stopCampaign = async (id: string, userId: string) => {
   const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/stop`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId })
   });
   if (!response.ok) {
@@ -239,9 +253,26 @@ export const fetchRecords = async (id: string, page: number = 1, limit: number =
 };
 
 export const deleteCampaign = async (id: string, userId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}?userId=${userId}`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}?userId=${userId}${getAuthParams()}`, {
     method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' }
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' })
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  // Validate content type before parsing JSON
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Received non-JSON response from server');
+  }
+  return response.json();
+};
+
+export const updateConcurrentCalls = async (id: string, userId: string, concurrentCalls: number) => {
+  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/concurrent-calls`, {
+    method: 'PUT',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ userId, concurrentCalls })
   });
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);

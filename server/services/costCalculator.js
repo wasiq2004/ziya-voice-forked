@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
-const { usdToCredits, getProfitMarkupPerMinute } = require('../config/creditConfig');
+const { usdToCredits, HIDDEN_PROFIT_PERCENTAGE } = require('../config/creditConfig');
 
 /**
  * Cost Calculator Service
@@ -113,11 +113,10 @@ class CostCalculator {
         try {
             const costBreakdown = await this.calculateCallCost(usage);
 
-            // Hidden profit markup for phone calls and browser voice sessions
+            // Hidden profit markup (30% of total usage cost)
             let hiddenMarkupCredits = 0;
-            if (isVoiceCall && durationSeconds > 0) {
-                const durationMinutes = durationSeconds / 60;
-                hiddenMarkupCredits = getProfitMarkupPerMinute() * durationMinutes;
+            if (isVoiceCall) {
+                hiddenMarkupCredits = costBreakdown.totalCost * (HIDDEN_PROFIT_PERCENTAGE || 0.30);
             }
 
             const totalCreditsToCharge = parseFloat((costBreakdown.totalCost + hiddenMarkupCredits).toFixed(4));

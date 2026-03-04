@@ -6,7 +6,7 @@ import {
     PhoneIcon as OutlinePhoneIcon,
     CogIcon,
     CodeBracketIcon,
-    CreditCardIcon,
+    CircleStackIcon,
     ClipboardIcon,
     PlayIcon as SolidPlayIcon,
     ArrowUpOnSquareIcon,
@@ -65,162 +65,17 @@ export const SIDEBAR_ITEMS: SidebarItem[] = [
     { id: Page.Reports, icon: ClipboardDocumentListIcon },
     { id: Page.Settings, icon: CogIcon },
     // { id: Page.API, icon: CodeBracketIcon },
-    { id: Page.Credits, icon: CreditCardIcon },
+    { id: Page.Credits, icon: CircleStackIcon },
 ];
 
-export const INITIAL_CAMPAIGNS: Campaign[] = [
-    { id: '1', userId: 'user-1', name: 'Q1 Lead Gen', status: CampaignStatus.Active, leads: 120, contacts: 500, includeMetadata: true, createdAt: '2023-03-15' },
-    { id: '2', userId: 'user-1', name: 'Summer Sale Promo', status: CampaignStatus.Paused, leads: 45, contacts: 250, includeMetadata: true, createdAt: '2023-02-20' },
-    { id: '3', userId: 'user-1', name: 'New Product Launch', status: CampaignStatus.Completed, leads: 350, contacts: 1200, includeMetadata: true, createdAt: '2023-01-10' },
+export const ADMIN_SIDEBAR_ITEMS: SidebarItem[] = [
+    { id: Page.AdminDashboard, icon: ChartBarIcon },
+    { id: Page.AdminUsers, icon: UserGroupIcon },
 ];
 
-export const INITIAL_AGENTS: VoiceAgent[] = [
-    {
-        id: 'agent-1',
-        name: 'ALPS',
-        identity: `[Identity] You are ALPS, a Proactive Outreach Specialist from Aspirentech Business Solutions — a leading provider of AI-driven customer engagement tools.
-[Goal] Conduct proactive outbound calls to potential customers.
 
-[Personality]
-- Friendly and engaging
-- Concise and clear communication
-- Adaptable to customer responses
 
-[Tone & Style]
-- Polite, calm, and friendly
-- Speak slowly and clearly
-- Ask one question at a time
-- Wait for the user's response before continuing`,
-        createdDate: '2025-10-09T13:47:00Z',
-        status: VoiceAgentStatus.Active,
-        model: 'gemini-2.5-flash',
-        voiceId: 'eleven-zara',
-        language: 'ENGLISH',
-        settings: {
-            userStartsFirst: false,
-            greetingLine: "Welcome! How can I help you?",
-            responseDelay: false,
-            inactivityHandling: true,
-            agentCanTerminateCall: false,
-            voicemailDetection: true,
-            callTransfer: true,
-            dtmfDial: false,
-            agentTimezone: 'America/New_York',
-            voiceDetectionConfidenceThreshold: 0.5,
-            overrideVAD: false,
-            backgroundAmbientSound: 'None',
-            callRecording: true,
-            sessionTimeoutFixedDuration: 3600,
-            sessionTimeoutNoVoiceActivity: 300,
-            sessionTimeoutEndMessage: "Your session has ended.",
-            dataPrivacyOptOut: false,
-            doNotCallDetection: true,
-            prefetchDataWebhook: 'https://example.com/prefetch_data_webhook',
-            endOfCallWebhook: 'https://example.com/session_data_webhook',
-            preActionPhrases: ["Let me check", "One sec", "Let me see"],
-            tools: [],
-            knowledgeDocIds: [],
-        },
-    },
-    {
-        id: 'agent-2',
-        name: 'Ziya',
-        identity: `[Identity] You are Zara, a Conversational Commerce Specialist from Aspirentech Business Solutions — a leading provider of AI-driven customer engagement tools.
-[Goal] Qualify leads, recommend products, and schedule consultations.`,
-        createdDate: '2025-10-03T13:55:00Z',
-        status: VoiceAgentStatus.Active,
-        model: 'gemini-2.5-flash',
-        voiceId: 'eleven-rachel',
-        language: 'ENGLISH',
-        settings: {
-            userStartsFirst: true,
-            greetingLine: "Thanks for calling Aspirentech, you're speaking with Zara.",
-            responseDelay: true,
-            inactivityHandling: true,
-            agentCanTerminateCall: true,
-            voicemailDetection: false,
-            callTransfer: false,
-            dtmfDial: true,
-            agentTimezone: 'Europe/London',
-            voiceDetectionConfidenceThreshold: 0.6,
-            overrideVAD: true,
-            backgroundAmbientSound: 'Office',
-            callRecording: false,
-            sessionTimeoutFixedDuration: 1800,
-            sessionTimeoutNoVoiceActivity: 600,
-            sessionTimeoutEndMessage: "It seems we've been disconnected. Goodbye.",
-            dataPrivacyOptOut: true,
-            doNotCallDetection: false,
-            prefetchDataWebhook: 'https://example.com/prefetch_ziya',
-            endOfCallWebhook: 'https://example.com/session_ziya',
-            preActionPhrases: ["Just a moment", "I'll look that up"],
-            tools: [],
-            knowledgeDocIds: [],
-        },
-    },
-    {
-        id: 'agent-sarah',
-        name: 'Sarah - Customer Support',
-        identity: 'You are Sarah, a professional customer support agent for ZiyaVoice. You are friendly, helpful, and empathetic. Your goal is to assist users with their inquiries about the platform.',
-        createdDate: new Date().toISOString(),
-        status: VoiceAgentStatus.Active,
-        model: 'gemini-2.0-flash',
-        voiceId: 'eleven-rachel',
-        language: 'ENGLISH',
-        settings: {
-            userStartsFirst: false,
-            greetingLine: 'Hello! This is Sarah from ZiyaVoice. How can I help you today?',
-            responseDelay: false,
-            inactivityHandling: true,
-            agentCanTerminateCall: false,
-            voicemailDetection: true,
-            callTransfer: true,
-            dtmfDial: false,
-            agentTimezone: 'America/New_York',
-            voiceDetectionConfidenceThreshold: 0.5,
-            overrideVAD: false,
-            backgroundAmbientSound: 'None',
-            callRecording: true,
-            sessionTimeoutFixedDuration: 3600,
-            sessionTimeoutNoVoiceActivity: 300,
-            sessionTimeoutEndMessage: 'Thank you for calling ZiyaVoice. Goodbye!',
-            dataPrivacyOptOut: false,
-            doNotCallDetection: true,
-            prefetchDataWebhook: '',
-            endOfCallWebhook: '',
-            preActionPhrases: [],
-            tools: [],
-            knowledgeDocIds: []
-        },
-    },
-];
 
-export const INITIAL_PHONE_NUMBERS: PhoneNumber[] = [
-    {
-        id: 'pn-1',
-        number: '+18702763987',
-        countryCode: 'us',
-        source: 'Imported:twilio',
-        agentName: 'Ziya',
-        agentId: 'agent-2',
-        region: 'us-west',
-        createdDate: '2025-10-03T14:01:00Z',
-        nextCycle: '2025-11-03',
-        provider: PhoneProvider.Twilio,
-    },
-    {
-        id: 'pn-2',
-        number: '+442079460958',
-        countryCode: 'gb',
-        source: 'Evotel',
-        agentName: 'ALPS',
-        agentId: 'agent-1',
-        region: 'eu-central-1',
-        createdDate: '2025-09-21T10:30:00Z',
-        nextCycle: '2025-10-21',
-        provider: PhoneProvider.Evotel,
-    },
-];
 
 export const AVAILABLE_VOICE_PROVIDERS = [
     { id: 'eleven-labs', name: 'ElevenLabs' },

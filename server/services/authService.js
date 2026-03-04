@@ -66,7 +66,7 @@ var AuthService = /** @class */ (function () {
                 switch (_a.label) {
                     case 0:
                         _a.trys.push([0, 3, , 4]);
-                        return [4 /*yield*/, this.mysqlPool.execute('SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, password_hash FROM users WHERE email = ?', [email])];
+                        return [4 /*yield*/, this.mysqlPool.execute('SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, password_hash, current_company_id, role, status FROM users WHERE email = ?', [email])];
                     case 1:
                         rows = (_a.sent())[0];
                         if (rows.length === 0) {

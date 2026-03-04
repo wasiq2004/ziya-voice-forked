@@ -103,17 +103,42 @@ class MediaStreamHandler {
                 }
             }
 
+            let finalCost = 0;
+            const durationSecondsForCost = session.startTime ? (new Date() - session.startTime) / 1000 : 0;
+
+            // Calculate and charge for Twilio usage first so we have the cost
+            if (session.startTime && session.userId && this.costCalculator) {
+                try {
+                    session.usage.twilio = durationSecondsForCost / 60;
+                    const chargeResult = await this.costCalculator.recordAndCharge(
+                        session.userId,
+                        session.callId,
+                        session.usage,
+                        true, // isVoiceCall
+                        durationSecondsForCost // durationSeconds
+                    );
+                    finalCost = chargeResult.totalCharged || 0;
+                    console.log(`✅ Charged user ${session.userId}: $${finalCost.toFixed(4)}`);
+                    console.log('   Breakdown:', chargeResult.breakdown);
+                } catch (err) {
+                    console.error('❌ Error charging user:', err.message);
+                    if (err.message === 'Insufficient balance') {
+                        console.warn(`⚠️ User ${session.userId} ended call with insufficient balance`);
+                    }
+                }
+            }
+
             // Save Transcript and Classify Intent for Campaigns
             if (session.contactId && this.campaignService) {
                 try {
                     const fullTranscript = session.context.map(msg => `${msg.role.toUpperCase()}: ${msg.parts[0].text}`).join('\n');
-                    const durationSeconds = session.startTime ? Math.round((new Date() - session.startTime) / 1000) : 0;
+                    const durationSeconds = Math.round(durationSecondsForCost);
                     console.log(`📝 Saving transcript and classifying intent for contact ${session.contactId}...`);
 
                     await this.campaignService.updateContactAfterCall(
                         session.contactId,
                         durationSeconds,
-                        0, // cost logged elsewhere
+                        finalCost, // Passing calculated cost here
                         'completed',
                         fullTranscript
                     );
@@ -121,29 +146,6 @@ class MediaStreamHandler {
                 } catch (campaignErr) {
                     console.error('❌ Error updating campaign contact after call:', campaignErr);
                 }
-            }
-
-            // Calculate and charge for Twilio usage
-            if (session.startTime && session.userId && this.costCalculator) {
-                const endTime = new Date();
-                const durationSeconds = (endTime - session.startTime) / 1000;
-                const durationMinutes = durationSeconds / 60;
-                session.usage.twilio = durationMinutes;
-
-                // Charge user for all usage
-                this.costCalculator.recordAndCharge(
-                    session.userId,
-                    session.callId,
-                    session.usage
-                ).then(result => {
-                    console.log(`✅ Charged user ${session.userId}: $${result.totalCharged.toFixed(4)}`);
-                    console.log('   Breakdown:', result.breakdown);
-                }).catch(err => {
-                    console.error('❌ Error charging user:', err.message);
-                    if (err.message === 'Insufficient balance') {
-                        console.warn(`⚠️ User ${session.userId} ended call with insufficient balance`);
-                    }
-                });
             }
 
             if (session.silenceTimer) {

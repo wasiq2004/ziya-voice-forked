@@ -14,6 +14,8 @@ export interface UserListItem {
   email: string;
   username: string;
   created_at: string;
+  role: string;
+  status: 'active' | 'inactive' | 'locked';
   elevenlabs_usage: number;
   gemini_usage: number;
   deepgram_usage: number;
@@ -316,4 +318,105 @@ export const getUserBalance = async (userId: string): Promise<number> => {
 
   const data = await response.json();
   return data.balance;
+};
+
+// Get user resources (Agents, Campaigns)
+export const getUserResources = async (userId: string): Promise<{ agents: any[]; campaigns: any[] }> => {
+  const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/resources`);
+
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Received non-JSON response from server');
+  }
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch user resources');
+  }
+
+  return response.json();
+};
+
+// Update user status
+export const updateUserStatus = async (
+  userId: string,
+  status: 'active' | 'inactive' | 'locked',
+  adminId: string
+): Promise<{ success: boolean; message: string }> => {
+  const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, adminId })
+  });
+
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Received non-JSON response from server');
+  }
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Failed to update user status');
+  }
+
+  return response.json();
+};
+
+// Admin-led Password Reset
+export const resetUserPassword = async (
+  userId: string,
+  newPassword: string,
+  adminId: string
+): Promise<{ success: boolean; message: string }> => {
+  const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newPassword, adminId })
+  });
+
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Received non-JSON response from server');
+  }
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Failed to reset password');
+  }
+
+  return response.json();
+};
+
+// Get audit logs
+export const getAuditLogs = async (page = 1, limit = 50): Promise<any> => {
+  const response = await fetch(`${API_BASE_URL}/admin/logs?page=${page}&limit=${limit}`);
+
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Received non-JSON response from server');
+  }
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch audit logs');
+  }
+
+  return response.json();
+};
+
+/**
+ * Impersonate a user (Login as user)
+ */
+export const impersonateUser = async (userId: string, adminId: string): Promise<{ success: boolean; user: any }> => {
+  const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/impersonate?adminId=${adminId}`);
+
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Received non-JSON response from server');
+  }
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Failed to impersonate user');
+  }
+
+  return response.json();
 };

@@ -2,12 +2,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseCSV = parseCSV;
 
-/**
- * Parse CSV string into array of objects with normalized keys
- * @param csvString CSV content as string
- * @param delimiter Delimiter character (default: ',')
- * @returns Array of objects with phone, name, and email properties
- */
 function parseCSV(csvString, delimiter) {
     if (delimiter === void 0) { delimiter = ','; }
     // Split into lines

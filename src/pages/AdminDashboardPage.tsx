@@ -2,6 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getDashboardStats, getUsers, getUserBalance, DashboardStats, UserListItem, Admin } from '../utils/adminApi';
 import CreditManagementModal from '../components/CreditManagementModal';
+import AppLayout from '../components/AppLayout';
+import KPICard from '../components/KPICard';
+import Skeleton from '../components/Skeleton';
+import {
+  UsersIcon,
+  ArrowUpIcon,
+  CurrencyDollarIcon,
+  ClockIcon,
+  ArrowPathIcon,
+  MagnifyingGlassIcon,
+  PlusIcon,
+  ArrowRightIcon,
+  LockClosedIcon,
+  LockOpenIcon,
+  NoSymbolIcon,
+  CheckCircleIcon,
+  DocumentTextIcon
+} from '@heroicons/react/24/outline';
+import { updateUserStatus } from '../utils/adminApi';
 
 const AdminDashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -16,7 +35,6 @@ const AdminDashboardPage: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<{ id: string; email: string; balance: number } | null>(null);
 
   useEffect(() => {
-    // Check if admin is logged in
     const adminData = localStorage.getItem('admin');
     if (!adminData) {
       navigate('/admin/login');
@@ -53,7 +71,6 @@ const AdminDashboardPage: React.FC = () => {
       setUsers(usersData);
       setPagination(prev => ({ ...prev, ...paginationData }));
 
-      // Fetch balances for all users
       const balances: Record<string, number> = {};
       for (const user of usersData) {
         try {
@@ -80,7 +97,7 @@ const AdminDashboardPage: React.FC = () => {
   };
 
   const handleCreditSuccess = () => {
-    fetchUsers(); // Refresh user list and balances
+    fetchUsers();
   };
 
   const handleLogout = () => {
@@ -93,11 +110,27 @@ const AdminDashboardPage: React.FC = () => {
     setPagination(prev => ({ ...prev, page: 1 }));
   };
 
-  const formatCurrency = (amount: number) => {
+  const handleToggleStatus = async (user: UserListItem) => {
+    const newStatus = user.status === 'active' ? 'locked' : 'active';
+    const confirmMsg = `Are you sure you want to ${newStatus === 'locked' ? 'LOCK' : 'UNLOCK'} access for ${user.email}?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      setLoading(true);
+      await updateUserStatus(user.id, newStatus, admin?.id || '');
+      fetchUsers();
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(false);
+    }
+  };
+
+  const formatCredits = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    }).format(amount) + ' CR';
   };
 
   const formatNumber = (num: number) => {
@@ -117,213 +150,210 @@ const AdminDashboardPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900">
-      {/* Header */}
-      <div className="bg-gray-800 border-b border-gray-700">
-        <div className="container-wrapper">
-          <div className="flex justify-between items-center py-4">
-            <div>
-              <h1 className="text-2xl font-bold text-white">Admin Dashboard</h1>
-              <p className="text-gray-400 text-sm">Welcome back, {admin.name || admin.email}</p>
-            </div>
-            <div className="flex gap-4">
-              <button
-                onClick={() => navigate('/')}
-                className="px-4 py-2 text-gray-300 hover:text-white transition"
-              >
-                Main Site
-              </button>
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
+    <AppLayout
+      breadcrumbs={[
+        { label: 'Admin', path: '/admin/dashboard' },
+        { label: 'Dashboard' }
+      ]}
+      pageTitle="Admin Dashboard"
+      pageDescription={`System overview and user management. Welcome back, ${admin.name || admin.email}`}
+      primaryAction={
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => navigate('/admin/logs')}
+            className="flex items-center px-4 py-2 bg-slate-800 dark:bg-slate-100 hover:bg-slate-900 dark:hover:bg-white text-white dark:text-slate-900 rounded-xl transition-all font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/20"
+          >
+            <DocumentTextIcon className="w-4 h-4 mr-2" />
+            System Logs
+          </button>
+          <button
+            onClick={fetchDashboardData}
+            className="flex items-center px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl transition-all font-bold text-sm shadow-sm"
+          >
+            <ArrowPathIcon className="w-4 h-4 mr-2" />
+            Refresh
+          </button>
         </div>
-      </div>
-
-      <div className="container-wrapper py-8">
+      }
+    >
+      <div className="space-y-8 animate-in fade-in duration-500">
         {/* Error Message */}
         {error && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/50 rounded-lg">
-            <p className="text-red-400">{error}</p>
+          <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 rounded-2xl text-red-700 dark:text-red-400 text-sm font-medium">
+            {error}
           </div>
         )}
 
-        {/* Stats Cards */}
-        {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-400 text-sm">Total Users</p>
-                  <p className="text-3xl font-bold text-white mt-2">{formatNumber(stats.totalUsers)}</p>
-                </div>
-                <div className="bg-blue-500/20 p-3 rounded-lg">
-                  <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                </div>
+        {/* Stats Grid */}
+        {loading && !stats ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 p-6">
+                <Skeleton width={100} height={12} variant="text" className="mb-4" />
+                <Skeleton width={60} height={32} variant="text" />
               </div>
-            </div>
-
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-400 text-sm">Active This Month</p>
-                  <p className="text-3xl font-bold text-white mt-2">{formatNumber(stats.activeUsers)}</p>
-                </div>
-                <div className="bg-green-500/20 p-3 rounded-lg">
-                  <svg className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-400 text-sm">Monthly Revenue</p>
-                  <p className="text-3xl font-bold text-white mt-2">{formatCurrency(stats.monthlyRevenue)}</p>
-                </div>
-                <div className="bg-purple-500/20 p-3 rounded-lg">
-                  <svg className="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-400 text-sm">Pending Billing</p>
-                  <p className="text-3xl font-bold text-white mt-2">{formatCurrency(stats.pendingBilling)}</p>
-                </div>
-                <div className="bg-yellow-500/20 p-3 rounded-lg">
-                  <svg className="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
+        ) : (
+          stats && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <KPICard title="Total Users" value={formatNumber(stats.totalUsers)} color="blue" />
+              <KPICard title="Active This Month" value={formatNumber(stats.activeUsers)} color="green" />
+              <KPICard title="Monthly Revenue" value={formatCredits(stats.monthlyRevenue)} color="purple" />
+              <KPICard title="Pending Billing" value={formatCredits(stats.pendingBilling)} color="red" />
+            </div>
+          )
         )}
 
-        {/* Service Usage Overview */}
+        {/* Service Usage */}
         {stats && stats.serviceUsage.length > 0 && (
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
-            <h2 className="text-xl font-bold text-white mb-4">Service Usage (This Month)</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {stats.serviceUsage.map((service) => (
-                <div key={service.service_name} className="bg-gray-700/50 rounded-lg p-4">
-                  <h3 className="text-lg font-semibold text-white capitalize mb-2">{service.service_name}</h3>
-                  <p className="text-gray-400 text-sm">Users: {service.user_count}</p>
-                  <p className="text-gray-400 text-sm">Total Usage: {formatNumber(service.total_usage)}</p>
-                </div>
-              ))}
+          <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800">
+              <h2 className="text-lg font-bold text-slate-800 dark:text-white">Service Usage (This Month)</h2>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {stats.serviceUsage.map((service) => (
+                  <div key={service.service_name} className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-5 border border-slate-100 dark:border-slate-800">
+                    <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">{service.service_name}</h3>
+                    <div className="flex justify-between items-end">
+                      <div>
+                        <p className="text-2xl font-bold text-slate-800 dark:text-white">{formatNumber(service.user_count)}</p>
+                        <p className="text-[10px] text-slate-500 font-medium">Active Users</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-primary">{formatNumber(service.total_usage)}</p>
+                        <p className="text-[10px] text-slate-500 font-medium">Total Tokens/Calls</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
 
-        {/* Users Table */}
-        <div className="bg-gray-800 rounded-lg border border-gray-700">
-          <div className="p-6 border-b border-gray-700">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold text-white">Users</h2>
-              <form onSubmit={handleSearch} className="flex gap-2">
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search by email or name..."
-                  className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
-                >
-                  Search
-                </button>
-              </form>
-            </div>
+        {/* Users Table Section */}
+        <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <h2 className="text-lg font-bold text-slate-800 dark:text-white">User Management</h2>
+            <form onSubmit={handleSearch} className="relative group">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
+                <MagnifyingGlassIcon className="h-4 w-4" />
+              </div>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search users..."
+                className="pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all font-bold text-sm text-slate-900 dark:text-white w-full md:w-64"
+              />
+            </form>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-700">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">User</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Username</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Balance</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">ElevenLabs</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Gemini</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Deepgram</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Joined</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/50 dark:bg-slate-900/50">
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">User Details</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Balance</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Usage (11L/Gem/DG)</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Joined</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-700">
-                {loading ? (
-                  <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-gray-400">
-                      Loading users...
-                    </td>
-                  </tr>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {loading && users.length === 0 ? (
+                  [...Array(5)].map((_, i) => (
+                    <tr key={i}>
+                      <td className="px-6 py-4"><Skeleton width={150} height={16} /></td>
+                      <td className="px-6 py-4 text-center"><Skeleton width={80} height={16} className="mx-auto" /></td>
+                      <td className="px-6 py-4 text-center"><Skeleton width={120} height={16} className="mx-auto" /></td>
+                      <td className="px-6 py-4"><Skeleton width={100} height={16} /></td>
+                      <td className="px-6 py-4 text-right"><Skeleton width={80} height={32} className="ml-auto" /></td>
+                    </tr>
+                  ))
                 ) : users.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-gray-400">
-                      No users found
-                    </td>
+                    <td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-bold">No users found</td>
                   </tr>
                 ) : (
                   users.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-700/50 transition">
+                    <tr key={user.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors group">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-white">{user.email}</div>
-                          <div className="text-sm text-gray-400">ID: {user.id.substring(0, 8)}...</div>
+                        <div className="flex items-center">
+                          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-black text-sm mr-3">
+                            {user.username?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">{user.email}</div>
+                            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">{user.username}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        {user.status === 'active' ? (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 uppercase tracking-widest border border-emerald-100 dark:border-emerald-800/50">
+                            <CheckCircleIcon className="w-3 h-3 mr-1" />
+                            Active
+                          </span>
+                        ) : user.status === 'locked' ? (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 uppercase tracking-widest border border-red-100 dark:border-red-800/50">
+                            <LockClosedIcon className="w-3 h-3 mr-1" />
+                            Locked
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 uppercase tracking-widest border border-slate-200 dark:border-slate-700/50">
+                            <NoSymbolIcon className="w-3 h-3 mr-1" />
+                            Inactive
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-black bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400">
+                          {formatCredits(userBalances[user.id] || 0)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <div className="flex items-center justify-center space-x-2 text-[11px] font-bold text-slate-500">
+                          <span title="ElevenLabs">{formatNumber(user.elevenlabs_usage)}</span>
+                          <span className="text-slate-300">/</span>
+                          <span title="Gemini">{formatNumber(user.gemini_usage)}</span>
+                          <span className="text-slate-300">/</span>
+                          <span title="Deepgram">{formatNumber(user.deepgram_usage)}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-blue-400">{user.username}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-semibold text-emerald-400">
-                          {formatCurrency(userBalances[user.id] || 0)}
+                        <div className="text-xs font-bold text-slate-600 dark:text-slate-400 flex items-center">
+                          <ClockIcon className="h-3 w-3 mr-1 opacity-50" />
+                          {formatDate(user.created_at)}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                        {formatNumber(user.elevenlabs_usage)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                        {formatNumber(user.gemini_usage)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                        {formatNumber(user.deepgram_usage)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                        {formatDate(user.created_at)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex gap-2">
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <div className="flex items-center justify-end space-x-3">
+                          <button
+                            onClick={() => handleToggleStatus(user)}
+                            className={`p-2 rounded-lg transition-colors ${user.status === 'active'
+                              ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100'
+                              : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100'}`}
+                            title={user.status === 'active' ? 'Lock User Access' : 'Restore User Access'}
+                          >
+                            {user.status === 'active' ? <LockClosedIcon className="h-4 w-4" /> : <LockOpenIcon className="h-4 w-4" />}
+                          </button>
                           <button
                             onClick={() => handleAddCredits(user)}
-                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition font-medium text-xs flex items-center gap-1"
+                            className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-lg hover:bg-emerald-100 transition-colors"
+                            title="Add Credits"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                            </svg>
-                            Add Credits
+                            <PlusIcon className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => navigate(`/admin/users/${user.id}`)}
-                            className="text-blue-400 hover:text-blue-300 transition"
+                            className="flex items-center text-[11px] font-black text-primary hover:underline uppercase tracking-widest"
                           >
-                            View Details →
+                            Details
+                            <ArrowRightIcon className="h-3 w-3 ml-1" />
                           </button>
                         </div>
                       </td>
@@ -336,22 +366,20 @@ const AdminDashboardPage: React.FC = () => {
 
           {/* Pagination */}
           {pagination.totalPages > 1 && (
-            <div className="p-6 border-t border-gray-700 flex justify-between items-center">
-              <div className="text-sm text-gray-400">
-                Showing page {pagination.page} of {pagination.totalPages} ({pagination.total} total users)
-              </div>
-              <div className="flex gap-2">
+            <div className="p-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Page {pagination.page} of {pagination.totalPages}</p>
+              <div className="flex space-x-2">
                 <button
                   onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
                   disabled={pagination.page === 1}
-                  className="px-4 py-2 bg-gray-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-600 transition"
+                  className="px-4 py-2 bg-slate-50 dark:bg-slate-900 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 disabled:opacity-50 hover:bg-slate-100 transition-all border border-slate-100 dark:border-slate-800"
                 >
-                  Previous
+                  Prev
                 </button>
                 <button
                   onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
                   disabled={pagination.page === pagination.totalPages}
-                  className="px-4 py-2 bg-gray-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-600 transition"
+                  className="px-4 py-2 bg-slate-50 dark:bg-slate-900 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 disabled:opacity-50 hover:bg-slate-100 transition-all border border-slate-100 dark:border-slate-800"
                 >
                   Next
                 </button>
@@ -361,7 +389,6 @@ const AdminDashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Credit Management Modal */}
       {selectedUser && (
         <CreditManagementModal
           userId={selectedUser.id}
@@ -371,7 +398,7 @@ const AdminDashboardPage: React.FC = () => {
           onSuccess={handleCreditSuccess}
         />
       )}
-    </div>
+    </AppLayout>
   );
 };
 

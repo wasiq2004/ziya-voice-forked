@@ -35,6 +35,17 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
     const navigate = useNavigate();
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+    const [adminUser, setAdminUser] = useState<any>(null);
+
+    useEffect(() => {
+        const storedAdmin = localStorage.getItem('admin');
+        if (storedAdmin) {
+            setAdminUser(JSON.parse(storedAdmin));
+        }
+    }, []);
+
+    const currentUser = user || adminUser;
+
     const dropdownRef = useRef<HTMLDivElement>(null);
     const notificationRef = useRef<HTMLDivElement>(null);
 
@@ -241,19 +252,19 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                             className="flex items-center space-x-3 p-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200"
                         >
-                            {user?.profile_image ? (
-                                <img src={user.profile_image} alt="Profile" className="w-10 h-10 rounded-xl object-cover shadow-lg shadow-primary/20" />
+                            {currentUser?.profile_image ? (
+                                <img src={currentUser.profile_image} alt="Profile" className="w-10 h-10 rounded-xl object-cover shadow-lg shadow-primary/20" />
                             ) : (
                                 <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-primary/20">
-                                    {getUserInitials(user?.email, user?.username)}
+                                    {getUserInitials(currentUser?.email, currentUser?.username)}
                                 </div>
                             )}
                             <div className="hidden md:block text-left">
                                 <p className="text-sm font-bold text-slate-900 dark:text-white leading-none mb-1">
-                                    {user?.full_name || user?.username || user?.email?.split('@')[0] || 'User'}
+                                    {currentUser?.full_name || currentUser?.name || currentUser?.username || currentUser?.email?.split('@')[0] || 'User'}
                                 </p>
                                 <p className="text-[10px] text-primary font-bold uppercase tracking-wider">
-                                    {getOrganizationName(user?.email)}
+                                    {adminUser ? 'System Administrator' : getOrganizationName(currentUser?.email)}
                                 </p>
                             </div>
                             <svg
@@ -272,53 +283,75 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                                 {/* User Info */}
                                 <div className="px-5 py-4 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-700">
                                     <p className="text-sm font-bold text-slate-900 dark:text-white">
-                                        {user?.username || user?.email?.split('@')[0] || 'User'}
+                                        {currentUser?.username || currentUser?.name || currentUser?.email?.split('@')[0] || 'User'}
                                     </p>
                                     <p className="text-xs text-slate-500 truncate mt-1">
-                                        {user?.email || 'user@example.com'}
+                                        {currentUser?.email || 'user@example.com'}
                                     </p>
                                 </div>
 
                                 {/* Menu Items */}
                                 <div className="p-2">
-                                    <button
-                                        onClick={() => {
-                                            navigate('/settings');
-                                            setIsDropdownOpen(false);
-                                        }}
-                                        className="w-full px-3 py-2.5 text-left text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl flex items-center space-x-3 transition-colors"
-                                    >
-                                        <UserCircleIcon className="h-5 w-5 text-slate-400" />
-                                        <span className="font-medium">My Profile</span>
-                                    </button>
+                                    {adminUser ? (
+                                        <button
+                                            onClick={() => {
+                                                navigate('/admin/dashboard');
+                                                setIsDropdownOpen(false);
+                                            }}
+                                            className="w-full px-3 py-2.5 text-left text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl flex items-center space-x-3 transition-colors"
+                                        >
+                                            <Cog6ToothIcon className="h-5 w-5 text-slate-400" />
+                                            <span className="font-medium">Admin Dashboard</span>
+                                        </button>
+                                    ) : (
+                                        <>
+                                            <button
+                                                onClick={() => {
+                                                    navigate('/settings');
+                                                    setIsDropdownOpen(false);
+                                                }}
+                                                className="w-full px-3 py-2.5 text-left text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl flex items-center space-x-3 transition-colors"
+                                            >
+                                                <UserCircleIcon className="h-5 w-5 text-slate-400" />
+                                                <span className="font-medium">My Profile</span>
+                                            </button>
 
-                                    <button
-                                        onClick={() => {
-                                            navigate('/settings');
-                                            setIsDropdownOpen(false);
-                                        }}
-                                        className="w-full px-3 py-2.5 text-left text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl flex items-center space-x-3 transition-colors"
-                                    >
-                                        <Cog6ToothIcon className="h-5 w-5 text-slate-400" />
-                                        <span className="font-medium">User Profile</span>
-                                    </button>
+                                            <button
+                                                onClick={() => {
+                                                    navigate('/settings');
+                                                    setIsDropdownOpen(false);
+                                                }}
+                                                className="w-full px-3 py-2.5 text-left text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl flex items-center space-x-3 transition-colors"
+                                            >
+                                                <Cog6ToothIcon className="h-5 w-5 text-slate-400" />
+                                                <span className="font-medium">User Profile</span>
+                                            </button>
 
-                                    <button
-                                        onClick={() => {
-                                            navigate('/credits');
-                                            setIsDropdownOpen(false);
-                                        }}
-                                        className="w-full px-3 py-2.5 text-left text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl flex items-center space-x-3 transition-colors"
-                                    >
-                                        <CreditCardIcon className="h-5 w-5 text-slate-400" />
-                                        <span className="font-medium">Billing & Usage</span>
-                                    </button>
+                                            <button
+                                                onClick={() => {
+                                                    navigate('/credits');
+                                                    setIsDropdownOpen(false);
+                                                }}
+                                                className="w-full px-3 py-2.5 text-left text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl flex items-center space-x-3 transition-colors"
+                                            >
+                                                <CreditCardIcon className="h-5 w-5 text-slate-400" />
+                                                <span className="font-medium">Billing & Usage</span>
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
 
                                 {/* Logout Button */}
                                 <div className="p-2 border-t border-slate-100 dark:border-slate-700">
                                     <button
-                                        onClick={handleLogout}
+                                        onClick={() => {
+                                            if (adminUser) {
+                                                localStorage.removeItem('admin');
+                                                navigate('/admin/login');
+                                            } else {
+                                                handleLogout();
+                                            }
+                                        }}
                                         className="w-full px-3 py-2.5 text-left text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl flex items-center space-x-3 transition-colors"
                                     >
                                         <ArrowLeftOnRectangleIcon className="h-5 w-5" />

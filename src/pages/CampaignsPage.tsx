@@ -4,6 +4,7 @@ import AppLayout from '../components/AppLayout';
 import CampaignCard from '../components/CampaignCard';
 import CreateCampaignModal from '../components/CreateCampaignModal';
 import { PlusIcon, InboxIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import Skeleton from '../components/Skeleton';
 import { fetchCampaigns, createCampaign, deleteCampaign } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -166,8 +167,29 @@ const CampaignsPage: React.FC = () => {
 
                 <div className="min-h-[400px]">
                     {loading ? (
-                        <div className="flex items-center justify-center h-64">
-                            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                            {[...Array(4)].map((_, i) => (
+                                <div key={i} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-4">
+                                    <div className="flex justify-between items-start">
+                                        <Skeleton width={120} height={20} variant="text" />
+                                        <Skeleton width={60} height={20} variant="rounded" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Skeleton width="100%" height={8} variant="rounded" />
+                                        <div className="flex justify-between">
+                                            <Skeleton width={40} height={10} variant="text" />
+                                            <Skeleton width={40} height={10} variant="text" />
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-2">
+                                        <Skeleton width={80} height={12} variant="text" />
+                                        <div className="flex space-x-2">
+                                            <Skeleton width={32} height={32} variant="circle" />
+                                            <Skeleton width={32} height={32} variant="circle" />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     ) : filteredCampaigns.length === 0 ? (
                         <div className="flex flex-col items-center justify-center p-20 bg-white dark:bg-slate-800/30 rounded-[40px] border-2 border-dashed border-slate-100 dark:border-slate-800 shadow-inner">

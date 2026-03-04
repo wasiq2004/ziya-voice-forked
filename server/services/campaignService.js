@@ -21,11 +21,15 @@ class CampaignService {
         try {
             const campaignId = uuidv4();
 
+            // Fetch user's current company ID
+            const [user] = await this.mysqlPool.execute('SELECT current_company_id FROM users WHERE id = ?', [userId]);
+            const companyId = user.length > 0 ? user[0].current_company_id : null;
+
             // Insert campaign with all columns, including max_retry_attempts
             await this.mysqlPool.execute(
-                `INSERT INTO campaigns (id, user_id, agent_id, name, description, status, phone_number_id, concurrent_calls, max_retry_attempts)
-         VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?)`,
-                [campaignId, userId, agentId, name, description, phoneNumberId, concurrentCalls, maxRetryAttempts]
+                `INSERT INTO campaigns (id, user_id, agent_id, name, description, status, phone_number_id, concurrent_calls, max_retry_attempts, company_id)
+         VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)`,
+                [campaignId, userId, agentId, name, description, phoneNumberId, concurrentCalls, maxRetryAttempts, companyId]
             );
 
             // Create default settings
@@ -524,16 +528,29 @@ class CampaignService {
     /**
      * Get all campaigns for a user
      */
-    async getUserCampaigns(userId) {
-        const [campaigns] = await this.mysqlPool.execute(
-            `SELECT c.*, a.name as agent_name
+    async getUserCampaigns(userId, companyId = null) {
+        let query = `SELECT c.*, a.name as agent_name
        FROM campaigns c
        LEFT JOIN agents a ON c.agent_id = a.id
-       WHERE c.user_id = ?
-       ORDER BY c.created_at DESC`,
-            [userId]
-        );
+       WHERE c.user_id = ?`;
+        const params = [userId];
 
+        if (companyId) {
+            query += ' AND c.company_id = ?';
+            params.push(companyId);
+        } else {
+            // Fetch user's current company ID
+            const [user] = await this.mysqlPool.execute('SELECT current_company_id FROM users WHERE id = ?', [userId]);
+            if (user.length > 0 && user[0].current_company_id) {
+                query += ' AND c.company_id = ?';
+                params.push(user[0].current_company_id);
+            } else {
+                query += ' AND (c.company_id IS NULL OR c.company_id = "")';
+            }
+        }
+
+        query += ' ORDER BY c.created_at DESC';
+        const [campaigns] = await this.mysqlPool.execute(query, params);
         return campaigns;
     }
 

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { SIDEBAR_ITEMS, APP_VERSION } from '../constants';
+import { SIDEBAR_ITEMS, ADMIN_SIDEBAR_ITEMS, APP_VERSION } from '../constants';
 import { Page } from '../types';
 import { CreditCardIcon, ArrowLeftOnRectangleIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
 import { getApiBaseUrl } from '../utils/api';
+import CompanySwitcher from './CompanySwitcher';
 
 
 interface SidebarProps {
@@ -105,6 +106,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                 return '/reports';
             case Page.Schedule:
                 return '/schedule';
+            case Page.AdminDashboard:
+                return '/admin/dashboard';
+            case Page.AdminUsers:
+                return '/admin/dashboard';
             default:
                 return '/dashboard';
         }
@@ -112,6 +117,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
 
     const getCurrentPage = (): Page => {
         const path = location.pathname;
+        if (path.startsWith('/admin/dashboard')) return Page.AdminDashboard;
+        if (path.startsWith('/admin/users')) return Page.AdminUsers;
+
         if (path === '/dashboard' || path === '/') return Page.Dashboard;
         if (path.startsWith('/campaigns')) return Page.Campaigns;
         if (path.startsWith('/agents')) return Page.Agent;
@@ -125,27 +133,48 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
         return Page.Dashboard;
     };
 
+    const isAdminRoute = location.pathname.startsWith('/admin');
+    const displayItems = isAdminRoute ? ADMIN_SIDEBAR_ITEMS : SIDEBAR_ITEMS;
     const activePage = getCurrentPage();
 
     return (
-        <aside className={`fixed top-0 left-0 h-full bg-white dark:bg-darkbg-surface border-r border-slate-200 dark:border-slate-800/50 flex flex-col transition-all duration-300 ease-in-out z-20 ${isCollapsed ? 'w-20' : 'w-64'}`}>
-            <div className="flex items-center justify-center h-[72px] border-b border-slate-200 dark:border-slate-800/50 px-4">
-                <div className={`flex items-center space-x-2 transition-opacity duration-300 ${isCollapsed ? 'opacity-0 w-0 hidden' : 'opacity-100'}`}>
-                    <img src="/assets/ziya-logo.png" alt="Ziya Logo" className="w-8 h-8" />
-                    <h1 className="text-xl font-bold text-slate-800 dark:text-white">Ziya Voice</h1>
+        <aside className={`fixed top-0 left-0 h-full bg-white dark:bg-darkbg-surface border-r border-slate-200 dark:border-slate-800/50 flex flex-col transition-all duration-300 ease-in-out z-20 font-sidebar ${isCollapsed ? 'w-20' : 'w-64'}`}>
+            <div
+                className={`
+    flex flex-col border-b border-slate-200 
+    dark:border-slate-800/50 
+    px-6 py-6 mb 
+    transition-all duration-300
+    ${isCollapsed ? 'items-center w-20' : 'w-64'}
+  `}
+            >
+                <div className="flex items-center space-x-3 mb-3">
+
+                    {/* Logo - Change w-14 h-14 to control logo size */}
+                    <img
+                        src="/assets/ziya-logo.png"
+                        alt="Ziya Logo"
+                        className="w-14 h-10 flex-shrink-0 transition-all duration-300"
+                    />
+
+                    {/* Text - Change text-2xl to control logo text size */}
+                    {!isCollapsed && (
+                        <h1 className="text-2xl font-bold text-slate-800 dark:text-white truncate">
+                            Ziya Voice
+                        </h1>
+                    )}
                 </div>
-                <div className={`flex items-center justify-center transition-opacity duration-300 ${!isCollapsed ? 'opacity-0 w-0 hidden' : 'opacity-100'}`}>
-                    <img src="/assets/ziya-logo.png" alt="Ziya Logo" className="w-8 h-8" />
-                </div>
+
+                {/* Company Switcher Removed per User Request */}
             </div>
 
             <nav className="flex-1 px-3 py-4 overflow-y-auto custom-scrollbar">
                 <ul className="space-y-1">
-                    {SIDEBAR_ITEMS.map((item, index) => (
+                    {displayItems.map((item, index) => (
                         <React.Fragment key={item.id}>
                             {/* Section Divider - Add after Dashboard and before Settings */}
                             {(index === 1 || index === 5) && (
-                                <li className="my-3">
+                                <li className="my-2">
                                     <div className="h-px bg-gradient-to-r from-transparent via-slate-700 to-transparent"></div>
                                 </li>
                             )}
@@ -197,21 +226,23 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                 </ul>
             </nav>
             <div className="p-3 border-t border-gray-200 dark:border-gray-800">
-                <a
-                    href="#"
-                    onClick={(e) => {
-                        e.preventDefault();
-                        navigate('/credits');
-                    }}
-                    className={`flex items-center p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-darkbg-light mb-1 ${isCollapsed ? 'justify-center' : ''}`}
-                    aria-label="View credits and usage"
-                >
-                    <CreditCardIcon className="h-5 w-5 flex-shrink-0" />
-                    <div className={`ml-4 overflow-hidden whitespace-nowrap transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}>
-                        <span className="font-semibold block text-sm">{typeof credits === 'number' ? credits.toLocaleString() : credits}</span>
-                        <span className="text-xs text-slate-500">Credits Remaining</span>
-                    </div>
-                </a>
+                {!isAdminRoute && (
+                    <a
+                        href="#"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            navigate('/credits');
+                        }}
+                        className={`flex items-center p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-darkbg-light mb-1 ${isCollapsed ? 'justify-center' : ''}`}
+                        aria-label="View credits and usage"
+                    >
+                        <CreditCardIcon className="h-5 w-5 flex-shrink-0" />
+                        <div className={`ml-4 overflow-hidden whitespace-nowrap transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}>
+                            <span className="font-semibold block text-sm">{typeof credits === 'number' ? credits.toLocaleString() : credits}</span>
+                            <span className="text-xs text-slate-500">Credits Remaining</span>
+                        </div>
+                    </a>
+                )}
                 <button
                     onClick={handleLogout}
                     className={`flex items-center p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-darkbg-light w-full ${isCollapsed ? 'justify-center' : ''}`}
