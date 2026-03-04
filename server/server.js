@@ -1414,6 +1414,127 @@ app.patch('/api/admin/billing/:billingId', async (req, res) => {
 
 // ==================== END ADMIN PANEL ENDPOINTS ====================
 
+// ==================== COMPANIES ENDPOINTS ====================
+
+// Get all companies for a user
+app.get('/api/companies/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Ensure current_company_id exists in users table
+    try {
+      await mysqlPool.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS current_company_id VARCHAR(36) NULL');
+    } catch (err) { /* ignore if already exists or other error */ }
+
+    // Check if table exists, if not we fall back to empty list so frontend doesn't break
+    try {
+      const [companies] = await mysqlPool.execute('SELECT * FROM companies WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+      res.json({ success: true, companies });
+    } catch (err) {
+      if (err.code === 'ER_NO_SUCH_TABLE') {
+        // Auto-create companies table if missing
+        await mysqlPool.execute(`
+            CREATE TABLE companies (
+              id VARCHAR(36) PRIMARY KEY,
+              user_id VARCHAR(36) NOT NULL,
+              name VARCHAR(255) NOT NULL,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+          `);
+        res.json({ success: true, companies: [] });
+      } else {
+        throw err;
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching companies:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Create a new company
+app.post('/api/companies/create', async (req, res) => {
+  try {
+    const { userId, name } = req.body;
+    if (!name || !userId) {
+      return res.status(400).json({ success: false, message: 'Name and userId required' });
+    }
+    const { v4: uuidv4 } = require('uuid');
+    const companyId = uuidv4();
+    await mysqlPool.execute(
+      'INSERT INTO companies (id, user_id, name) VALUES (?, ?, ?)',
+      [companyId, userId, name]
+    );
+
+    // If first company, set as active
+    const [companies] = await mysqlPool.execute('SELECT count(id) as count FROM companies WHERE user_id = ?', [userId]);
+    if (companies[0].count === 1) {
+      await mysqlPool.execute('UPDATE users SET current_company_id = ? WHERE id = ?', [companyId, userId]);
+    }
+
+    res.json({
+      success: true,
+      company: { id: companyId, user_id: userId, name }
+    });
+  } catch (error) {
+    console.error('Error creating company:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Switch active company
+app.post('/api/companies/switch', async (req, res) => {
+  try {
+    const { userId, companyId } = req.body;
+    if (!companyId || !userId) {
+      return res.status(400).json({ success: false, message: 'Company ID and user ID required' });
+    }
+
+    await mysqlPool.execute('UPDATE users SET current_company_id = ? WHERE id = ?', [companyId, userId]);
+
+    res.json({ success: true, message: 'Switched successfully' });
+  } catch (error) {
+    console.error('Error switching company:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== END COMPANIES ENDPOINTS ====================
+
+// ==================== ADMIN ANALYTICS ENDPOINTS ====================
+
+// Get total companies count
+app.get('/api/admin/stats/companies', async (req, res) => {
+  try {
+    const [result] = await mysqlPool.execute('SELECT COUNT(*) as total FROM companies');
+    res.json({ success: true, totalCompanies: result[0].total });
+  } catch (error) {
+    console.error('Error fetching company count:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get total credits used across all users
+app.get('/api/admin/stats/credits', async (req, res) => {
+  try {
+    const [result] = await mysqlPool.execute(`
+      SELECT COALESCE(SUM(ABS(amount)), 0) as total_credits_used
+      FROM wallet_transactions
+      WHERE transaction_type = 'debit'
+    `);
+    const totalCreditsUsed = parseFloat(result[0].total_credits_used) || 0;
+    res.json({ success: true, totalCreditsUsed });
+  } catch (error) {
+    // Graceful fallback
+    res.json({ success: true, totalCreditsUsed: 0 });
+  }
+});
+
+// ==================== END ADMIN ANALYTICS ENDPOINTS ====================
+
+
 // ==================== SNOWFALL SETTINGS ENDPOINTS ====================
 
 // In-memory storage for snowfall setting (you can move this to database if needed)
@@ -4639,9 +4760,21 @@ app.use((req, res, next) => {
   }
   next();
 });
-// Start server and bind to 0.0.0.0 for Railway
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server listening on port ${PORT}`);
-  console.log(`🌐 Frontend URL: ${FRONTEND_URL}`);
-  console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+// Run database migrations before starting the server
+const runAddStatusMigration = require('./migrations/add_status_to_users.js');
+
+(async () => {
+  try {
+    await runAddStatusMigration(mysqlPool);
+  } catch (err) {
+    console.error('❌ Startup migration failed:', err.message);
+    // Don't crash the server over a migration — log and continue
+  }
+
+  // Start server and bind to 0.0.0.0 for Railway
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server listening on port ${PORT}`);
+    console.log(`🌐 Frontend URL: ${FRONTEND_URL}`);
+    console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
+  });
+})();

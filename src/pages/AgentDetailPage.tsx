@@ -1366,7 +1366,7 @@ When you need to collect information from the user, ask for the required paramet
 
             // Ensure settings object exists
             if (!newAgent.settings) {
-                newAgent.settings = {};
+                newAgent.settings = { ...prev.settings };
             }
 
             let currentLevel: any = newAgent;

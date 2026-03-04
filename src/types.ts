@@ -11,7 +11,7 @@ export enum Page {
     Schedule = 'Schedule',
     Reports = 'Reports',
     AdminDashboard = 'Admin Dashboard',
-    AdminUsers = 'Admin Users',
+    AdminUsers = 'Users',
 }
 
 export enum CampaignStatus {
@@ -110,6 +110,8 @@ export interface VoiceAgentSettings {
     preActionPhrases: string[]; // For knowledge base
     tools: Tool[];
     knowledgeDocIds?: string[];
+    webhookEnabled?: boolean; // Enable webhook delivery after each call
+    webhookUrl?: string; // Webhook endpoint URL
 }
 
 

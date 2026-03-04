@@ -263,9 +263,9 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                                 <p className="text-sm font-bold text-slate-900 dark:text-white leading-none mb-1">
                                     {currentUser?.full_name || currentUser?.name || currentUser?.username || currentUser?.email?.split('@')[0] || 'User'}
                                 </p>
-                                <p className="text-[10px] text-primary font-bold uppercase tracking-wider">
+                                {/* <p className="text-[10px] text-primary font-bold uppercase tracking-wider">
                                     {adminUser ? 'System Administrator' : getOrganizationName(currentUser?.email)}
-                                </p>
+                                </p> */}
                             </div>
                             <svg
                                 className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`}

@@ -1,38 +1,146 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getDashboardStats, getUsers, getUserBalance, DashboardStats, UserListItem, Admin } from '../utils/adminApi';
-import CreditManagementModal from '../components/CreditManagementModal';
+import { getDashboardStats, Admin, DashboardStats } from '../utils/adminApi';
 import AppLayout from '../components/AppLayout';
-import KPICard from '../components/KPICard';
 import Skeleton from '../components/Skeleton';
 import {
   UsersIcon,
-  ArrowUpIcon,
+  BuildingOfficeIcon,
   CurrencyDollarIcon,
-  ClockIcon,
   ArrowPathIcon,
-  MagnifyingGlassIcon,
-  PlusIcon,
-  ArrowRightIcon,
-  LockClosedIcon,
-  LockOpenIcon,
-  NoSymbolIcon,
-  CheckCircleIcon,
-  DocumentTextIcon
+  DocumentTextIcon,
+  ChartBarIcon,
+  ArrowTrendingUpIcon,
 } from '@heroicons/react/24/outline';
-import { updateUserStatus } from '../utils/adminApi';
+import { getApiBaseUrl } from '../utils/api';
+
+// Simple bar chart component
+const BarChart: React.FC<{ data: { label: string; value: number; color: string }[] }> = ({ data }) => {
+  const max = Math.max(...data.map(d => d.value), 1);
+  return (
+    <div className="flex items-end gap-3 h-36">
+      {data.map((d, i) => (
+        <div key={i} className="flex-1 flex flex-col items-center gap-2">
+          <span className="text-[10px] font-black text-slate-400 text-center">{d.value.toLocaleString()}</span>
+          <div
+            className={`w-full rounded-t-xl transition-all duration-700 ${d.color}`}
+            style={{ height: `${Math.max((d.value / max) * 100, 4)}%`, minHeight: '4px' }}
+          />
+          <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider text-center leading-tight">{d.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// Line chart placeholder
+const ProfitTrendChart: React.FC = () => {
+  // Placeholder data - real data integration can be done later
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+  const values = [12000, 18500, 14200, 24000, 21500, 31000]; // placeholder values
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const range = max - min || 1;
+  const width = 600;
+  const height = 160;
+  const padding = { left: 40, right: 20, top: 20, bottom: 30 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  const points = values.map((v, i) => ({
+    x: padding.left + (i / (values.length - 1)) * chartWidth,
+    y: padding.top + chartHeight - ((v - min) / range) * chartHeight,
+  }));
+
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  const areaD = [
+    ...points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`),
+    `L ${points[points.length - 1].x} ${padding.top + chartHeight}`,
+    `L ${padding.left} ${padding.top + chartHeight}`,
+    'Z'
+  ].join(' ');
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <div className="relative" style={{ minWidth: 320 }}>
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ height: '160px' }}>
+          {/* Grid lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map((t, i) => (
+            <line
+              key={i}
+              x1={padding.left}
+              y1={padding.top + chartHeight * (1 - t)}
+              x2={width - padding.right}
+              y2={padding.top + chartHeight * (1 - t)}
+              stroke="currentColor"
+              strokeOpacity={0.08}
+              strokeWidth={1}
+            />
+          ))}
+
+          {/* Area fill */}
+          <path d={areaD} fill="url(#profitGradient)" />
+
+          {/* Line */}
+          <path d={pathD} fill="none" stroke="#1a73e8" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+
+          {/* Data points */}
+          {points.map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r={4} fill="#1a73e8" stroke="white" strokeWidth={2} />
+          ))}
+
+          {/* X-axis labels */}
+          {months.map((m, i) => (
+            <text
+              key={i}
+              x={padding.left + (i / (values.length - 1)) * chartWidth}
+              y={height - 5}
+              textAnchor="middle"
+              fill="currentColor"
+              fontSize={10}
+              fontWeight="bold"
+              opacity={0.5}
+            >
+              {m}
+            </text>
+          ))}
+
+          {/* Y-axis labels */}
+          {[min, (min + max) / 2, max].map((v, i) => (
+            <text
+              key={i}
+              x={padding.left - 5}
+              y={padding.top + chartHeight - (i === 0 ? 0 : i === 1 ? chartHeight / 2 : chartHeight) + 4}
+              textAnchor="end"
+              fill="currentColor"
+              fontSize={9}
+              fontWeight="bold"
+              opacity={0.4}
+            >
+              {(v / 1000).toFixed(0)}k
+            </text>
+          ))}
+
+          <defs>
+            <linearGradient id="profitGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#1a73e8" stopOpacity={0.2} />
+              <stop offset="100%" stopColor="#1a73e8" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+    </div>
+  );
+};
 
 const AdminDashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const [admin, setAdmin] = useState<Admin | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [users, setUsers] = useState<UserListItem[]>([]);
-  const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
-  const [search, setSearch] = useState('');
+  const [totalCompanies, setTotalCompanies] = useState<number>(0);
+  const [totalCreditsUsed, setTotalCreditsUsed] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [userBalances, setUserBalances] = useState<Record<string, number>>({});
-  const [selectedUser, setSelectedUser] = useState<{ id: string; email: string; balance: number } | null>(null);
 
   useEffect(() => {
     const adminData = localStorage.getItem('admin');
@@ -40,47 +148,36 @@ const AdminDashboardPage: React.FC = () => {
       navigate('/admin/login');
       return;
     }
-
     setAdmin(JSON.parse(adminData));
-    fetchDashboardData();
+    fetchAll();
   }, [navigate]);
 
-  useEffect(() => {
-    if (admin) {
-      fetchUsers();
-    }
-  }, [pagination.page, search, admin]);
-
-  const fetchDashboardData = async () => {
+  const fetchAll = async () => {
+    setLoading(true);
     try {
-      const statsData = await getDashboardStats();
+      const [statsData] = await Promise.all([getDashboardStats()]);
       setStats(statsData);
-    } catch (err: any) {
-      setError(err.message);
-    }
-  };
 
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      const { users: usersData, pagination: paginationData } = await getUsers(
-        pagination.page,
-        pagination.limit,
-        search
-      );
-      setUsers(usersData);
-      setPagination(prev => ({ ...prev, ...paginationData }));
-
-      const balances: Record<string, number> = {};
-      for (const user of usersData) {
-        try {
-          const balance = await getUserBalance(user.id);
-          balances[user.id] = balance;
-        } catch (err) {
-          balances[user.id] = 0;
+      // Fetch total companies count
+      try {
+        const apiUrl = getApiBaseUrl();
+        const companiesRes = await fetch(`${apiUrl}/api/admin/stats/companies`);
+        if (companiesRes.ok) {
+          const data = await companiesRes.json();
+          if (data.success) setTotalCompanies(data.totalCompanies || 0);
         }
-      }
-      setUserBalances(balances);
+      } catch { /* fallback to 0 */ }
+
+      // Fetch total credits used across all users
+      try {
+        const apiUrl = getApiBaseUrl();
+        const creditsRes = await fetch(`${apiUrl}/api/admin/stats/credits`);
+        if (creditsRes.ok) {
+          const data = await creditsRes.json();
+          if (data.success) setTotalCreditsUsed(data.totalCreditsUsed || 0);
+        }
+      } catch { /* fallback to 0 */ }
+
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -88,66 +185,11 @@ const AdminDashboardPage: React.FC = () => {
     }
   };
 
-  const handleAddCredits = (user: UserListItem) => {
-    setSelectedUser({
-      id: user.id,
-      email: user.email,
-      balance: userBalances[user.id] || 0
-    });
-  };
+  const formatNumber = (n: number) => new Intl.NumberFormat('en-US').format(n);
+  const formatCredits = (n: number) =>
+    new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n) + ' CR';
 
-  const handleCreditSuccess = () => {
-    fetchUsers();
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('admin');
-    navigate('/admin/login');
-  };
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPagination(prev => ({ ...prev, page: 1 }));
-  };
-
-  const handleToggleStatus = async (user: UserListItem) => {
-    const newStatus = user.status === 'active' ? 'locked' : 'active';
-    const confirmMsg = `Are you sure you want to ${newStatus === 'locked' ? 'LOCK' : 'UNLOCK'} access for ${user.email}?`;
-
-    if (!window.confirm(confirmMsg)) return;
-
-    try {
-      setLoading(true);
-      await updateUserStatus(user.id, newStatus, admin?.id || '');
-      fetchUsers();
-    } catch (err: any) {
-      setError(err.message);
-      setLoading(false);
-    }
-  };
-
-  const formatCredits = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2
-    }).format(amount) + ' CR';
-  };
-
-  const formatNumber = (num: number) => {
-    return new Intl.NumberFormat('en-US').format(num);
-  };
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  if (!admin) {
-    return null;
-  }
+  if (!admin) return null;
 
   return (
     <AppLayout
@@ -156,7 +198,7 @@ const AdminDashboardPage: React.FC = () => {
         { label: 'Dashboard' }
       ]}
       pageTitle="Admin Dashboard"
-      pageDescription={`System overview and user management. Welcome back, ${admin.name || admin.email}`}
+      pageDescription={`Platform-wide analytics and overview. Welcome back, ${admin.name || admin.email}`}
       primaryAction={
         <div className="flex items-center space-x-3">
           <button
@@ -167,7 +209,7 @@ const AdminDashboardPage: React.FC = () => {
             System Logs
           </button>
           <button
-            onClick={fetchDashboardData}
+            onClick={fetchAll}
             className="flex items-center px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl transition-all font-bold text-sm shadow-sm"
           >
             <ArrowPathIcon className="w-4 h-4 mr-2" />
@@ -177,14 +219,13 @@ const AdminDashboardPage: React.FC = () => {
       }
     >
       <div className="space-y-8 animate-in fade-in duration-500">
-        {/* Error Message */}
         {error && (
           <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 rounded-2xl text-red-700 dark:text-red-400 text-sm font-medium">
             {error}
           </div>
         )}
 
-        {/* Stats Grid */}
+        {/* Platform KPI Cards */}
         {loading && !stats ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[...Array(4)].map((_, i) => (
@@ -195,209 +236,155 @@ const AdminDashboardPage: React.FC = () => {
             ))}
           </div>
         ) : (
-          stats && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              <KPICard title="Total Users" value={formatNumber(stats.totalUsers)} color="blue" />
-              <KPICard title="Active This Month" value={formatNumber(stats.activeUsers)} color="green" />
-              <KPICard title="Monthly Revenue" value={formatCredits(stats.monthlyRevenue)} color="purple" />
-              <KPICard title="Pending Billing" value={formatCredits(stats.pendingBilling)} color="red" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Total Credits Used */}
+            <div className="bg-gradient-to-br from-primary to-blue-600 rounded-3xl p-6 text-white shadow-xl shadow-primary/20 relative overflow-hidden">
+              <div className="absolute top-0 right-0 -mr-6 -mt-6 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-4 opacity-80">
+                  <span className="text-[10px] font-black uppercase tracking-widest">Total Credits Used</span>
+                  <CurrencyDollarIcon className="h-5 w-5" />
+                </div>
+                <p className="text-3xl font-black">{formatCredits(totalCreditsUsed || (stats?.monthlyRevenue || 0))}</p>
+                <p className="text-[10px] opacity-60 font-bold mt-1 uppercase tracking-wider">All time platform usage</p>
+              </div>
             </div>
-          )
+
+            {/* Total Users */}
+            <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:shadow-md transition-all">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Users</span>
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                  <UsersIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+              </div>
+              <p className="text-3xl font-black text-slate-900 dark:text-white">
+                {loading ? '—' : formatNumber(stats?.totalUsers || 0)}
+              </p>
+              <p className="text-xs text-slate-400 font-bold mt-1">Registered accounts</p>
+            </div>
+
+            {/* Total Companies */}
+            <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:shadow-md transition-all">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Companies</span>
+                <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
+                  <BuildingOfficeIcon className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+                </div>
+              </div>
+              <p className="text-3xl font-black text-slate-900 dark:text-white">
+                {loading ? '—' : formatNumber(totalCompanies)}
+              </p>
+              <p className="text-xs text-slate-400 font-bold mt-1">Created organisations</p>
+            </div>
+
+            {/* Active This Month */}
+            <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:shadow-md transition-all">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active This Month</span>
+                <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                  <ArrowTrendingUpIcon className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
+              </div>
+              <p className="text-3xl font-black text-slate-900 dark:text-white">
+                {loading ? '—' : formatNumber(stats?.activeUsers || 0)}
+              </p>
+              <p className="text-xs text-slate-400 font-bold mt-1">Users with activity</p>
+            </div>
+          </div>
         )}
 
-        {/* Service Usage */}
-        {stats && stats.serviceUsage.length > 0 && (
+        {/* Service Usage Breakdown */}
+        {stats && stats.serviceUsage && stats.serviceUsage.length > 0 && (
           <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-slate-100 dark:border-slate-800">
-              <h2 className="text-lg font-bold text-slate-800 dark:text-white">Service Usage (This Month)</h2>
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
+              <ChartBarIcon className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-bold text-slate-800 dark:text-white">Service Usage This Month</h2>
             </div>
             <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {stats.serviceUsage.map((service) => (
-                  <div key={service.service_name} className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-5 border border-slate-100 dark:border-slate-800">
-                    <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">{service.service_name}</h3>
-                    <div className="flex justify-between items-end">
-                      <div>
-                        <p className="text-2xl font-bold text-slate-800 dark:text-white">{formatNumber(service.user_count)}</p>
-                        <p className="text-[10px] text-slate-500 font-medium">Active Users</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-lg font-bold text-primary">{formatNumber(service.total_usage)}</p>
-                        <p className="text-[10px] text-slate-500 font-medium">Total Tokens/Calls</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <BarChart
+                data={stats.serviceUsage.map(s => ({
+                  label: s.service_name,
+                  value: s.total_usage,
+                  color: s.service_name === 'elevenlabs'
+                    ? 'bg-primary'
+                    : s.service_name === 'gemini'
+                      ? 'bg-violet-500'
+                      : 'bg-emerald-500',
+                }))}
+              />
             </div>
           </div>
         )}
 
-        {/* Users Table Section */}
+        {/* Profit Trend Graph (Placeholder) */}
         <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <h2 className="text-lg font-bold text-slate-800 dark:text-white">User Management</h2>
-            <form onSubmit={handleSearch} className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
-                <MagnifyingGlassIcon className="h-4 w-4" />
+          <div className="p-6 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <ArrowTrendingUpIcon className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-bold text-slate-800 dark:text-white">Platform Profit Trend</h2>
               </div>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search users..."
-                className="pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all font-bold text-sm text-slate-900 dark:text-white w-full md:w-64"
-              />
-            </form>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50/50 dark:bg-slate-900/50">
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">User Details</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Balance</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Usage (11L/Gem/DG)</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Joined</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {loading && users.length === 0 ? (
-                  [...Array(5)].map((_, i) => (
-                    <tr key={i}>
-                      <td className="px-6 py-4"><Skeleton width={150} height={16} /></td>
-                      <td className="px-6 py-4 text-center"><Skeleton width={80} height={16} className="mx-auto" /></td>
-                      <td className="px-6 py-4 text-center"><Skeleton width={120} height={16} className="mx-auto" /></td>
-                      <td className="px-6 py-4"><Skeleton width={100} height={16} /></td>
-                      <td className="px-6 py-4 text-right"><Skeleton width={80} height={32} className="ml-auto" /></td>
-                    </tr>
-                  ))
-                ) : users.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-bold">No users found</td>
-                  </tr>
-                ) : (
-                  users.map((user) => (
-                    <tr key={user.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors group">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-black text-sm mr-3">
-                            {user.username?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">{user.email}</div>
-                            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">{user.username}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        {user.status === 'active' ? (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 uppercase tracking-widest border border-emerald-100 dark:border-emerald-800/50">
-                            <CheckCircleIcon className="w-3 h-3 mr-1" />
-                            Active
-                          </span>
-                        ) : user.status === 'locked' ? (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 uppercase tracking-widest border border-red-100 dark:border-red-800/50">
-                            <LockClosedIcon className="w-3 h-3 mr-1" />
-                            Locked
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 uppercase tracking-widest border border-slate-200 dark:border-slate-700/50">
-                            <NoSymbolIcon className="w-3 h-3 mr-1" />
-                            Inactive
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-black bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400">
-                          {formatCredits(userBalances[user.id] || 0)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <div className="flex items-center justify-center space-x-2 text-[11px] font-bold text-slate-500">
-                          <span title="ElevenLabs">{formatNumber(user.elevenlabs_usage)}</span>
-                          <span className="text-slate-300">/</span>
-                          <span title="Gemini">{formatNumber(user.gemini_usage)}</span>
-                          <span className="text-slate-300">/</span>
-                          <span title="Deepgram">{formatNumber(user.deepgram_usage)}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-xs font-bold text-slate-600 dark:text-slate-400 flex items-center">
-                          <ClockIcon className="h-3 w-3 mr-1 opacity-50" />
-                          {formatDate(user.created_at)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <div className="flex items-center justify-end space-x-3">
-                          <button
-                            onClick={() => handleToggleStatus(user)}
-                            className={`p-2 rounded-lg transition-colors ${user.status === 'active'
-                              ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100'
-                              : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100'}`}
-                            title={user.status === 'active' ? 'Lock User Access' : 'Restore User Access'}
-                          >
-                            {user.status === 'active' ? <LockClosedIcon className="h-4 w-4" /> : <LockOpenIcon className="h-4 w-4" />}
-                          </button>
-                          <button
-                            onClick={() => handleAddCredits(user)}
-                            className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-lg hover:bg-emerald-100 transition-colors"
-                            title="Add Credits"
-                          >
-                            <PlusIcon className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => navigate(`/admin/users/${user.id}`)}
-                            className="flex items-center text-[11px] font-black text-primary hover:underline uppercase tracking-widest"
-                          >
-                            Details
-                            <ArrowRightIcon className="h-3 w-3 ml-1" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {pagination.totalPages > 1 && (
-            <div className="p-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Page {pagination.page} of {pagination.totalPages}</p>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
-                  disabled={pagination.page === 1}
-                  className="px-4 py-2 bg-slate-50 dark:bg-slate-900 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 disabled:opacity-50 hover:bg-slate-100 transition-all border border-slate-100 dark:border-slate-800"
-                >
-                  Prev
-                </button>
-                <button
-                  onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
-                  disabled={pagination.page === pagination.totalPages}
-                  className="px-4 py-2 bg-slate-50 dark:bg-slate-900 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 disabled:opacity-50 hover:bg-slate-100 transition-all border border-slate-100 dark:border-slate-800"
-                >
-                  Next
-                </button>
-              </div>
+              <span className="text-[10px] font-black text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full uppercase tracking-widest">
+                Placeholder Data
+              </span>
             </div>
-          )}
+          </div>
+          <div className="p-6">
+            <ProfitTrendChart />
+            <p className="text-xs text-slate-400 font-bold mt-4 text-center">
+              * Revenue data integration coming soon. Connect to your billing service to populate real data.
+            </p>
+          </div>
+        </div>
+
+        {/* Service Details Cards */}
+        {stats && stats.serviceUsage && stats.serviceUsage.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {stats.serviceUsage.map((service) => (
+              <div key={service.service_name} className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:shadow-md transition-all">
+                <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">
+                  {service.service_name}
+                </h3>
+                <div className="flex justify-between items-end">
+                  <div>
+                    <p className="text-2xl font-black text-slate-900 dark:text-white">{formatNumber(service.total_usage)}</p>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1">Total Usage</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-bold text-primary">{formatNumber(service.user_count)}</p>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Active Users</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Quick Navigation */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <button
+            onClick={() => navigate('/admin/users')}
+            className="flex items-center justify-between p-6 bg-primary/5 dark:bg-primary/10 hover:bg-primary/10 dark:hover:bg-primary/15 border border-primary/20 rounded-3xl transition-all group"
+          >
+            <div className="text-left">
+              <p className="text-sm font-black text-slate-900 dark:text-white">Manage Users</p>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">View, block, credit, impersonate users</p>
+            </div>
+            <UsersIcon className="h-8 w-8 text-primary group-hover:scale-110 transition-transform" />
+          </button>
+          <button
+            onClick={() => navigate('/admin/logs')}
+            className="flex items-center justify-between p-6 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl transition-all group"
+          >
+            <div className="text-left">
+              <p className="text-sm font-black text-slate-900 dark:text-white">System Audit Logs</p>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">Track all administrative actions</p>
+            </div>
+            <DocumentTextIcon className="h-8 w-8 text-slate-400 group-hover:scale-110 transition-transform" />
+          </button>
         </div>
       </div>
-
-      {selectedUser && (
-        <CreditManagementModal
-          userId={selectedUser.id}
-          userEmail={selectedUser.email}
-          currentBalance={selectedUser.balance}
-          onClose={() => setSelectedUser(null)}
-          onSuccess={handleCreditSuccess}
-        />
-      )}
     </AppLayout>
   );
 };
