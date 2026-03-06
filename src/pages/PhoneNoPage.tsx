@@ -714,7 +714,12 @@ const PhoneNoPage: React.FC = () => {
         setActiveDropdown(null);
     };
 
+    const isPlanExpired = user?.plan_valid_until ? new Date(user.plan_valid_until) < new Date() : false;
+
     const handleMakeCall = async (from: string, to: string, agentId: string) => {
+        if (isPlanExpired) {
+            alert('Your trial has expired. Consider upgrading your plan for continued access.');
+        }
         if (!user) {
             alert('User not authenticated');
             return;
@@ -1215,7 +1220,15 @@ Please check that:
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Quick Actions</p>
                             <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{phoneNumber.phoneNumber || phoneNumber.number}</p>
                         </div>
-                        <button onClick={() => openMakeCallModal(phoneNumber)} className="w-full text-left flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                        <button
+                            onClick={() => {
+                                if (isPlanExpired) {
+                                    alert('Your trial has expired. Consider upgrading your plan for continued access.');
+                                }
+                                openMakeCallModal(phoneNumber);
+                            }}
+                            className="w-full text-left flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                        >
                             <PhoneIcon className="h-4 w-4 text-slate-400" />
                             <span className="font-semibold">Initiate Test Call</span>
                         </button>

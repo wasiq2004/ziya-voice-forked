@@ -71,7 +71,12 @@ const CampaignsPage: React.FC = () => {
         loadCampaigns();
     }, [user?.id]);
 
+    const isPlanExpired = user?.plan_valid_until ? new Date(user.plan_valid_until) < new Date() : false;
+
     const handleCreateCampaign = async (data: any) => {
+        if (isPlanExpired) {
+            alert('Your trial has expired. Consider upgrading your plan for continued access.');
+        }
         if (!user?.id) return;
         try {
             const response = await createCampaign(user.id, data.name, data.agentId, data.concurrentCalls, data.retryAttempts);
@@ -154,7 +159,12 @@ const CampaignsPage: React.FC = () => {
                     </div>
 
                     <button
-                        onClick={() => setIsCreateModalOpen(true)}
+                        onClick={() => {
+                            if (isPlanExpired) {
+                                alert('Your trial has expired. Consider upgrading your plan for continued access.');
+                            }
+                            setIsCreateModalOpen(true);
+                        }}
                         className="flex items-center space-x-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-bold transition-all duration-300 shadow-lg shadow-primary/25"
                     >
                         <PlusIcon className="h-5 w-5" />
@@ -206,7 +216,12 @@ const CampaignsPage: React.FC = () => {
                             </p>
                             {!searchQuery && activeTab === 'active' && (
                                 <button
-                                    onClick={() => setIsCreateModalOpen(true)}
+                                    onClick={() => {
+                                        if (isPlanExpired) {
+                                            alert('Your trial has expired. Consider upgrading your plan for continued access.');
+                                        }
+                                        setIsCreateModalOpen(true);
+                                    }}
                                     className="bg-primary hover:bg-primary-dark text-white font-black py-4 px-10 rounded-2xl transition-all duration-300 shadow-2xl shadow-primary/30 transform hover:scale-105 active:scale-95 uppercase tracking-wider text-sm"
                                 >
                                     Get Started

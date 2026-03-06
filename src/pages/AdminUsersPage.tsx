@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getUsers, getUserBalance, Admin, updateUserStatus, impersonateUser } from '../utils/adminApi';
+import { getUsers, getUserBalance, Admin, updateUserStatus, impersonateUser, updateUserPlan } from '../utils/adminApi';
 import { addCredits } from '../utils/adminApi';
 import AppLayout from '../components/AppLayout';
 import Skeleton from '../components/Skeleton';
@@ -15,6 +15,7 @@ import {
     EyeIcon,
     ArrowPathIcon,
     UserGroupIcon,
+    CurrencyDollarIcon,
 } from '@heroicons/react/24/outline';
 import { getApiBaseUrl } from '../utils/api';
 
@@ -31,6 +32,8 @@ interface UserRow {
     total_companies?: number;
     credits_balance?: number;
     credits_used?: number;
+    plan_type?: 'trial' | 'paid' | 'enterprise' | null;
+    plan_valid_until?: string | null;
 }
 
 const AdminUsersPage: React.FC = () => {
@@ -48,6 +51,8 @@ const AdminUsersPage: React.FC = () => {
     const [creditAmount, setCreditAmount] = useState('');
     const [creditDesc, setCreditDesc] = useState('');
     const [creditLoading, setCreditLoading] = useState(false);
+    const [planModal, setPlanModal] = useState<{ userId: string; email: string; planType: string; extendDays: string } | null>(null);
+    const [planLoading, setPlanLoading] = useState(false);
 
     useEffect(() => {
         const adminData = localStorage.getItem('admin');
@@ -124,6 +129,24 @@ const AdminUsersPage: React.FC = () => {
         } catch (err: any) {
             setError(err.message);
             setLoading(false);
+        }
+    };
+
+    const handleUpdatePlan = async () => {
+        if (!planModal || !planModal.planType) return;
+        setPlanLoading(true);
+        try {
+            await updateUserPlan(planModal.userId, {
+                plan_type: planModal.planType as any,
+                extend_days: planModal.extendDays ? parseInt(planModal.extendDays) : undefined
+            }, admin?.id || '');
+            showSuccess(`Plan updated for ${planModal.email}`);
+            setPlanModal(null);
+            fetchUsers();
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setPlanLoading(false);
         }
     };
 
@@ -241,6 +264,7 @@ const AdminUsersPage: React.FC = () => {
                                     <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Companies</th>
                                     <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Credits Left</th>
                                     <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Credits Used</th>
+                                    <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Plan</th>
                                     <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
                                     <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Created</th>
                                     <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
@@ -255,6 +279,7 @@ const AdminUsersPage: React.FC = () => {
                                             <td className="px-5 py-4 text-center"><Skeleton width={50} height={14} className="mx-auto" /></td>
                                             <td className="px-5 py-4 text-center"><Skeleton width={80} height={14} className="mx-auto" /></td>
                                             <td className="px-5 py-4 text-center"><Skeleton width={80} height={14} className="mx-auto" /></td>
+                                            <td className="px-5 py-4 text-center"><Skeleton width={60} height={14} className="mx-auto" /></td>
                                             <td className="px-5 py-4 text-center"><Skeleton width={70} height={20} className="mx-auto" /></td>
                                             <td className="px-5 py-4"><Skeleton width={90} height={14} /></td>
                                             <td className="px-5 py-4 text-right"><Skeleton width={120} height={32} className="ml-auto" /></td>
@@ -262,7 +287,7 @@ const AdminUsersPage: React.FC = () => {
                                     ))
                                 ) : users.length === 0 ? (
                                     <tr>
-                                        <td colSpan={8} className="px-6 py-16 text-center text-slate-400 font-bold">
+                                        <td colSpan={9} className="px-6 py-16 text-center text-slate-400 font-bold">
                                             No users found
                                         </td>
                                     </tr>
@@ -312,6 +337,18 @@ const AdminUsersPage: React.FC = () => {
                                                 </span>
                                             </td>
 
+                                            {/* Plan Details */}
+                                            <td className="px-5 py-4 whitespace-nowrap text-center">
+                                                <div className="flex flex-col items-center">
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400">
+                                                        {user.plan_type || 'None'}
+                                                    </span>
+                                                    <span className="text-[10px] text-slate-500 mt-1 font-medium">
+                                                        {user.plan_valid_until ? new Date(user.plan_valid_until).toLocaleDateString() : 'N/A'}
+                                                    </span>
+                                                </div>
+                                            </td>
+
                                             {/* Status */}
                                             <td className="px-5 py-4 whitespace-nowrap text-center">
                                                 {user.status === 'active' ? (
@@ -352,6 +389,15 @@ const AdminUsersPage: React.FC = () => {
                                                             ? <LockClosedIcon className="h-4 w-4" />
                                                             : <LockOpenIcon className="h-4 w-4" />
                                                         }
+                                                    </button>
+
+                                                    {/* Manage Plan */}
+                                                    <button
+                                                        onClick={() => setPlanModal({ userId: user.id, email: user.email, planType: user.plan_type || 'trial', extendDays: '' })}
+                                                        title="Manage Plan"
+                                                        className="p-2 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg hover:bg-purple-100 transition-colors"
+                                                    >
+                                                        <CurrencyDollarIcon className="h-4 w-4" />
                                                     </button>
 
                                                     {/* Add Credits */}
@@ -415,6 +461,63 @@ const AdminUsersPage: React.FC = () => {
                     )}
                 </div>
             </div>
+
+            {/* Manage Plan Modal */}
+            {planModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                        <h3 className="text-lg font-black text-slate-900 dark:text-white mb-2">Manage Plan</h3>
+                        <p className="text-sm text-slate-500 mb-6">User: <strong>{planModal.email}</strong></p>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1 block">
+                                    Plan Type
+                                </label>
+                                <select
+                                    value={planModal.planType}
+                                    onChange={(e) => setPlanModal({ ...planModal, planType: e.target.value })}
+                                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-bold text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                                >
+                                    <option value="trial">Trial</option>
+                                    <option value="paid">Paid</option>
+                                    <option value="enterprise">Enterprise</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1 block">
+                                    Extend Validity (Days)
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={planModal.extendDays}
+                                    onChange={(e) => setPlanModal({ ...planModal, extendDays: e.target.value })}
+                                    placeholder="Leave blank to not extend"
+                                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-bold text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                                />
+                                <p className="text-[10px] text-slate-500 mt-1">If blank, only plan type is updated.</p>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 mt-8">
+                            <button
+                                onClick={handleUpdatePlan}
+                                disabled={planLoading}
+                                className="flex-1 py-3 bg-purple-600 text-white rounded-2xl font-black text-sm hover:bg-purple-700 disabled:opacity-50 transition-all shadow-lg shadow-purple-600/20"
+                            >
+                                {planLoading ? 'Updating...' : 'Confirm Update'}
+                            </button>
+                            <button
+                                onClick={() => setPlanModal(null)}
+                                className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-2xl font-black text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Add Credits Modal */}
             {creditModal && (

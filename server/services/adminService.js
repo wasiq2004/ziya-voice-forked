@@ -51,6 +51,8 @@ class AdminService {
           u.created_at,
           u.role,
           u.status,
+          u.plan_type,
+          u.plan_valid_until,
           COALESCE(SUM(CASE WHEN sur.service_name = 'elevenlabs' THEN sur.usage_amount ELSE 0 END), 0) as elevenlabs_usage,
           COALESCE(SUM(CASE WHEN sur.service_name = 'gemini' THEN sur.usage_amount ELSE 0 END), 0) as gemini_usage,
           COALESCE(SUM(CASE WHEN sur.service_name = 'deepgram' THEN sur.usage_amount ELSE 0 END), 0) as deepgram_usage
@@ -68,7 +70,7 @@ class AdminService {
       }
 
       // Use string interpolation for LIMIT and OFFSET since MySQL has issues with them as prepared statement params
-      query += ` GROUP BY u.id, u.email, u.username, u.created_at ORDER BY u.created_at DESC LIMIT ${validLimit} OFFSET ${offset}`;
+      query += ` GROUP BY u.id, u.email, u.username, u.created_at, u.role, u.status, u.plan_type, u.plan_valid_until ORDER BY u.created_at DESC LIMIT ${validLimit} OFFSET ${offset}`;
 
       const [users] = await this.mysqlPool.execute(query, params);
 

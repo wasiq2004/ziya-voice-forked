@@ -938,12 +938,78 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(403).json({ success: false, message: `Access denied: Your ${reason}` });
     }
 
+    // Default company check
+    if (!user.current_company_id) {
+      const [companies] = await mysqlPool.execute('SELECT id FROM companies WHERE user_id = ?', [user.id]);
+      if (companies.length === 0) {
+        const companyId = uuidv4();
+        await mysqlPool.execute('INSERT INTO companies (id, user_id, name) VALUES (?, ?, ?)', [companyId, user.id, 'Default Company']);
+        await mysqlPool.execute('UPDATE users SET current_company_id = ? WHERE id = ?', [companyId, user.id]);
+        user.current_company_id = companyId;
+      } else {
+        await mysqlPool.execute('UPDATE users SET current_company_id = ? WHERE id = ?', [companies[0].id, user.id]);
+        user.current_company_id = companies[0].id;
+      }
+    }
+
+    // Attach plan info so frontend can show trial banners
+    const [planRows] = await mysqlPool.execute(
+      'SELECT plan_type, plan_valid_until, trial_started_at FROM users WHERE id = ?',
+      [user.id]
+    );
+    if (planRows.length > 0) {
+      user.plan_type = planRows[0].plan_type;
+      user.plan_valid_until = planRows[0].plan_valid_until;
+      user.trial_started_at = planRows[0].trial_started_at;
+    }
+
     res.json({ success: true, user });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
+// ==================== TRIAL SYSTEM HELPER ====================
+/**
+ * Check if a user's trial/plan is still valid.
+ * Returns { valid: true } or { valid: false, message: '...' }
+ */
+async function checkTrialValidity(userId) {
+  try {
+    const [rows] = await mysqlPool.execute(
+      'SELECT plan_type, plan_valid_until FROM users WHERE id = ?',
+      [userId]
+    );
+    if (rows.length === 0) return { valid: false, message: 'User not found' };
+    const { plan_type, plan_valid_until } = rows[0];
+    if (!plan_valid_until) return { valid: true }; // no expiry set, allow
+    const now = new Date();
+    const expiry = new Date(plan_valid_until);
+    if (now > expiry) {
+      return {
+        valid: false,
+        message: 'Your trial has expired. Please upgrade your plan to continue using the platform.'
+      };
+    }
+    return { valid: true };
+  } catch (err) {
+    console.error('checkTrialValidity error:', err);
+    return { valid: true }; // fail-open to not block on DB errors
+  }
+}
+
+async function enforceTrialValidity(req, res, next) {
+  const userId = req.body?.userId || req.query?.userId || req.user?.id || req.body?.agent?.userId;
+  if (!userId) return next();
+  const validity = await checkTrialValidity(userId);
+  if (!validity.valid) {
+    return res.status(403).json({ success: false, message: validity.message || 'Trial expired. Please upgrade your plan.' });
+  }
+  next();
+}
+
+// =============================================================
 
 // User registration
 app.post('/api/auth/register', async (req, res) => {
@@ -970,6 +1036,40 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const user = await authService.registerUser(email, username, password);
+
+    // Default company creation
+    const companyId = uuidv4();
+    await mysqlPool.execute('INSERT INTO companies (id, user_id, name) VALUES (?, ?, ?)', [companyId, user.id, 'Default Company']);
+
+    // Trial plan + 50 credits on sign-up
+    const trialStart = new Date();
+    const trialEnd = new Date(trialStart);
+    trialEnd.setDate(trialEnd.getDate() + 14);
+    const TRIAL_CREDITS = 50;
+    await mysqlPool.execute(
+      `UPDATE users SET current_company_id = ?, plan_type = 'trial', trial_started_at = ?, plan_valid_until = ? WHERE id = ?`,
+      [companyId, trialStart, trialEnd, user.id]
+    );
+    user.current_company_id = companyId;
+    user.plan_type = 'trial';
+    user.trial_started_at = trialStart;
+    user.plan_valid_until = trialEnd;
+
+    // Create wallet with 50 trial credits
+    const walletId = uuidv4();
+    await mysqlPool.execute(
+      'INSERT INTO user_wallets (id, user_id, balance) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE balance = balance',
+      [walletId, user.id, TRIAL_CREDITS]
+    );
+    // Record trial credit transaction
+    const txId = uuidv4();
+    await mysqlPool.execute(
+      `INSERT INTO wallet_transactions (id, user_id, transaction_type, amount, balance_after, service_type, description, created_by)
+       VALUES (?, ?, 'credit', ?, ?, 'initial_credit', 'Free trial — 50 credits', NULL)`,
+      [txId, user.id, TRIAL_CREDITS, TRIAL_CREDITS]
+    );
+
+    console.log(`✅ New user ${email} registered with 14-day trial and ${TRIAL_CREDITS} credits`);
     res.json({ success: true, user });
   } catch (error) {
     console.error('Registration error:', error);
@@ -980,7 +1080,122 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+
+// ==================== TRIAL / PLAN ENDPOINTS ====================
+
+// Get trial/plan status for a user (frontend uses this)
+app.get('/api/users/plan/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const [rows] = await mysqlPool.execute(
+      'SELECT plan_type, plan_valid_until, trial_started_at FROM users WHERE id = ?',
+      [userId]
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+    const { plan_type, plan_valid_until, trial_started_at } = rows[0];
+    const now = new Date();
+    const expiry = plan_valid_until ? new Date(plan_valid_until) : null;
+    const isExpired = expiry && now > expiry;
+    const daysLeft = expiry ? Math.max(0, Math.ceil((expiry - now) / (1000 * 60 * 60 * 24))) : null;
+    res.json({
+      success: true,
+      plan_type: plan_type || null,
+      plan_valid_until: plan_valid_until || null,
+      trial_started_at: trial_started_at || null,
+      is_expired: isExpired,
+      days_left: daysLeft
+    });
+  } catch (error) {
+    console.error('Error fetching plan status:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Admin: Get user plan details
+app.get('/api/admin/users/:userId/plan', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const [rows] = await mysqlPool.execute(
+      'SELECT id, email, username, plan_type, plan_valid_until, trial_started_at FROM users WHERE id = ?',
+      [userId]
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+    const user = rows[0];
+    const now = new Date();
+    const expiry = user.plan_valid_until ? new Date(user.plan_valid_until) : null;
+    const isExpired = expiry && now > expiry;
+    const daysLeft = expiry ? Math.max(0, Math.ceil((expiry - now) / (1000 * 60 * 60 * 24))) : null;
+    res.json({ success: true, user, is_expired: isExpired, days_left: daysLeft });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Admin: Update user plan (type + validity + optional extend by days)
+app.patch('/api/admin/users/:userId/plan', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { plan_type, plan_valid_until, extend_days, adminId } = req.body;
+
+    if (!adminId) return res.status(400).json({ success: false, message: 'adminId is required' });
+
+    const ALLOWED_PLAN_TYPES = ['trial', 'paid', 'enterprise'];
+    const updates = [];
+    const values = [];
+
+    if (plan_type !== undefined) {
+      if (!ALLOWED_PLAN_TYPES.includes(plan_type)) {
+        return res.status(400).json({ success: false, message: `plan_type must be one of: ${ALLOWED_PLAN_TYPES.join(', ')}` });
+      }
+      updates.push('plan_type = ?');
+      values.push(plan_type);
+    }
+
+    if (plan_valid_until !== undefined) {
+      updates.push('plan_valid_until = ?');
+      values.push(new Date(plan_valid_until));
+    } else if (extend_days !== undefined) {
+      // Extend from current expiry or from now
+      const [currentRows] = await mysqlPool.execute('SELECT plan_valid_until FROM users WHERE id = ?', [userId]);
+      const current = currentRows[0]?.plan_valid_until;
+      const base = current && new Date(current) > new Date() ? new Date(current) : new Date();
+      base.setDate(base.getDate() + parseInt(extend_days));
+      updates.push('plan_valid_until = ?');
+      values.push(base);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, message: 'Nothing to update. Provide plan_type, plan_valid_until, or extend_days.' });
+    }
+
+    values.push(userId);
+    await mysqlPool.execute(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
+
+    await adminService.logActivity(
+      adminId,
+      'update_user_plan',
+      userId,
+      `Updated plan: ${JSON.stringify({ plan_type, plan_valid_until, extend_days })}`,
+      req.ip
+    );
+
+    // Re-fetch updated values
+    const [updated] = await mysqlPool.execute(
+      'SELECT plan_type, plan_valid_until, trial_started_at FROM users WHERE id = ?',
+      [userId]
+    );
+
+    res.json({ success: true, message: 'Plan updated successfully', plan: updated[0] });
+  } catch (error) {
+    console.error('Error updating user plan:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ================================================================
+
 // Get user profile
+
 app.get('/api/users/profile/:id', async (req, res) => {
   try {
     const userId = req.params.id;
@@ -1423,7 +1638,7 @@ app.get('/api/companies/:userId', async (req, res) => {
 
     // Ensure current_company_id exists in users table
     try {
-      await mysqlPool.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS current_company_id VARCHAR(36) NULL');
+      await mysqlPool.execute('ALTER TABLE users ADD COLUMN current_company_id VARCHAR(36) NULL');
     } catch (err) { /* ignore if already exists or other error */ }
 
     // Check if table exists, if not we fall back to empty list so frontend doesn't break
@@ -4464,14 +4679,28 @@ app.get('/api/scheduled-calls', async (req, res) => {
     const { userId } = req.query;
     if (!userId) return res.status(400).json({ success: false, message: 'User ID required' });
 
-    const [rows] = await mysqlPool.execute(`
+    const [user] = await mysqlPool.execute('SELECT current_company_id FROM users WHERE id = ?', [userId]);
+    const companyId = user.length > 0 ? user[0].current_company_id : null;
+
+    let query = `
       SELECT cc.*, c.name as campaignName, a.name as agentName, a.id as agentId
       FROM campaign_contacts cc
       JOIN campaigns c ON cc.campaign_id = c.id
       LEFT JOIN agents a ON c.agent_id = a.id
       WHERE c.user_id = ? AND cc.schedule_time IS NOT NULL AND cc.intent IN ('needs_demo', 'scheduled_meeting', '1_on_1_session_requested')
-      ORDER BY cc.schedule_time ASC
-    `, [userId]);
+    `;
+    const params = [userId];
+
+    if (companyId) {
+      query += ' AND c.company_id = ?';
+      params.push(companyId);
+    } else {
+      query += ' AND (c.company_id IS NULL OR c.company_id = "")';
+    }
+
+    query += ' ORDER BY cc.schedule_time ASC';
+
+    const [rows] = await mysqlPool.execute(query, params);
 
     res.json({ success: true, data: rows });
   } catch (error) {

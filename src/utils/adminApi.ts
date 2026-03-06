@@ -420,3 +420,58 @@ export const impersonateUser = async (userId: string, adminId: string): Promise<
 
   return response.json();
 };
+
+// ==================== Plan Management ====================
+
+export interface UserPlan {
+  plan_type: 'trial' | 'paid' | 'enterprise' | null;
+  plan_valid_until: string | null;
+  trial_started_at: string | null;
+  is_expired?: boolean;
+  days_left?: number | null;
+}
+
+/**
+ * Get a user's current plan/trial status (admin)
+ */
+export const getUserPlan = async (userId: string): Promise<UserPlan & { success: boolean }> => {
+  const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/plan`);
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Received non-JSON response from server');
+  }
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Failed to fetch user plan');
+  }
+  return response.json();
+};
+
+/**
+ * Update a user's plan type and/or validity (admin)
+ * Pass extend_days to extend from current expiry, or plan_valid_until for specific date.
+ */
+export const updateUserPlan = async (
+  userId: string,
+  options: {
+    plan_type?: 'trial' | 'paid' | 'enterprise';
+    plan_valid_until?: string;
+    extend_days?: number;
+  },
+  adminId: string
+): Promise<{ success: boolean; plan: UserPlan }> => {
+  const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/plan`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...options, adminId })
+  });
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    throw new Error('Received non-JSON response from server');
+  }
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Failed to update user plan');
+  }
+  return response.json();
+};

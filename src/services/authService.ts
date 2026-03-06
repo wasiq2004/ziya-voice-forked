@@ -13,6 +13,10 @@ export interface User {
   role?: string;
   created_at?: string;
   updated_at?: string;
+  // Trial & Plan fields
+  plan_type?: 'trial' | 'paid' | 'enterprise' | null;
+  plan_valid_until?: string | null;
+  trial_started_at?: string | null;
 }
 
 export interface Profile {

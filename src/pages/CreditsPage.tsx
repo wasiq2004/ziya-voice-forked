@@ -255,12 +255,19 @@ const CreditsPage: React.FC = () => {
 
           <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex items-center">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-2xl text-purple-500">
-                <ChartBarIcon className="h-6 w-6" />
+              <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-2xl text-green-500">
+                <CurrencyDollarIcon className="h-6 w-6" />
               </div>
               <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">Transactions Count</p>
-                <p className="text-2xl font-black text-slate-900 dark:text-white leading-none">{transactions.length}</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">Current Plan</p>
+                <div className="flex flex-col">
+                  <p className="text-2xl font-black text-slate-900 dark:text-white leading-none capitalize">{user?.plan_type || 'Unlimited'}</p>
+                  {user?.plan_valid_until && (
+                    <p className="text-[10px] font-bold text-slate-500 mt-1.5">
+                      Valid until: <span className="text-slate-700 dark:text-slate-300">{new Date(user.plan_valid_until).toLocaleDateString()}</span>
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </div>

@@ -59,6 +59,17 @@ function configureGoogleAuth(mysqlPool) {
                         [uuidv4(), userId]
                     );
 
+                    // Create default company for new user
+                    const companyId = uuidv4();
+                    await mysqlPool.execute(
+                        'INSERT INTO companies (id, user_id, name) VALUES (?, ?, ?)',
+                        [companyId, userId, 'Default Company']
+                    );
+                    await mysqlPool.execute(
+                        'UPDATE users SET current_company_id = ? WHERE id = ?',
+                        [companyId, userId]
+                    );
+
                     user = {
                         id: userId,
                         email,

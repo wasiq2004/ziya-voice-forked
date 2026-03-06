@@ -45,5 +45,26 @@ module.exports = (companyService) => {
         }
     });
 
+    // Rename company
+    router.put('/:companyId', async (req, res) => {
+        try {
+            const { companyId } = req.params;
+            const { userId, company_name } = req.body;
+
+            if (!userId || !company_name) {
+                return res.status(400).json({ success: false, message: 'User ID and company_name are required' });
+            }
+
+            const result = await companyService.renameCompany(userId, companyId, company_name);
+            res.json(result);
+        } catch (error) {
+            console.error('Error renaming company:', error);
+            if (error.message === 'Company not found or unauthorized') {
+                return res.status(403).json({ success: false, message: error.message });
+            }
+            res.status(500).json({ success: false, message: error.message });
+        }
+    });
+
     return router;
 };

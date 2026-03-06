@@ -79,6 +79,11 @@ const AgentPage: React.FC = () => {
         e.preventDefault();
         if (!newAgentName.trim()) return;
 
+        const isPlanExpired = user?.plan_valid_until ? new Date(user.plan_valid_until) < new Date() : false;
+        if (isPlanExpired) {
+            alert('Your trial has expired. Consider upgrading your plan for continued access.');
+        }
+
         try {
             if (!user) throw new Error('User not authenticated');
             const newAgent: Omit<VoiceAgent, 'id' | 'createdDate'> = {
@@ -209,9 +214,16 @@ const AgentPage: React.FC = () => {
         }
     };
 
+    const isPlanExpired = user?.plan_valid_until ? new Date(user.plan_valid_until) < new Date() : false;
+
     const addButton = (
         <button
-            onClick={() => setView('create')}
+            onClick={() => {
+                if (isPlanExpired) {
+                    alert('Your trial has expired. Consider upgrading your plan for continued access.');
+                }
+                setView('create');
+            }}
             className="flex items-center space-x-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-bold transition-all duration-300 shadow-lg shadow-primary/25 transform hover:scale-[1.02] active:scale-[0.98]"
         >
             <PlusIcon className="h-5 w-5" />
