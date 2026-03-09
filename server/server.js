@@ -978,20 +978,44 @@ app.post('/api/auth/login', async (req, res) => {
 async function checkTrialValidity(userId) {
   try {
     const [rows] = await mysqlPool.execute(
-      'SELECT plan_type, plan_valid_until FROM users WHERE id = ?',
+      'SELECT plan_type, plan_valid_until, credits_balance FROM users WHERE id = ?',
       [userId]
     );
     if (rows.length === 0) return { valid: false, message: 'User not found' };
-    const { plan_type, plan_valid_until } = rows[0];
-    if (!plan_valid_until) return { valid: true }; // no expiry set, allow
-    const now = new Date();
-    const expiry = new Date(plan_valid_until);
-    if (now > expiry) {
-      return {
-        valid: false,
-        message: 'Your trial has expired. Please upgrade your plan to continue using the platform.'
-      };
+    const { plan_type, plan_valid_until, credits_balance } = rows[0];
+
+    // Check plan expiry
+    if (plan_valid_until) {
+      const now = new Date();
+      const expiry = new Date(plan_valid_until);
+      if (now > expiry) {
+        return {
+          valid: false,
+          message: 'Plan expired or insufficient credits.'
+        };
+      }
     }
+
+    // Check credits_balance if it is set (i.e., user is on a plan)
+    if (credits_balance !== null && credits_balance !== undefined) {
+      const creditsNum = parseFloat(credits_balance);
+      if (!isNaN(creditsNum) && creditsNum <= 0) {
+        // Also check wallet balance as fallback
+        try {
+          const [walletRows] = await mysqlPool.execute('SELECT balance FROM user_wallets WHERE user_id = ?', [userId]);
+          const walletBalance = walletRows.length > 0 ? parseFloat(walletRows[0].balance) : 0;
+          if (walletBalance <= 0) {
+            return {
+              valid: false,
+              message: 'Plan expired or insufficient credits.'
+            };
+          }
+        } catch (e) {
+          // If wallet check fails, don't block
+        }
+      }
+    }
+
     return { valid: true };
   } catch (err) {
     console.error('checkTrialValidity error:', err);
@@ -1191,6 +1215,272 @@ app.patch('/api/admin/users/:userId/plan', async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
+// ==================== PLAN MANAGEMENT ENDPOINTS ====================
+
+// GET /api/admin/plans - List all plans
+app.get('/api/admin/plans', async (req, res) => {
+  try {
+    const [plans] = await mysqlPool.execute(
+      'SELECT * FROM plans ORDER BY created_at DESC'
+    );
+    res.json({ success: true, plans });
+  } catch (error) {
+    console.error('Error fetching plans:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/admin/plans/:planId - Get a single plan
+app.get('/api/admin/plans/:planId', async (req, res) => {
+  try {
+    const { planId } = req.params;
+    const [plans] = await mysqlPool.execute('SELECT * FROM plans WHERE id = ?', [planId]);
+    if (plans.length === 0) return res.status(404).json({ success: false, message: 'Plan not found' });
+    res.json({ success: true, plan: plans[0] });
+  } catch (error) {
+    console.error('Error fetching plan:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/admin/plans - Create a new plan
+app.post('/api/admin/plans', async (req, res) => {
+  try {
+    const { plan_name, credit_limit, validity_days, plan_type, adminId } = req.body;
+
+    if (!plan_name || !credit_limit || !validity_days) {
+      return res.status(400).json({ success: false, message: 'plan_name, credit_limit, and validity_days are required' });
+    }
+    if (credit_limit <= 0 || validity_days <= 0) {
+      return res.status(400).json({ success: false, message: 'credit_limit and validity_days must be positive numbers' });
+    }
+
+    const planId = uuidv4();
+    await mysqlPool.execute(
+      'INSERT INTO plans (id, plan_name, credit_limit, validity_days, plan_type) VALUES (?, ?, ?, ?, ?)',
+      [planId, plan_name.trim(), parseInt(credit_limit), parseInt(validity_days), plan_type || null]
+    );
+
+    if (adminId) {
+      await adminService.logActivity(adminId, 'create_plan', null, `Created plan: ${plan_name}`, req.ip);
+    }
+
+    const [newPlan] = await mysqlPool.execute('SELECT * FROM plans WHERE id = ?', [planId]);
+    res.json({ success: true, plan: newPlan[0], message: 'Plan created successfully' });
+  } catch (error) {
+    console.error('Error creating plan:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// PUT /api/admin/plans/:planId - Update a plan
+app.put('/api/admin/plans/:planId', async (req, res) => {
+  try {
+    const { planId } = req.params;
+    const { plan_name, credit_limit, validity_days, plan_type, adminId } = req.body;
+
+    const updates = [];
+    const values = [];
+
+    if (plan_name !== undefined) { updates.push('plan_name = ?'); values.push(plan_name.trim()); }
+    if (credit_limit !== undefined) { updates.push('credit_limit = ?'); values.push(parseInt(credit_limit)); }
+    if (validity_days !== undefined) { updates.push('validity_days = ?'); values.push(parseInt(validity_days)); }
+    if (plan_type !== undefined) { updates.push('plan_type = ?'); values.push(plan_type); }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, message: 'Nothing to update' });
+    }
+
+    values.push(planId);
+    await mysqlPool.execute(`UPDATE plans SET ${updates.join(', ')} WHERE id = ?`, values);
+
+    if (adminId) {
+      await adminService.logActivity(adminId, 'update_plan', null, `Updated plan ${planId}`, req.ip);
+    }
+
+    const [updated] = await mysqlPool.execute('SELECT * FROM plans WHERE id = ?', [planId]);
+    if (updated.length === 0) return res.status(404).json({ success: false, message: 'Plan not found' });
+
+    res.json({ success: true, plan: updated[0], message: 'Plan updated successfully' });
+  } catch (error) {
+    console.error('Error updating plan:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// DELETE /api/admin/plans/:planId - Delete a plan
+app.delete('/api/admin/plans/:planId', async (req, res) => {
+  try {
+    const { planId } = req.params;
+    const { adminId } = req.query;
+
+    // Check if any users are on this plan
+    const [usersOnPlan] = await mysqlPool.execute('SELECT COUNT(*) as count FROM users WHERE plan_id = ?', [planId]);
+    if (usersOnPlan[0].count > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete plan: ${usersOnPlan[0].count} user(s) are currently assigned to this plan. Reassign them first.`
+      });
+    }
+
+    await mysqlPool.execute('DELETE FROM plans WHERE id = ?', [planId]);
+
+    if (adminId) {
+      await adminService.logActivity(adminId, 'delete_plan', null, `Deleted plan ${planId}`, req.ip);
+    }
+
+    res.json({ success: true, message: 'Plan deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting plan:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/admin/users/:userId/assign-plan - Assign a plan to a user
+app.post('/api/admin/users/:userId/assign-plan', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { planId, adminId } = req.body;
+
+    if (!planId || !adminId) {
+      return res.status(400).json({ success: false, message: 'planId and adminId are required' });
+    }
+
+    // Fetch plan details
+    const [plans] = await mysqlPool.execute('SELECT * FROM plans WHERE id = ?', [planId]);
+    if (plans.length === 0) {
+      return res.status(404).json({ success: false, message: 'Plan not found' });
+    }
+
+    const plan = plans[0];
+    const now = new Date();
+    const planValidUntil = new Date(now);
+    planValidUntil.setDate(planValidUntil.getDate() + parseInt(plan.validity_days));
+
+    // Update user with plan details
+    await mysqlPool.execute(
+      `UPDATE users SET
+        plan_id = ?,
+        credits_balance = ?,
+        plan_started_at = ?,
+        plan_valid_until = ?,
+        plan_type = ?
+       WHERE id = ?`,
+      [planId, parseInt(plan.credit_limit), now, planValidUntil, plan.plan_type || 'paid', userId]
+    );
+
+    // Also update the wallet balance to match plan credits
+    try {
+      await mysqlPool.execute(
+        'UPDATE user_wallets SET balance = ? WHERE user_id = ?',
+        [parseInt(plan.credit_limit), userId]
+      );
+      // If no wallet row exists, create one
+      const [walletRows] = await mysqlPool.execute('SELECT id FROM user_wallets WHERE user_id = ?', [userId]);
+      if (walletRows.length === 0) {
+        const walletId = uuidv4();
+        await mysqlPool.execute(
+          'INSERT INTO user_wallets (id, user_id, balance) VALUES (?, ?, ?)',
+          [walletId, userId, parseInt(plan.credit_limit)]
+        );
+      }
+    } catch (walletErr) {
+      console.warn('Could not update wallet (may not exist yet):', walletErr.message);
+    }
+
+    // Log wallet transaction for the plan assignment
+    try {
+      const txId = uuidv4();
+      const [userRow] = await mysqlPool.execute('SELECT id FROM users WHERE id = ?', [userId]);
+      if (userRow.length > 0) {
+        await mysqlPool.execute(
+          `INSERT INTO wallet_transactions (id, user_id, transaction_type, amount, balance_after, service_type, description, created_by)
+           VALUES (?, ?, 'credit', ?, ?, 'plan_assignment', ?, ?)`,
+          [txId, userId, parseInt(plan.credit_limit), parseInt(plan.credit_limit), `Plan assigned: ${plan.plan_name}`, adminId]
+        );
+      }
+    } catch (txErr) {
+      console.warn('Could not log wallet transaction:', txErr.message);
+    }
+
+    await adminService.logActivity(
+      adminId,
+      'assign_plan',
+      userId,
+      `Assigned plan "${plan.plan_name}" (${plan.credit_limit} credits, ${plan.validity_days} days)`,
+      req.ip
+    );
+
+    // Fetch updated user info
+    const [updatedUser] = await mysqlPool.execute(
+      'SELECT id, email, username, plan_id, credits_balance, plan_started_at, plan_valid_until, plan_type FROM users WHERE id = ?',
+      [userId]
+    );
+
+    res.json({
+      success: true,
+      message: `Plan "${plan.plan_name}" assigned successfully`,
+      user: updatedUser[0],
+      plan: {
+        ...plan,
+        plan_started_at: now,
+        plan_valid_until: planValidUntil
+      }
+    });
+  } catch (error) {
+    console.error('Error assigning plan:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/users/plan-access/:userId - Check if user can perform restricted actions
+app.get('/api/users/plan-access/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const [rows] = await mysqlPool.execute(
+      'SELECT credits_balance, plan_valid_until, plan_type, plan_id FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const user = rows[0];
+    const now = new Date();
+    const expiry = user.plan_valid_until ? new Date(user.plan_valid_until) : null;
+
+    // Also check wallet balance
+    let walletBalance = 0;
+    try {
+      const [walletRows] = await mysqlPool.execute('SELECT balance FROM user_wallets WHERE user_id = ?', [userId]);
+      if (walletRows.length > 0) walletBalance = parseFloat(walletRows[0].balance) || 0;
+    } catch (e) { /* ignore */ }
+
+    const effectiveCredits = user.credits_balance !== null ? parseFloat(user.credits_balance) : walletBalance;
+    const isExpired = expiry ? now > expiry : false;
+    const hasCredits = effectiveCredits > 0;
+
+    const canAccess = hasCredits && !isExpired;
+
+    res.json({
+      success: true,
+      can_access: canAccess,
+      credits_balance: effectiveCredits,
+      plan_valid_until: user.plan_valid_until || null,
+      is_expired: isExpired,
+      has_credits: hasCredits,
+      plan_type: user.plan_type || null,
+      blocking_reason: !canAccess
+        ? (!hasCredits ? 'insufficient_credits' : 'plan_expired')
+        : null
+    });
+  } catch (error) {
+    console.error('Error checking plan access:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== END PLAN MANAGEMENT ENDPOINTS ====================
 
 // ================================================================
 

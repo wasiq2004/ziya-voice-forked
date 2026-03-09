@@ -9,7 +9,9 @@ import { agentService } from '../services/agentService';
 import { twilioNumberService } from '../services/twilioNumberService';
 import { twilioBasicService } from '../services/twilioBasicService';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlanAccess } from '../utils/usePlanAccess';
 import { getApiBaseUrl } from '../utils/api';
+import UpgradePlanModal from '../components/UpgradePlanModal';
 import {
     PlusIcon,
     PhoneIcon,
@@ -552,6 +554,7 @@ const PhoneNoPage: React.FC = () => {
     const [callHistory, setCallHistory] = useState<any[]>([]);
     const [userTwilioAccounts, setUserTwilioAccounts] = useState<any[]>([]); // Store user's Twilio accounts
     const { user } = useAuth();
+    const { checkAccess, blockingReason, clearBlock } = usePlanAccess();
 
     useEffect(() => {
         if (user) {
@@ -714,16 +717,14 @@ const PhoneNoPage: React.FC = () => {
         setActiveDropdown(null);
     };
 
-    const isPlanExpired = user?.plan_valid_until ? new Date(user.plan_valid_until) < new Date() : false;
-
     const handleMakeCall = async (from: string, to: string, agentId: string) => {
-        if (isPlanExpired) {
-            alert('Your trial has expired. Consider upgrading your plan for continued access.');
-        }
         if (!user) {
             alert('User not authenticated');
             return;
         }
+
+        const allowed = await checkAccess(user.id);
+        if (!allowed) return;
 
         // Validate user ID format (UUID)
         if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(user.id)) {
@@ -954,7 +955,12 @@ Please check that:
                 <div className="flex items-center space-x-3">
 
                     <button
-                        onClick={() => setAddTwilioModalOpen(true)}
+                        onClick={async () => {
+                            if (!user) return;
+                            const allowed = await checkAccess(user.id);
+                            if (!allowed) return;
+                            setAddTwilioModalOpen(true);
+                        }}
                         className="flex items-center px-5 py-2.5 rounded-xl bg-primary text-white font-bold text-sm shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all group"
                     >
                         <PlusIcon className="h-4 w-4 mr-2 group-hover:rotate-90 transition-transform duration-200" />
@@ -1027,7 +1033,12 @@ Please check that:
                                 Ready to take your calls to the next level? Connect your first Twilio number to get started.
                             </p>
                             <button
-                                onClick={() => setAddTwilioModalOpen(true)}
+                                onClick={async () => {
+                                    if (!user) return;
+                                    const allowed = await checkAccess(user.id);
+                                    if (!allowed) return;
+                                    setAddTwilioModalOpen(true);
+                                }}
                                 className="inline-flex items-center px-6 py-3 bg-primary text-white font-bold rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all"
                             >
                                 <PlusIcon className="h-5 w-5 mr-2" />
@@ -1221,10 +1232,10 @@ Please check that:
                             <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{phoneNumber.phoneNumber || phoneNumber.number}</p>
                         </div>
                         <button
-                            onClick={() => {
-                                if (isPlanExpired) {
-                                    alert('Your trial has expired. Consider upgrading your plan for continued access.');
-                                }
+                            onClick={async () => {
+                                if (!user) return;
+                                const allowed = await checkAccess(user.id);
+                                if (!allowed) return;
                                 openMakeCallModal(phoneNumber);
                             }}
                             className="w-full text-left flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
@@ -1374,6 +1385,8 @@ Please check that:
                     </div>
                 </div>
             )}
+            {/* Upgrade Plan Modal */}
+            <UpgradePlanModal reason={blockingReason} onClose={clearBlock} />
         </AppLayout>
     );
 };

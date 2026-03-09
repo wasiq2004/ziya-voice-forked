@@ -7,6 +7,8 @@ import { PlusIcon, InboxIcon, MagnifyingGlassIcon } from '@heroicons/react/24/ou
 import Skeleton from '../components/Skeleton';
 import { fetchCampaigns, createCampaign, deleteCampaign } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlanAccess } from '../utils/usePlanAccess';
+import UpgradePlanModal from '../components/UpgradePlanModal';
 
 interface Campaign {
     id: string;
@@ -20,6 +22,7 @@ interface Campaign {
 const CampaignsPage: React.FC = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
+    const { checkAccess, blockingReason, clearBlock } = usePlanAccess();
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [loading, setLoading] = useState(true);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -71,13 +74,12 @@ const CampaignsPage: React.FC = () => {
         loadCampaigns();
     }, [user?.id]);
 
-    const isPlanExpired = user?.plan_valid_until ? new Date(user.plan_valid_until) < new Date() : false;
-
     const handleCreateCampaign = async (data: any) => {
-        if (isPlanExpired) {
-            alert('Your trial has expired. Consider upgrading your plan for continued access.');
-        }
         if (!user?.id) return;
+
+        const allowed = await checkAccess(user.id);
+        if (!allowed) return;
+
         try {
             const response = await createCampaign(user.id, data.name, data.agentId, data.concurrentCalls, data.retryAttempts);
             if (response.success) {
@@ -159,10 +161,10 @@ const CampaignsPage: React.FC = () => {
                     </div>
 
                     <button
-                        onClick={() => {
-                            if (isPlanExpired) {
-                                alert('Your trial has expired. Consider upgrading your plan for continued access.');
-                            }
+                        onClick={async () => {
+                            if (!user) return;
+                            const allowed = await checkAccess(user.id);
+                            if (!allowed) return;
                             setIsCreateModalOpen(true);
                         }}
                         className="flex items-center space-x-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-bold transition-all duration-300 shadow-lg shadow-primary/25"
@@ -216,10 +218,10 @@ const CampaignsPage: React.FC = () => {
                             </p>
                             {!searchQuery && activeTab === 'active' && (
                                 <button
-                                    onClick={() => {
-                                        if (isPlanExpired) {
-                                            alert('Your trial has expired. Consider upgrading your plan for continued access.');
-                                        }
+                                    onClick={async () => {
+                                        if (!user) return;
+                                        const allowed = await checkAccess(user.id);
+                                        if (!allowed) return;
                                         setIsCreateModalOpen(true);
                                     }}
                                     className="bg-primary hover:bg-primary-dark text-white font-black py-4 px-10 rounded-2xl transition-all duration-300 shadow-2xl shadow-primary/30 transform hover:scale-105 active:scale-95 uppercase tracking-wider text-sm"
@@ -253,6 +255,9 @@ const CampaignsPage: React.FC = () => {
                 onClose={() => setIsCreateModalOpen(false)}
                 onSave={handleCreateCampaign}
             />
+
+            {/* Upgrade Plan Modal */}
+            <UpgradePlanModal reason={blockingReason} onClose={clearBlock} />
         </AppLayout>
     );
 };

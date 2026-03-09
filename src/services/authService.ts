@@ -46,9 +46,9 @@ export const authService = {
       }
 
       return result.user;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Authentication error:', error);
-      throw new Error('Authentication failed');
+      throw new Error(error.message || 'Authentication failed');
     }
   },
 
@@ -70,9 +70,9 @@ export const authService = {
       }
 
       return result.user;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration error:', error);
-      throw new Error('Registration failed');
+      throw new Error(error.message || 'Registration failed');
     }
   },
 
@@ -85,8 +85,6 @@ export const authService = {
 
   // Handle Google Sign-In callback
   async handleGoogleSignInCallback(): Promise<User | null> {
-    // This function would be called after Google redirects back to the app
-    // For now, we'll check for user data in the URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const userParam = urlParams.get('user');
 
@@ -109,9 +107,9 @@ export const authService = {
       await fetch(`${getApiBaseUrl()}/api/auth/logout`, {
         method: 'POST',
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Sign out error:', error);
-      throw new Error('Sign out failed');
+      throw new Error(error.message || 'Sign out failed');
     }
   },
 

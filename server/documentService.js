@@ -42,14 +42,7 @@ var DocumentService = /** @class */ (function () {
     function DocumentService(mysqlPool) {
         this.mysqlPool = mysqlPool;
     }
-    /**
-     * Upload a document
-     * @param userId The ID of the user
-     * @param name The name of the document
-     * @param content The content of the document
-     * @param agentId Optional agent ID to associate with the document
-     * @returns The created document
-     */
+
     DocumentService.prototype.uploadDocument = function (userId, name, content, agentId) {
         return __awaiter(this, void 0, void 0, function () {
             var maxContentLength, userRows, companyId, documentId, error_1;
@@ -95,12 +88,7 @@ var DocumentService = /** @class */ (function () {
             });
         });
     };
-    /**
-     * Get documents for a user
-     * @param userId The ID of the user
-     * @param agentId Optional agent ID to filter documents
-     * @returns List of documents
-     */
+
     DocumentService.prototype.getDocuments = function (userId, agentId) {
         return __awaiter(this, void 0, void 0, function () {
             var query, params, userRows, companyId, rows, error_2;
@@ -143,11 +131,7 @@ var DocumentService = /** @class */ (function () {
             });
         });
     };
-    /**
-     * Get document content by ID
-     * @param documentId The ID of the document
-     * @returns The document content
-     */
+
     DocumentService.prototype.getDocumentContent = function (documentId) {
         return __awaiter(this, void 0, void 0, function () {
             var rows, error_3;
@@ -171,10 +155,7 @@ var DocumentService = /** @class */ (function () {
             });
         });
     };
-    /**
-     * Delete a document
-     * @param documentId The ID of the document to delete
-     */
+ 
     DocumentService.prototype.deleteDocument = function (documentId) {
         return __awaiter(this, void 0, void 0, function () {
             var error_4;

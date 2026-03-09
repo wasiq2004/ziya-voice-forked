@@ -18,7 +18,7 @@ export const phoneNumberService = {
       return result.data;
     } catch (error) {
       console.error('Error fetching phone numbers:', error);
-      throw new Error('Failed to fetch phone numbers');
+      throw new Error(result.message || 'Failed to fetch phone numbers');
     }
   },
 
@@ -38,7 +38,7 @@ export const phoneNumberService = {
       return result.data;
     } catch (error) {
       console.error('Error fetching phone number:', error);
-      throw new Error('Failed to fetch phone number');
+      throw new Error(result.message || 'Failed to fetch phone number');
     }
   },
 
@@ -62,7 +62,7 @@ export const phoneNumberService = {
       return result.data;
     } catch (error) {
       console.error('Error creating phone number:', error);
-      throw new Error('Failed to create phone number');
+      throw new Error(result.message || 'Failed to create phone number');
     }
   },
 
@@ -107,7 +107,7 @@ export const phoneNumberService = {
       }
     } catch (error) {
       console.error('Error deleting phone number:', error);
-      throw new Error('Failed to delete phone number');
+      throw new Error(result.message || 'Failed to delete phone number');
     }
   },
 

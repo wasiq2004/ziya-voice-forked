@@ -19,6 +19,7 @@ import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminUserDetailPage from './pages/AdminUserDetailPage';
 import AdminAuditLogsPage from './pages/AdminAuditLogsPage';
 import AdminUsersPage from './pages/AdminUsersPage';
+import AdminPlansPage from './pages/AdminPlansPage';
 
 // AdminRoute: Redirect to admin login if no admin session found
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -41,6 +42,7 @@ const App: React.FC = () => {
                     <Route path="/admin/users" element={<AdminRoute><AdminUsersPage /></AdminRoute>} />
                     <Route path="/admin/users/:userId" element={<AdminRoute><AdminUserDetailPage /></AdminRoute>} />
                     <Route path="/admin/logs" element={<AdminRoute><AdminAuditLogsPage /></AdminRoute>} />
+                    <Route path="/admin/plans" element={<AdminRoute><AdminPlansPage /></AdminRoute>} />
                     {/* User Routes - all protected by ProtectedRoute */}
                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />

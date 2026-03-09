@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getUsers, getUserBalance, Admin, updateUserStatus, impersonateUser, updateUserPlan } from '../utils/adminApi';
-import { addCredits } from '../utils/adminApi';
+import { addCredits, listPlans, assignPlanToUser, Plan } from '../utils/adminApi';
 import AppLayout from '../components/AppLayout';
 import Skeleton from '../components/Skeleton';
 import {
@@ -16,6 +16,7 @@ import {
     ArrowPathIcon,
     UserGroupIcon,
     CurrencyDollarIcon,
+    ClipboardDocumentCheckIcon,
 } from '@heroicons/react/24/outline';
 import { getApiBaseUrl } from '../utils/api';
 
@@ -53,6 +54,13 @@ const AdminUsersPage: React.FC = () => {
     const [creditLoading, setCreditLoading] = useState(false);
     const [planModal, setPlanModal] = useState<{ userId: string; email: string; planType: string; extendDays: string } | null>(null);
     const [planLoading, setPlanLoading] = useState(false);
+
+    // Assign Plan modal
+    const [assignModal, setAssignModal] = useState<{ userId: string; email: string } | null>(null);
+    const [availablePlans, setAvailablePlans] = useState<Plan[]>([]);
+    const [selectedPlanId, setSelectedPlanId] = useState('');
+    const [assignLoading, setAssignLoading] = useState(false);
+    const [plansLoading, setPlansLoading] = useState(false);
 
     useEffect(() => {
         const adminData = localStorage.getItem('admin');
@@ -147,6 +155,35 @@ const AdminUsersPage: React.FC = () => {
             setError(err.message);
         } finally {
             setPlanLoading(false);
+        }
+    };
+
+    const openAssignPlan = async (user: UserRow) => {
+        setAssignModal({ userId: user.id, email: user.email });
+        setSelectedPlanId('');
+        setPlansLoading(true);
+        try {
+            const plans = await listPlans();
+            setAvailablePlans(plans);
+        } catch (err: any) {
+            setError('Failed to load plans: ' + err.message);
+        } finally {
+            setPlansLoading(false);
+        }
+    };
+
+    const handleAssignPlan = async () => {
+        if (!assignModal || !selectedPlanId) return;
+        setAssignLoading(true);
+        try {
+            const result = await assignPlanToUser(assignModal.userId, selectedPlanId, admin?.id || '');
+            showSuccess(result.message || `Plan assigned to ${assignModal.email}`);
+            setAssignModal(null);
+            fetchUsers();
+        } catch (err: any) {
+            setError(err.message || 'Failed to assign plan');
+        } finally {
+            setAssignLoading(false);
         }
     };
 
@@ -400,6 +437,15 @@ const AdminUsersPage: React.FC = () => {
                                                         <CurrencyDollarIcon className="h-4 w-4" />
                                                     </button>
 
+                                                    {/* Assign Plan */}
+                                                    <button
+                                                        onClick={() => openAssignPlan(user)}
+                                                        title="Assign Plan"
+                                                        className="p-2 bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 rounded-lg hover:bg-teal-100 transition-colors"
+                                                    >
+                                                        <ClipboardDocumentCheckIcon className="h-4 w-4" />
+                                                    </button>
+
                                                     {/* Add Credits */}
                                                     <button
                                                         onClick={() => setCreditModal({ userId: user.id, email: user.email })}
@@ -566,6 +612,93 @@ const AdminUsersPage: React.FC = () => {
                             <button
                                 onClick={() => { setCreditModal(null); setCreditAmount(''); setCreditDesc(''); }}
                                 className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-2xl font-black text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Assign Plan Modal */}
+            {assignModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                        <h3 className="text-lg font-black text-slate-900 dark:text-white mb-2">Assign Plan</h3>
+                        <p className="text-sm text-slate-500 mb-6">
+                            User: <strong className="text-slate-800 dark:text-white">{assignModal.email}</strong>
+                        </p>
+
+                        {plansLoading ? (
+                            <div className="py-8 text-center text-slate-400 text-sm font-bold">Loading plans...</div>
+                        ) : availablePlans.length === 0 ? (
+                            <div className="py-8 text-center">
+                                <p className="text-slate-400 text-sm font-bold mb-3">No plans found</p>
+                                <p className="text-xs text-slate-500">Create plans in the Plans section first.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 block">
+                                        Select Plan
+                                    </label>
+                                    <select
+                                        id="assign-plan-select"
+                                        value={selectedPlanId}
+                                        onChange={(e) => setSelectedPlanId(e.target.value)}
+                                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-bold text-sm outline-none focus:ring-2 focus:ring-teal-400/40 transition-all"
+                                    >
+                                        <option value="">— Choose a plan —</option>
+                                        {availablePlans.map((p) => (
+                                            <option key={p.id} value={p.id}>
+                                                {p.plan_name} — {p.credit_limit.toLocaleString()} CR / {p.validity_days} days
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Show selected plan details */}
+                                {selectedPlanId && (() => {
+                                    const selected = availablePlans.find(p => p.id === selectedPlanId);
+                                    if (!selected) return null;
+                                    return (
+                                        <div className="p-4 bg-teal-50 dark:bg-teal-900/20 border border-teal-100 dark:border-teal-800/30 rounded-2xl">
+                                            <p className="text-xs font-black text-teal-700 dark:text-teal-400 uppercase tracking-widest mb-2">Plan Summary</p>
+                                            <div className="space-y-1.5">
+                                                <div className="flex justify-between text-sm">
+                                                    <span className="text-slate-600 dark:text-slate-400">Credits Added</span>
+                                                    <span className="font-black text-emerald-600 dark:text-emerald-400">{selected.credit_limit.toLocaleString()} CR</span>
+                                                </div>
+                                                <div className="flex justify-between text-sm">
+                                                    <span className="text-slate-600 dark:text-slate-400">Valid For</span>
+                                                    <span className="font-black text-blue-600 dark:text-blue-400">{selected.validity_days} days</span>
+                                                </div>
+                                                {selected.plan_type && (
+                                                    <div className="flex justify-between text-sm">
+                                                        <span className="text-slate-600 dark:text-slate-400">Type</span>
+                                                        <span className="font-black text-purple-600 dark:text-purple-400 capitalize">{selected.plan_type}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        )}
+
+                        <div className="flex gap-3 mt-8">
+                            <button
+                                id="confirm-assign-plan-btn"
+                                onClick={handleAssignPlan}
+                                disabled={assignLoading || !selectedPlanId || plansLoading}
+                                className="flex-1 py-3 bg-teal-600 text-white rounded-2xl font-black text-sm hover:bg-teal-700 disabled:opacity-50 transition-all shadow-lg shadow-teal-600/20"
+                            >
+                                {assignLoading ? 'Applying...' : 'Apply Plan'}
+                            </button>
+                            <button
+                                onClick={() => setAssignModal(null)}
+                                disabled={assignLoading}
+                                className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-2xl font-black text-sm hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 transition-all"
                             >
                                 Cancel
                             </button>

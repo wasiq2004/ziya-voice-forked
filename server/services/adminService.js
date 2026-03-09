@@ -466,12 +466,12 @@ class AdminService {
       const [logs] = await this.mysqlPool.execute(`
         SELECT 
           l.*,
-          a.username as admin_name,
+          a.name as admin_name,
           a.email as admin_email,
           u.username as target_user_name,
           u.email as target_user_email
         FROM admin_activity_log l
-        LEFT JOIN admins a ON l.admin_id = a.id
+        LEFT JOIN admin_users a ON l.admin_id = a.id
         LEFT JOIN users u ON l.target_user_id = u.id
         ORDER BY l.created_at DESC
         LIMIT ? OFFSET ?

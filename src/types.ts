@@ -12,6 +12,7 @@ export enum Page {
     Reports = 'Reports',
     AdminDashboard = 'Admin Dashboard',
     AdminUsers = 'Users',
+    AdminPlans = 'Plans',
 }
 
 export enum CampaignStatus {
@@ -147,6 +148,16 @@ export interface PhoneNumber {
     nextCycle: string;
     provider: PhoneProvider;
     twilioSid?: string;
+}
+
+export interface Plan {
+    id: string;
+    plan_name: string;
+    credit_limit: number;
+    validity_days: number;
+    plan_type?: string | null;
+    created_at: string;
+    updated_at: string;
 }
 
 export interface AppSettings {

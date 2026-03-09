@@ -6,6 +6,8 @@ import Modal from '../components/Modal';
 import { agentService } from '../services/agentService';
 import { useAuth } from '../contexts/AuthContext';
 import AppLayout from '../components/AppLayout';
+import UpgradePlanModal from '../components/UpgradePlanModal';
+import { usePlanAccess } from '../utils/usePlanAccess';
 import {
     PlusIcon,
     UserIcon,
@@ -25,6 +27,7 @@ import Skeleton from '../components/Skeleton';
 const AgentPage: React.FC = () => {
     const [agents, setAgents] = useState<VoiceAgent[]>([]);
     const [selectedAgent, setSelectedAgent] = useState<VoiceAgent | null>(null);
+    const [stagedAgent, setStagedAgent] = useState<VoiceAgent | null>(null);
     const [view, setView] = useState<'list' | 'create'>('list');
     const [newAgentName, setNewAgentName] = useState('');
     const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
@@ -33,6 +36,7 @@ const AgentPage: React.FC = () => {
     const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
     const [loading, setLoading] = useState(true);
     const { user } = useAuth();
+    const { checkAccess, blockingReason, clearBlock } = usePlanAccess();
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -79,10 +83,11 @@ const AgentPage: React.FC = () => {
         e.preventDefault();
         if (!newAgentName.trim()) return;
 
-        const isPlanExpired = user?.plan_valid_until ? new Date(user.plan_valid_until) < new Date() : false;
-        if (isPlanExpired) {
-            alert('Your trial has expired. Consider upgrading your plan for continued access.');
-        }
+        if (!user) { return; }
+
+        // Check plan access (credits + validity)
+        const allowed = await checkAccess(user.id);
+        if (!allowed) return;
 
         try {
             if (!user) throw new Error('User not authenticated');
@@ -140,18 +145,19 @@ const AgentPage: React.FC = () => {
 
     const handleBackToList = () => {
         setSelectedAgent(null);
+        setStagedAgent(null);
         loadAgents();
     };
 
-    const handleUpdateAgent = async (updatedAgent: VoiceAgent) => {
+    const handleSaveAgent = async () => {
+        if (!stagedAgent || !user) return;
         try {
-            if (!user) throw new Error('User not authenticated');
-            const agent = await agentService.updateAgent(user.id, updatedAgent.id, updatedAgent);
+            const agent = await agentService.updateAgent(user.id, stagedAgent.id, stagedAgent);
             setAgents(prev => prev.map(a => a.id === agent.id ? agent : a));
             setSelectedAgent(agent);
         } catch (error) {
-            console.error('Error updating agent:', error);
-            alert('Failed to update agent');
+            console.error('Error saving agent:', error);
+            alert('Failed to save agent');
         }
     };
 
@@ -171,12 +177,18 @@ const AgentPage: React.FC = () => {
 
     const handleEditAgent = (agent: VoiceAgent) => {
         setSelectedAgent(agent);
+        setStagedAgent(agent);
         setActiveDropdown(null);
     };
 
     const handleDuplicateAgent = async (agentToDuplicate: VoiceAgent) => {
         try {
             if (!user) throw new Error('User not authenticated');
+
+            // Check plan access before duplicating
+            const allowed = await checkAccess(user.id);
+            if (!allowed) return undefined;
+
             const duplicatedAgentData: Omit<VoiceAgent, 'id' | 'createdDate'> = {
                 ...JSON.parse(JSON.stringify(agentToDuplicate)),
                 name: `${agentToDuplicate.name} (Copy)`,
@@ -214,14 +226,12 @@ const AgentPage: React.FC = () => {
         }
     };
 
-    const isPlanExpired = user?.plan_valid_until ? new Date(user.plan_valid_until) < new Date() : false;
-
     const addButton = (
         <button
-            onClick={() => {
-                if (isPlanExpired) {
-                    alert('Your trial has expired. Consider upgrading your plan for continued access.');
-                }
+            onClick={async () => {
+                if (!user) return;
+                const allowed = await checkAccess(user.id);
+                if (!allowed) return;
                 setView('create');
             }}
             className="flex items-center space-x-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-bold transition-all duration-300 shadow-lg shadow-primary/25 transform hover:scale-[1.02] active:scale-[0.98]"
@@ -249,6 +259,18 @@ const AgentPage: React.FC = () => {
                         >
                             <ChevronLeftIcon className="h-5 w-5 group-hover:-translate-x-1 transition-transform" />
                         </button>
+
+                        <button
+                            onClick={handleSaveAgent}
+                            disabled={!stagedAgent || JSON.stringify(stagedAgent) === JSON.stringify(selectedAgent)}
+                            className={`px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all disabled:opacity-50 ${stagedAgent && JSON.stringify(stagedAgent) !== JSON.stringify(selectedAgent)
+                                    ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/25'
+                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                                }`}
+                        >
+                            Save Changes
+                        </button>
+
                         <div className="relative dropdown-trigger">
                             <button
                                 onClick={(e) => handleToggleDropdown(selectedAgent.id, e)}
@@ -264,7 +286,7 @@ const AgentPage: React.FC = () => {
                 <AgentDetailPage
                     agent={selectedAgent}
                     onBack={handleBackToList}
-                    updateAgent={handleUpdateAgent}
+                    updateAgent={(agent) => setStagedAgent(agent)}
                     onDuplicate={async (agent) => {
                         const newAgent = await handleDuplicateAgent(agent);
                         if (newAgent) {
@@ -527,6 +549,9 @@ const AgentPage: React.FC = () => {
                     </div>
                 </div>
             </Modal>
+
+            {/* Upgrade Plan Modal — shown when credits are 0 or plan is expired */}
+            <UpgradePlanModal reason={blockingReason} onClose={clearBlock} />
         </AppLayout>
     );
 };
