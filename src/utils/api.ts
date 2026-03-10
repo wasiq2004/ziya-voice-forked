@@ -25,7 +25,7 @@ export const getAuthParams = () => {
 
 export const getApiBaseUrl = () => {
   //return "http://localhost:5000";
-  return "http://ziyasuite.com";
+  return "https://ziyasuite.com";
 };
 
 export const fetchCampaigns = async (userId: string) => {
