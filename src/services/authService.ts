@@ -4,9 +4,19 @@ export interface User {
   id: string;
   email: string;
   username?: string;
+  full_name?: string;
+  profile_image?: string;
+  dob?: string;
+  gender?: string;
   google_id?: string;
-  created_at: string;
-  updated_at: string;
+  current_company_id?: string;
+  role?: string;
+  created_at?: string;
+  updated_at?: string;
+  // Trial & Plan fields
+  plan_type?: 'trial' | 'paid' | 'enterprise' | null;
+  plan_valid_until?: string | null;
+  trial_started_at?: string | null;
 }
 
 export interface Profile {
@@ -36,9 +46,9 @@ export const authService = {
       }
 
       return result.user;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Authentication error:', error);
-      throw new Error('Authentication failed');
+      throw new Error(error.message || 'Authentication failed');
     }
   },
 
@@ -60,9 +70,9 @@ export const authService = {
       }
 
       return result.user;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration error:', error);
-      throw new Error('Registration failed');
+      throw new Error(error.message || 'Registration failed');
     }
   },
 
@@ -75,8 +85,6 @@ export const authService = {
 
   // Handle Google Sign-In callback
   async handleGoogleSignInCallback(): Promise<User | null> {
-    // This function would be called after Google redirects back to the app
-    // For now, we'll check for user data in the URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const userParam = urlParams.get('user');
 
@@ -99,9 +107,9 @@ export const authService = {
       await fetch(`${getApiBaseUrl()}/api/auth/logout`, {
         method: 'POST',
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Sign out error:', error);
-      throw new Error('Sign out failed');
+      throw new Error(error.message || 'Sign out failed');
     }
   },
 
@@ -124,9 +132,9 @@ export const authService = {
   },
 
   // Get user profile
-  async getUserProfile(userId: string): Promise<Profile | null> {
+  async getUserProfile(userId: string): Promise<User | null> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/profiles/${userId}`);
+      const response = await fetch(`${getApiBaseUrl()}/api/users/profile/${userId}`);
 
       const result = await response.json();
 
@@ -134,10 +142,34 @@ export const authService = {
         throw new Error(result.message || 'Failed to fetch profile');
       }
 
-      return result.profile;
+      return result.user;
     } catch (error) {
       console.error('Error fetching profile:', error);
       return null;
+    }
+  },
+
+  // Update user profile
+  async updateUserProfile(userId: string, data: Partial<User>): Promise<User | null> {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/users/profile/${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to update user profile');
+      }
+
+      return result.user;
+    } catch (error) {
+      console.error('Error updating user metadata:', error);
+      throw error;
     }
   }
 };

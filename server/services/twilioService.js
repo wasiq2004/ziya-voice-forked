@@ -70,11 +70,14 @@ class TwilioService {
       ).catch(err => { throw new Error(`DB error (phone_numbers select): ${err.message}`); });
 
       if (!existingPhoneRows || existingPhoneRows.length === 0) {
+        // Fetch user's current company ID
+        const [userRows] = await database.execute('SELECT current_company_id FROM users WHERE id = ?', [userId]);
+        const companyId = (userRows.length > 0 && userRows[0].current_company_id) ? userRows[0].current_company_id : null;
         await database.execute(
           `INSERT INTO phone_numbers
-           (id, user_id, phone_number, country_code, source, region, provider, twilio_sid, capabilities, next_cycle, purchased_at, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY), NOW(), NOW())`,
-          [phoneNumberId, userId, phoneNumber, countryCode, 'Connected:twilio', region, 'twilio', twilioNumber.sid, JSON.stringify(capabilities)]
+           (id, user_id, phone_number, country_code, source, region, provider, twilio_sid, capabilities, next_cycle, purchased_at, created_at, company_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY), NOW(), NOW(), ?)`,
+          [phoneNumberId, userId, phoneNumber, countryCode, 'Connected:twilio', region, 'twilio', twilioNumber.sid, JSON.stringify(capabilities), companyId]
         );
       }
 
@@ -143,11 +146,14 @@ class TwilioService {
       ).catch(err => { throw new Error(`DB error (phone_numbers select): ${err.message}`); });
 
       if (!existingPhoneRows || existingPhoneRows.length === 0) {
+        // Fetch user's current company ID
+        const [userRows] = await database.execute('SELECT current_company_id FROM users WHERE id = ?', [userId]);
+        const companyId = (userRows.length > 0 && userRows[0].current_company_id) ? userRows[0].current_company_id : null;
         await database.execute(
           `INSERT INTO phone_numbers
-           (id, user_id, phone_number, country_code, source, region, provider, twilio_sid, capabilities, next_cycle, purchased_at, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY), NOW(), NOW())`,
-          [phoneNumberId, userId, phoneNumber, countryCode, 'Connected:twilio', region, 'twilio', twilioNumber.sid, JSON.stringify(capabilities)]
+           (id, user_id, phone_number, country_code, source, region, provider, twilio_sid, capabilities, next_cycle, purchased_at, created_at, company_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY), NOW(), NOW(), ?)`,
+          [phoneNumberId, userId, phoneNumber, countryCode, 'Connected:twilio', region, 'twilio', twilioNumber.sid, JSON.stringify(capabilities), companyId]
         );
       }
 

@@ -5,10 +5,14 @@ export enum Page {
     Campaigns = 'Campaigns',
     Agent = 'Agent',
     PhoneNo = 'Phone Numbers',
-    CallHistory = 'Call History',
-    Settings = 'Settings',
+    Settings = 'User Profile',
     API = 'API',
     Credits = 'Credits',
+    Schedule = 'Schedule',
+    Reports = 'Reports',
+    AdminDashboard = 'Admin Dashboard',
+    AdminUsers = 'Users',
+    AdminPlans = 'Plans',
 }
 
 export enum CampaignStatus {
@@ -107,6 +111,8 @@ export interface VoiceAgentSettings {
     preActionPhrases: string[]; // For knowledge base
     tools: Tool[];
     knowledgeDocIds?: string[];
+    webhookEnabled?: boolean; // Enable webhook delivery after each call
+    webhookUrl?: string; // Webhook endpoint URL
 }
 
 
@@ -120,6 +126,7 @@ export interface VoiceAgent {
     voiceId: string;
     language: string;
     settings: VoiceAgentSettings;
+    hasPhoneNumber?: boolean; // true if a phone number is mapped to this agent
 }
 
 export enum PhoneProvider {
@@ -130,6 +137,8 @@ export enum PhoneProvider {
 export interface PhoneNumber {
     id: string;
     number: string;
+    phoneNumber?: string; // Some parts of the code use this
+    phone_number?: string; // Some parts of the code use this
     countryCode: string;
     source: string;
     agentName: string;
@@ -138,6 +147,17 @@ export interface PhoneNumber {
     createdDate: string; // ISO string
     nextCycle: string;
     provider: PhoneProvider;
+    twilioSid?: string;
+}
+
+export interface Plan {
+    id: string;
+    plan_name: string;
+    credit_limit: number;
+    validity_days: number;
+    plan_type?: string | null;
+    created_at: string;
+    updated_at: string;
 }
 
 export interface AppSettings {

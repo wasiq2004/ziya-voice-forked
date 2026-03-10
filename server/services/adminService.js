@@ -42,13 +42,17 @@ class AdminService {
       const validPage = Number(page) || 1;
       const validLimit = Number(limit) || 50;
       const offset = (validPage - 1) * validLimit;
-      
+
       let query = `
         SELECT 
           u.id,
           u.email,
           u.username,
           u.created_at,
+          u.role,
+          u.status,
+          u.plan_type,
+          u.plan_valid_until,
           COALESCE(SUM(CASE WHEN sur.service_name = 'elevenlabs' THEN sur.usage_amount ELSE 0 END), 0) as elevenlabs_usage,
           COALESCE(SUM(CASE WHEN sur.service_name = 'gemini' THEN sur.usage_amount ELSE 0 END), 0) as gemini_usage,
           COALESCE(SUM(CASE WHEN sur.service_name = 'deepgram' THEN sur.usage_amount ELSE 0 END), 0) as deepgram_usage
@@ -59,21 +63,21 @@ class AdminService {
       `;
 
       const params = [];
-      
+
       if (search && search.trim() !== '') {
         query += ` WHERE u.email LIKE ? OR u.username LIKE ?`;
         params.push(`%${search}%`, `%${search}%`);
       }
 
       // Use string interpolation for LIMIT and OFFSET since MySQL has issues with them as prepared statement params
-      query += ` GROUP BY u.id, u.email, u.username, u.created_at ORDER BY u.created_at DESC LIMIT ${validLimit} OFFSET ${offset}`;
+      query += ` GROUP BY u.id, u.email, u.username, u.created_at, u.role, u.status, u.plan_type, u.plan_valid_until ORDER BY u.created_at DESC LIMIT ${validLimit} OFFSET ${offset}`;
 
       const [users] = await this.mysqlPool.execute(query, params);
 
       // Get total count
       let countQuery = 'SELECT COUNT(*) as total FROM users';
       const countParams = [];
-      
+
       if (search && search.trim() !== '') {
         countQuery += ' WHERE email LIKE ? OR username LIKE ?';
         countParams.push(`%${search}%`, `%${search}%`);
@@ -101,7 +105,7 @@ class AdminService {
   async getUserDetails(userId) {
     try {
       const [users] = await this.mysqlPool.execute(
-        'SELECT id, email, username, created_at FROM users WHERE id = ?',
+        'SELECT id, email, username, created_at, role, status FROM users WHERE id = ?',
         [userId]
       );
 
@@ -147,11 +151,112 @@ class AdminService {
     }
   }
 
+  // Get user-specific resources (Agents, Campaigns)
+  async getUserResources(userId) {
+    try {
+      const [agents] = await this.mysqlPool.execute(
+        'SELECT id, name, status, created_at FROM agents WHERE user_id = ? ORDER BY created_at DESC',
+        [userId]
+      );
+
+      const [campaigns] = await this.mysqlPool.execute(
+        'SELECT id, name, status, created_at FROM campaigns WHERE user_id = ? ORDER BY created_at DESC',
+        [userId]
+      );
+
+      return {
+        agents,
+        campaigns
+      };
+    } catch (error) {
+      console.error('Error fetching user resources:', error);
+      throw error;
+    }
+  }
+
+  // Update user status (Active/Inactive/Locked)
+  async updateUserStatus(userId, status, adminId) {
+    try {
+      await this.mysqlPool.execute(
+        'UPDATE users SET status = ? WHERE id = ?',
+        [status, userId]
+      );
+
+      await this.logActivity(
+        adminId,
+        'update_user_status',
+        userId,
+        `Updated user status to ${status}`,
+        null
+      );
+
+      return { success: true, message: `User status updated to ${status}` };
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      throw error;
+    }
+  }
+
+  // Admin-led Password Reset
+  async resetUserPassword(userId, newPassword, adminId) {
+    try {
+      const saltRounds = 10;
+      const passwordHash = await bcrypt.hash(newPassword, saltRounds);
+
+      await this.mysqlPool.execute(
+        'UPDATE users SET password_hash = ? WHERE id = ?',
+        [passwordHash, userId]
+      );
+
+      await this.logActivity(
+        adminId,
+        'reset_user_password',
+        userId,
+        `Administratively reset user password`,
+        null
+      );
+
+      return { success: true, message: 'Password reset successfully' };
+    } catch (error) {
+      console.error('Error resetting user password:', error);
+      throw error;
+    }
+  }
+
+  // Get user profile for impersonation
+  async getImpersonateUser(userId, adminId) {
+    try {
+      const [rows] = await this.mysqlPool.execute(
+        'SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, current_company_id, role, status FROM users WHERE id = ?',
+        [userId]
+      );
+
+      if (rows.length === 0) {
+        throw new Error('User not found');
+      }
+
+      const user = rows[0];
+
+      await this.logActivity(
+        adminId,
+        'user_impersonation_start',
+        userId,
+        `Started impersonation of user ${user.email}`,
+        null
+      );
+
+      return user;
+    } catch (error) {
+      console.error('Error fetching impersonation data:', error);
+      throw error;
+    }
+  }
+
   // Set or update service limit for a user
   async setServiceLimit(userId, serviceName, monthlyLimit, dailyLimit, isEnabled = true) {
     try {
       const limitId = uuidv4();
-      
+
       await this.mysqlPool.execute(`
         INSERT INTO user_service_limits (id, user_id, service_name, monthly_limit, daily_limit, is_enabled)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -180,7 +285,7 @@ class AdminService {
       // Create default structure if no limits exist
       const services = ['elevenlabs', 'gemini', 'deepgram'];
       const limitsMap = {};
-      
+
       services.forEach(service => {
         const limit = limits.find(l => l.service_name === service);
         limitsMap[service] = limit || {
@@ -289,8 +394,8 @@ class AdminService {
   async createBillingRecord(userId, periodStart, periodEnd, usageData, platformFee) {
     try {
       const billingId = uuidv4();
-      const totalAmount = (usageData.elevenlabs || 0) + (usageData.gemini || 0) + 
-                         (usageData.deepgram || 0) + (platformFee || 0);
+      const totalAmount = (usageData.elevenlabs || 0) + (usageData.gemini || 0) +
+        (usageData.deepgram || 0) + (platformFee || 0);
 
       await this.mysqlPool.execute(`
         INSERT INTO platform_billing 
@@ -339,7 +444,7 @@ class AdminService {
   async logActivity(adminId, actionType, targetUserId = null, details = '', ipAddress = null) {
     try {
       const logId = uuidv4();
-      
+
       await this.mysqlPool.execute(
         'INSERT INTO admin_activity_log (id, admin_id, action_type, target_user_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
         [logId, adminId, actionType, targetUserId, details, ipAddress]
@@ -353,12 +458,49 @@ class AdminService {
     }
   }
 
+  // Get administrative audit logs
+  async getAuditLogs(page = 1, limit = 50) {
+    try {
+      const offset = (page - 1) * limit;
+
+      const [logs] = await this.mysqlPool.execute(`
+        SELECT 
+          l.*,
+          a.name as admin_name,
+          a.email as admin_email,
+          u.username as target_user_name,
+          u.email as target_user_email
+        FROM admin_activity_log l
+        LEFT JOIN admin_users a ON l.admin_id = a.id
+        LEFT JOIN users u ON l.target_user_id = u.id
+        ORDER BY l.created_at DESC
+        LIMIT ? OFFSET ?
+      `, [limit, offset]);
+
+      const [countResult] = await this.mysqlPool.execute('SELECT COUNT(*) as total FROM admin_activity_log');
+      const total = countResult[0].total;
+
+      return {
+        logs,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit)
+        }
+      };
+    } catch (error) {
+      console.error('Error fetching audit logs:', error);
+      throw error;
+    }
+  }
+
   // Get dashboard statistics
   async getDashboardStats() {
     try {
       // Total users
       const [userCount] = await this.mysqlPool.execute('SELECT COUNT(*) as total FROM users');
-      
+
       // Active users this month (users with usage)
       const [activeUsers] = await this.mysqlPool.execute(`
         SELECT COUNT(DISTINCT user_id) as total

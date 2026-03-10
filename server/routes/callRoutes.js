@@ -1,11 +1,6 @@
 const express = require('express');
 const router = express.Router();
 
-/**
- * Get call history for a specific user
- * GET /api/calls/:userId
- * Query params: limit, offset, agentId, callType, startDate, endDate
- */
 router.get('/:userId', async (req, res) => {
     try {
         const { userId } = req.params;

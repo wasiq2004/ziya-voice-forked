@@ -8,6 +8,7 @@ interface AuthContextType {
   signUp: (email: string, username: string, password: string) => Promise<any>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
+  updateUser: (userData: Partial<User>) => Promise<any>;
   loading: boolean;
 }
 
@@ -108,12 +109,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const updateUser = async (userData: Partial<User>) => {
+    try {
+      if (!user?.id) throw new Error('No user logged in');
+      const updatedUser = await authService.updateUserProfile(user.id, userData);
+      if (updatedUser) {
+        setUser(updatedUser);
+        localStorage.setItem('ziya-user', JSON.stringify(updatedUser));
+        return { data: { user: updatedUser }, error: null };
+      }
+      throw new Error('Update failed');
+    } catch (error: any) {
+      return { data: null, error: { message: error.message || 'Update failed' } };
+    }
+  };
+
   const value = {
     user,
     signIn,
     signUp,
     signInWithGoogle,
     signOut,
+    updateUser,
     loading
   };
 

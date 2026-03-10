@@ -70,7 +70,7 @@ var LLMService = /** @class */ (function () {
             var modelName, provider;
             var _a;
             return __generator(this, function (_b) {
-                modelName = request.model || 'models/gemini-2.0-flash';
+                modelName = request.model || 'models/gemini-2.0-flash-lite';
 
                 // Determine provider based on model name
                 if (this.isOpenAIModel(modelName)) {
@@ -105,12 +105,17 @@ var LLMService = /** @class */ (function () {
                     case 1:
                         _b.trys.push([1, 3, , 4]);
 
-                        modelName = request.model || 'models/gemini-2.0-flash';
+                        modelName = request.model || 'models/gemini-2.0-flash-lite';
 
                         // Use getGenerativeModel
+                        // Append multilingual instruction to any existing system instruction
+                        var baseInstruction = (_a = request.config) === null || _a === void 0 ? void 0 : _a.systemInstruction;
+                        var multilingualInstruction = "IMPORTANT: You must respond in the same language as the user's input. Do not translate unless explicitly requested.";
+                        var finalInstruction = baseInstruction ? baseInstruction + "\n\n" + multilingualInstruction : multilingualInstruction;
+
                         model = this.genAI.getGenerativeModel({
                             model: modelName,
-                            systemInstruction: (_a = request.config) === null || _a === void 0 ? void 0 : _a.systemInstruction
+                            systemInstruction: finalInstruction
                         });
 
                         return [4 /*yield*/, model.generateContent({ contents: request.contents })];
@@ -210,9 +215,151 @@ var LLMService = /** @class */ (function () {
         });
     };
 
-    // Stub for stream - could be implemented if needed
-    LLMService.prototype.generateContentStream = function (request) {
-        throw new Error("Stream not implemented in this version");
+    LLMService.prototype.generateContentStream = async function (request) {
+        var modelName = request.model || 'models/gemini-2.0-flash-lite';
+        var provider = this.isOpenAIModel(modelName) ? 'openai' : 'gemini';
+
+        console.log(`🌊 [Stream] Using provider: ${provider}, model: ${modelName}`);
+
+        if (provider === 'openai') {
+            // Returns an OpenAI async stream (AsyncIterable of chunks)
+            return await this.generateOpenAIStream(request);
+        } else {
+            // Returns a Gemini async stream (AsyncIterable of chunks)
+            return await this.generateGeminiStream(request);
+        }
+    };
+
+    LLMService.prototype.generateGeminiStream = async function (request) {
+        if (!this.genAI) throw new Error('Gemini client not initialized.');
+
+        try {
+            const modelName = request.model || 'models/gemini-2.0-flash-lite';
+            const baseInstruction = request.config?.systemInstruction;
+            const multilingualInstruction = "IMPORTANT: You must respond in the same language as the user's input.";
+            const finalInstruction = baseInstruction
+                ? baseInstruction + "\n\n" + multilingualInstruction
+                : multilingualInstruction;
+
+            const model = this.genAI.getGenerativeModel({
+                model: modelName,
+                systemInstruction: finalInstruction
+            });
+
+            // generateContentStream returns { stream, response }
+            // result.stream is an AsyncIterable<GenerateContentChunk>
+            const result = await model.generateContentStream({ contents: request.contents });
+            return result.stream; // The caller will: for await (const chunk of stream) { chunk.text() }
+        } catch (error) {
+            console.error('Error in Gemini stream:', error);
+            throw error;
+        }
+    };
+
+    LLMService.prototype.generateOpenAIStream = function (request) {
+        return __awaiter(this, void 0, void 0, function () {
+            var modelName, messages, systemInstruction, stream, error_5;
+            var _a;
+            return __generator(this, function (_b) {
+                switch (_b.label) {
+                    case 0:
+                        if (!this.openai) throw new Error('OpenAI client not initialized.');
+                        _b.label = 1;
+                    case 1:
+                        _b.trys.push([1, 3, , 4]);
+                        modelName = request.model || 'gpt-4o-mini';
+                        messages = [];
+                        systemInstruction = (_a = request.config) === null || _a === void 0 ? void 0 : _a.systemInstruction;
+                        if (systemInstruction) messages.push({ role: 'system', content: systemInstruction });
+                        if (request.contents && Array.isArray(request.contents)) {
+                            request.contents.forEach(function (content) {
+                                var role = content.role === 'model' ? 'assistant' : content.role;
+                                var text = content.parts.map(function (part) { return part.text || ''; }).join('');
+                                messages.push({ role: role, content: text });
+                            });
+                        }
+                        return [4 /*yield*/, this.openai.chat.completions.create({
+                            model: modelName,
+                            messages: messages,
+                            stream: true,
+                        })];
+                    case 2:
+                        stream = _b.sent();
+                        return [2 /*return*/, stream];
+                    case 3:
+                        error_5 = _b.sent();
+                        console.error('Error in OpenAI stream:', error_5);
+                        throw error_5;
+                    case 4: return [2 /*return*/];
+                }
+            });
+        });
+    };
+
+
+    LLMService.prototype.extractJson = function (params) {
+        return __awaiter(this, void 0, void 0, function () {
+            var model, history, schema, systemInstruction, prompt, response, text, jsonMatch, jsonStr, parsed, error_3;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        _a.trys.push([0, 2, , 3]);
+                        model = params.model || 'models/gemini-2.0-flash-lite';
+                        history = params.history || [];
+                        schema = params.schema || '';
+
+                        systemInstruction = `
+You are a strict data extraction engine.
+Your task is to extract information from the conversation history based on the provided schema.
+
+RULES:
+1. Return ONLY valid JSON.
+2. Do NOT include markdown formatting (like \`\`\`json).
+3. Do NOT include any explanations or extra text.
+4. If a field is missing in the conversation, set it to null.
+5. The output must reliably parse with JSON.parse().
+
+SCHEMA:
+${schema}
+`;
+                        // Create a user message with the conversation history to ensure the model sees it clearly
+                        // processing history to simple text format if it's complex object
+                        const conversationText = history.map(msg =>
+                            `${msg.role}: ${Array.isArray(msg.parts) ? msg.parts.map(p => p.text).join('') : msg.text}`
+                        ).join('\n');
+
+                        prompt = `Extract data from this conversation:\n\n${conversationText}`;
+
+                        return [4 /*yield*/, this.generateContent({
+                            model: model,
+                            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                            config: { systemInstruction: systemInstruction }
+                        })];
+
+                    case 1:
+                        response = _a.sent();
+                        text = response.text || '';
+
+                        // Clean up markdown if present despite instructions
+                        jsonMatch = text.match(/\{[\s\S]*\}/);
+                        jsonStr = jsonMatch ? jsonMatch[0] : text;
+
+                        try {
+                            parsed = JSON.parse(jsonStr);
+                            return [2 /*return*/, parsed];
+                        } catch (e) {
+                            console.error('❌ Failed to parse JSON from LLM:', text);
+                            return [2 /*return*/, null];
+                        }
+                        return [3 /*break*/, 3];
+                    case 2:
+                        error_3 = _a.sent();
+                        console.error('❌ Error in extractJson:', error_3);
+                        return [2 /*return*/, null];
+                    case 3: return [2 /*return*/];
+                }
+            });
+        });
     };
 
     return LLMService;
