@@ -53,9 +53,14 @@ const AdminPlansPage: React.FC = () => {
     const [deleting, setDeleting] = useState(false);
 
     useEffect(() => {
-        const adminData = localStorage.getItem('admin');
-        if (!adminData) { navigate('/admin/login'); return; }
-        setAdmin(JSON.parse(adminData));
+        const adminData = localStorage.getItem('ziya-user');
+        if (!adminData) { navigate('/login'); return; }
+        const parsed = JSON.parse(adminData);
+        if (parsed.role !== 'org_admin' && parsed.role !== 'super_admin') {
+            navigate('/login');
+            return;
+        }
+        setAdmin(parsed);
     }, [navigate]);
 
     useEffect(() => {
