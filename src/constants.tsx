@@ -71,7 +71,9 @@ export const SIDEBAR_ITEMS: SidebarItem[] = [
 export const ADMIN_SIDEBAR_ITEMS: SidebarItem[] = [
     { id: Page.AdminDashboard, icon: ChartBarIcon },
     { id: Page.AdminUsers, icon: UserGroupIcon },
+    { id: Page.AdminPlans, icon: CircleStackIcon },
 ];
+
 
 
 

@@ -13,11 +13,15 @@ export interface User {
   role?: string;
   created_at?: string;
   updated_at?: string;
+  // Trial & Plan fields
+  plan_type?: 'trial' | 'paid' | 'enterprise' | null;
+  plan_valid_until?: string | null;
+  trial_started_at?: string | null;
 }
 
 export interface Profile {
   id: string;
-https://github.com/aspiren-tech/ziya-voice/pull/5/conflict?name=src%252Fconstants.tsx&ancestor_oid=ac1bb21bf05d45075663e11185173e47727a4f11&base_oid=e1b34f1884834428031501e70a7e0b88ba96a2cf&head_oid=368a74c7bce2760aa5235bf4cbf029e2c4f54dc8  updated_at: string;
+  updated_at: string;
   username: string | null;
   full_name: string | null;
   avatar_url: string | null;
@@ -42,9 +46,9 @@ export const authService = {
       }
 
       return result.user;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Authentication error:', error);
-      throw new Error('Authentication failed');
+      throw new Error(error.message || 'Authentication failed');
     }
   },
 
@@ -66,9 +70,9 @@ export const authService = {
       }
 
       return result.user;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration error:', error);
-      throw new Error('Registration failed');
+      throw new Error(error.message || 'Registration failed');
     }
   },
 
@@ -81,8 +85,6 @@ export const authService = {
 
   // Handle Google Sign-In callback
   async handleGoogleSignInCallback(): Promise<User | null> {
-    // This function would be called after Google redirects back to the app
-    // For now, we'll check for user data in the URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const userParam = urlParams.get('user');
 
@@ -105,9 +107,9 @@ export const authService = {
       await fetch(`${getApiBaseUrl()}/api/auth/logout`, {
         method: 'POST',
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Sign out error:', error);
-      throw new Error('Sign out failed');
+      throw new Error(error.message || 'Sign out failed');
     }
   },
 

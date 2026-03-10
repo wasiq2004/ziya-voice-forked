@@ -39,7 +39,7 @@ class MediaStreamHandler {
 
     // ✅ FIX: Method to get fresh API key each time
     getElevenLabsApiKey() {
-        return process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
+        return process.env.ELEVEN_LABS_API_KEY;
     }
 
     createSession(callId, agentPrompt, agentVoiceId, ws, userId = null, agentId = null, agentModel = null, agentSettings = null, contactId = null, campaignId = null) {

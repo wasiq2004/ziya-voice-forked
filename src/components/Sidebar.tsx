@@ -109,7 +109,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
             case Page.AdminDashboard:
                 return '/admin/dashboard';
             case Page.AdminUsers:
-                return '/admin/dashboard';
+                return '/admin/users';
+            case Page.AdminPlans:
+                return '/admin/plans';
             default:
                 return '/dashboard';
         }
@@ -119,6 +121,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
         const path = location.pathname;
         if (path.startsWith('/admin/dashboard')) return Page.AdminDashboard;
         if (path.startsWith('/admin/users')) return Page.AdminUsers;
+        if (path.startsWith('/admin/plans')) return Page.AdminPlans;
 
         if (path === '/dashboard' || path === '/') return Page.Dashboard;
         if (path.startsWith('/campaigns')) return Page.Campaigns;
@@ -165,7 +168,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                     )}
                 </div>
 
-                {/* Company Switcher Removed per User Request */}
+                {/* Company Switcher — only show on normal user routes */}
+                {!isAdminRoute && (
+                    <CompanySwitcher isCollapsed={isCollapsed} />
+                )}
             </div>
 
             <nav className="flex-1 px-3 py-4 overflow-y-auto custom-scrollbar">

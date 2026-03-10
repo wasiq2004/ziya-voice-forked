@@ -6,7 +6,7 @@ const os = require('os');
 
 
 function getElevenLabsApiKey() {
-    return process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
+    return process.env.ELEVEN_LABS_API_KEY;
 }
 
 function getSarvamApiKey() {

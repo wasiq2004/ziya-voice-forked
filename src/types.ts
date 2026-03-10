@@ -11,7 +11,8 @@ export enum Page {
     Schedule = 'Schedule',
     Reports = 'Reports',
     AdminDashboard = 'Admin Dashboard',
-    AdminUsers = 'Admin Users',
+    AdminUsers = 'Users',
+    AdminPlans = 'Plans',
 }
 
 export enum CampaignStatus {
@@ -110,6 +111,8 @@ export interface VoiceAgentSettings {
     preActionPhrases: string[]; // For knowledge base
     tools: Tool[];
     knowledgeDocIds?: string[];
+    webhookEnabled?: boolean; // Enable webhook delivery after each call
+    webhookUrl?: string; // Webhook endpoint URL
 }
 
 
@@ -145,6 +148,16 @@ export interface PhoneNumber {
     nextCycle: string;
     provider: PhoneProvider;
     twilioSid?: string;
+}
+
+export interface Plan {
+    id: string;
+    plan_name: string;
+    credit_limit: number;
+    validity_days: number;
+    plan_type?: string | null;
+    created_at: string;
+    updated_at: string;
 }
 
 export interface AppSettings {

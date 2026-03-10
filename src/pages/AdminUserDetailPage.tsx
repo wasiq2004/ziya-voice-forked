@@ -202,7 +202,7 @@ const AdminUserDetailPage: React.FC = () => {
   const handleAddCredits = async () => {
     try {
       const apiUrl = getApiBaseUrl();
-      const response = await fetch(`${apiUrl}/admin/wallet/add-credits`, {
+      const response = await fetch(`${apiUrl}/api/admin/wallet/add-credits`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -224,6 +224,21 @@ const AdminUserDetailPage: React.FC = () => {
     } catch (error) {
       console.error('Error adding credits:', error);
       setError('Failed to add credits');
+    }
+  };
+
+  const handleImpersonate = async () => {
+    if (!window.confirm(`Log in as ${user.email}? This will start an impersonation session.`)) return;
+    try {
+      const result = await impersonateUser(user.id, admin!.id);
+      if (result.success) {
+        // Store original admin session for return
+        localStorage.setItem('ziya-impersonation-admin', JSON.stringify(admin));
+        localStorage.setItem('ziya-user', JSON.stringify(result.user));
+        navigate('/agents');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to start impersonation session');
     }
   };
 

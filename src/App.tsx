@@ -1,18 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import Sidebar from './components/Sidebar';
 import CampaignsPage from './pages/CampaignsPage';
 import CampaignDetailPage from './pages/CampaignDetailPage';
 import AgentPage from './pages/AgentPage';
 import PhoneNoPage from './pages/PhoneNoPage';
 import SettingsPage from './pages/SettingsPage';
-import TwilioSettingsPage from './pages/TwilioSettingsPage';
 import ApiPage from './pages/ApiPage';
 import CreditsPage from './pages/CreditsPage';
 import DashboardPage from './pages/DashboardPage';
 import ReportsPage from './pages/ReportsPage';
 import SchedulePage from './pages/SchedulePage';
-import { Page } from './types';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -21,6 +18,17 @@ import AdminLoginPage from './pages/AdminLoginPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminUserDetailPage from './pages/AdminUserDetailPage';
 import AdminAuditLogsPage from './pages/AdminAuditLogsPage';
+import AdminUsersPage from './pages/AdminUsersPage';
+import AdminPlansPage from './pages/AdminPlansPage';
+
+// AdminRoute: Redirect to admin login if no admin session found
+const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const adminData = localStorage.getItem('admin');
+    if (!adminData) {
+        return <Navigate to="/admin/login" replace />;
+    }
+    return <>{children}</>;
+};
 
 const App: React.FC = () => {
     return (
@@ -28,12 +36,14 @@ const App: React.FC = () => {
             <AuthProvider>
                 <Routes>
                     <Route path="/login" element={<LoginPage />} />
-                    {/* Admin Routes */}
+                    {/* Admin Routes - all protected by AdminRoute */}
                     <Route path="/admin/login" element={<AdminLoginPage />} />
-                    <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
-                    <Route path="/admin/users/:userId" element={<AdminUserDetailPage />} />
-                    <Route path="/admin/logs" element={<AdminAuditLogsPage />} />
-                    {/* User Routes */}
+                    <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboardPage /></AdminRoute>} />
+                    <Route path="/admin/users" element={<AdminRoute><AdminUsersPage /></AdminRoute>} />
+                    <Route path="/admin/users/:userId" element={<AdminRoute><AdminUserDetailPage /></AdminRoute>} />
+                    <Route path="/admin/logs" element={<AdminRoute><AdminAuditLogsPage /></AdminRoute>} />
+                    <Route path="/admin/plans" element={<AdminRoute><AdminPlansPage /></AdminRoute>} />
+                    {/* User Routes - all protected by ProtectedRoute */}
                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
                     <Route path="/campaigns" element={<ProtectedRoute><CampaignsPage /></ProtectedRoute>} />

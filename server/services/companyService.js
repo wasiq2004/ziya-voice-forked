@@ -54,6 +54,25 @@ class CompanyService {
 
         return { success: true, companyId };
     }
+
+    async renameCompany(userId, companyId, newName) {
+        // Verify company belongs to user (owner)
+        const [rows] = await this.mysqlPool.execute(
+            'SELECT id FROM companies WHERE id = ? AND user_id = ?',
+            [companyId, userId]
+        );
+
+        if (rows.length === 0) {
+            throw new Error('Company not found or unauthorized');
+        }
+
+        await this.mysqlPool.execute(
+            'UPDATE companies SET name = ?, updated_at = NOW() WHERE id = ?',
+            [newName, companyId]
+        );
+
+        return { success: true, companyId, name: newName };
+    }
 }
 
 module.exports = CompanyService;
