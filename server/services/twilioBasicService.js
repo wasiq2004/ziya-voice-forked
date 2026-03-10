@@ -9,8 +9,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 var __generator = (this && this.__generator) || function (thisArg, body) {
-    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
-    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    var _ = { label: 0, sent: function () { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
+    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function () { return this; }), g;
     function verb(n) { return function (v) { return step([n, v]); }; }
     function step(op) {
         if (f) throw new TypeError("Generator is already executing.");
@@ -59,12 +59,12 @@ var TwilioBasicService = /** @class */ (function () {
                         }
                         config = rows[0];
                         return [2 /*return*/, {
-                                accountSid: config.account_sid,
-                                authToken: config.auth_token,
-                                apiKeySid: config.api_key_sid || undefined,
-                                apiKeySecret: config.api_key_secret || undefined,
-                                appUrl: config.app_url
-                            }];
+                            accountSid: config.account_sid,
+                            authToken: config.auth_token,
+                            apiKeySid: config.api_key_sid || undefined,
+                            apiKeySecret: config.api_key_secret || undefined,
+                            appUrl: config.app_url
+                        }];
                 }
             });
         });
@@ -82,8 +82,8 @@ var TwilioBasicService = /** @class */ (function () {
                         config = _a.sent();
                         if (config.apiKeySid && config.apiKeySecret) {
                             return [2 /*return*/, (0, twilio_1.default)(config.apiKeySid, config.apiKeySecret, {
-                                    accountSid: config.accountSid
-                                })];
+                                accountSid: config.accountSid
+                            })];
                         }
                         else {
                             return [2 /*return*/, (0, twilio_1.default)(config.accountSid, config.authToken)];
@@ -122,9 +122,9 @@ var TwilioBasicService = /** @class */ (function () {
                         // Update existing config
                         _a.sent();
                         return [3 /*break*/, 6];
-                    case 4: 
-                    // Insert new config
-                    return [4 /*yield*/, database_js_1.default.execute("INSERT INTO user_twilio_configs \n           (id, user_id, account_sid, auth_token, api_key_sid, api_key_secret, app_url)\n           VALUES (?, ?, ?, ?, ?, ?, ?)", [id, userId, accountSid, authToken, apiKeySid || null, apiKeySecret || null, appUrl])];
+                    case 4:
+                        // Insert new config
+                        return [4 /*yield*/, database_js_1.default.execute("INSERT INTO user_twilio_configs \n           (id, user_id, account_sid, auth_token, api_key_sid, api_key_secret, app_url)\n           VALUES (?, ?, ?, ?, ?, ?, ?)", [id, userId, accountSid, authToken, apiKeySid || null, apiKeySecret || null, appUrl])];
                     case 5:
                         // Insert new config
                         _a.sent();
@@ -154,12 +154,12 @@ var TwilioBasicService = /** @class */ (function () {
                             return [2 /*return*/, null];
                         }
                         return [2 /*return*/, {
-                                id: rows[0].id,
-                                accountSid: rows[0].account_sid,
-                                appUrl: rows[0].app_url,
-                                createdAt: rows[0].created_at,
-                                updatedAt: rows[0].updated_at
-                            }];
+                            id: rows[0].id,
+                            accountSid: rows[0].account_sid,
+                            appUrl: rows[0].app_url,
+                            createdAt: rows[0].created_at,
+                            updatedAt: rows[0].updated_at
+                        }];
                 }
             });
         });
@@ -182,8 +182,8 @@ var TwilioBasicService = /** @class */ (function () {
                     case 2:
                         client = _d.sent();
                         return [4 /*yield*/, client.incomingPhoneNumbers.list({
-                                phoneNumber: number
-                            })];
+                            phoneNumber: number
+                        })];
                     case 3:
                         incomingNumbers = _d.sent();
                         if (incomingNumbers.length === 0) {
@@ -206,20 +206,25 @@ var TwilioBasicService = /** @class */ (function () {
                         if (!(existing.length > 0)) return [3 /*break*/, 6];
                         // Update existing number
                         return [4 /*yield*/, database_js_1.default.execute("UPDATE phone_numbers \n           SET twilio_number_sid = ?, region = ?, capabilities = ?, \n               voice_webhook_url = ?, status_webhook_url = ?, updated_at = NOW()\n           WHERE id = ?", [
-                                twilioNumber.sid,
-                                region,
-                                JSON.stringify(capabilities),
-                                voiceWebhookUrl,
-                                statusWebhookUrl,
-                                id
-                            ])];
+                            twilioNumber.sid,
+                            region,
+                            JSON.stringify(capabilities),
+                            voiceWebhookUrl,
+                            statusWebhookUrl,
+                            id
+                        ])];
                     case 5:
                         // Update existing number
                         _d.sent();
                         return [3 /*break*/, 8];
-                    case 6: 
-                    // Insert new number
-                    return [4 /*yield*/, database_js_1.default.execute("INSERT INTO phone_numbers \n           (id, user_id, number, twilio_number_sid, provider, region, capabilities, voice_webhook_url, status_webhook_url)\n           VALUES (?, ?, ?, ?, 'twilio', ?, ?, ?, ?)", [
+                    case 6:
+                        // Insert new number
+                        // Fetch user's current company ID
+                        return [4 /*yield*/, database_js_1.default.execute('SELECT current_company_id FROM users WHERE id = ?', [userId])];
+                    case 7:
+                        var companyRows = (_d.sent())[0];
+                        var companyId = (companyRows.length > 0 && companyRows[0].current_company_id) ? companyRows[0].current_company_id : null;
+                        return [4 /*yield*/, database_js_1.default.execute("INSERT INTO phone_numbers \n           (id, user_id, number, twilio_number_sid, provider, region, capabilities, voice_webhook_url, status_webhook_url, company_id)\n           VALUES (?, ?, ?, ?, 'twilio', ?, ?, ?, ?, ?)", [
                             id,
                             userId,
                             number,
@@ -227,28 +232,29 @@ var TwilioBasicService = /** @class */ (function () {
                             region,
                             JSON.stringify(capabilities),
                             voiceWebhookUrl,
-                            statusWebhookUrl
+                            statusWebhookUrl,
+                            companyId
                         ])];
-                    case 7:
+                    case 8:
                         // Insert new number
                         _d.sent();
-                        _d.label = 8;
-                    case 8: 
-                    // Update webhook URLs in Twilio
-                    return [4 /*yield*/, client.incomingPhoneNumbers(twilioNumber.sid).update({
+                        _d.label = 9;
+                    case 9:
+                        // Update webhook URLs in Twilio
+                        return [4 /*yield*/, client.incomingPhoneNumbers(twilioNumber.sid).update({
                             voiceUrl: voiceWebhookUrl,
                             voiceMethod: "POST",
                             statusCallback: statusWebhookUrl,
                             statusCallbackMethod: "POST"
                         })];
-                    case 9:
+                    case 10:
                         // Update webhook URLs in Twilio
                         _d.sent();
                         return [4 /*yield*/, database_js_1.default.execute('SELECT * FROM phone_numbers WHERE id = ?', [id])];
-                    case 10:
+                    case 11:
                         rows = (_d.sent())[0];
                         return [2 /*return*/, this.mapPhoneNumberFromDb(rows[0])];
-                    case 11:
+                    case 12:
                         error_2 = _d.sent();
                         console.error('Error connecting Twilio number:', error_2);
                         throw new Error("Failed to connect number: ".concat(error_2.message));
@@ -301,13 +307,13 @@ var TwilioBasicService = /** @class */ (function () {
                         defaultVoiceUrl = "".concat(appUrl, "/api/twilio/voice?userId=").concat(userId);
                         defaultStatusCallbackUrl = "".concat(appUrl, "/api/twilio/callback?userId=").concat(userId);
                         return [4 /*yield*/, client.calls.create({
-                                from: from,
-                                to: to,
-                                url: phoneNumber.voice_webhook_url || defaultVoiceUrl,
-                                statusCallback: phoneNumber.status_webhook_url || defaultStatusCallbackUrl,
-                                statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed', 'busy', 'failed', 'no-answer'],
-                                statusCallbackMethod: 'POST'
-                            })];
+                            from: from,
+                            to: to,
+                            url: phoneNumber.voice_webhook_url || defaultVoiceUrl,
+                            statusCallback: phoneNumber.status_webhook_url || defaultStatusCallbackUrl,
+                            statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed', 'busy', 'failed', 'no-answer'],
+                            statusCallbackMethod: 'POST'
+                        })];
                     case 4:
                         call = _a.sent();
                         callId = (0, uuid_1.v4)();

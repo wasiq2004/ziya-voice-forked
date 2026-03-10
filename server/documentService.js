@@ -9,8 +9,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 var __generator = (this && this.__generator) || function (thisArg, body) {
-    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
-    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    var _ = { label: 0, sent: function () { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
+    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function () { return this; }), g;
     function verb(n) { return function (v) { return step([n, v]); }; }
     function step(op) {
         if (f) throw new TypeError("Generator is already executing.");
@@ -42,21 +42,14 @@ var DocumentService = /** @class */ (function () {
     function DocumentService(mysqlPool) {
         this.mysqlPool = mysqlPool;
     }
-    /**
-     * Upload a document
-     * @param userId The ID of the user
-     * @param name The name of the document
-     * @param content The content of the document
-     * @param agentId Optional agent ID to associate with the document
-     * @returns The created document
-     */
+
     DocumentService.prototype.uploadDocument = function (userId, name, content, agentId) {
         return __awaiter(this, void 0, void 0, function () {
-            var maxContentLength, documentId, error_1;
+            var maxContentLength, userRows, companyId, documentId, error_1;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
-                        _a.trys.push([0, 2, , 3]);
+                        _a.trys.push([0, 3, , 4]);
                         // Validate inputs
                         if (!userId) {
                             throw new Error('User ID is required');
@@ -71,40 +64,52 @@ var DocumentService = /** @class */ (function () {
                         if (content.length > maxContentLength) {
                             throw new Error("Content exceeds limit of 5MB. Current content length: ".concat((content.length / (1024 * 1024)).toFixed(2), "MB"));
                         }
-                        documentId = (0, uuid_1.v4)();
-                        return [4 /*yield*/, this.mysqlPool.execute("INSERT INTO documents (id, user_id, agent_id, name, content) \n         VALUES (?, ?, ?, ?, ?)", [documentId, userId, agentId || null, name, content])];
+                        // Fetch user's current company ID
+                        return [4 /*yield*/, this.mysqlPool.execute('SELECT current_company_id FROM users WHERE id = ?', [userId])];
                     case 1:
+                        userRows = (_a.sent())[0];
+                        companyId = userRows.length > 0 ? userRows[0].current_company_id : null;
+                        documentId = (0, uuid_1.v4)();
+                        return [4 /*yield*/, this.mysqlPool.execute("INSERT INTO documents (id, user_id, agent_id, name, content, company_id) \n         VALUES (?, ?, ?, ?, ?, ?)", [documentId, userId, agentId || null, name, content, companyId])];
+                    case 2:
                         _a.sent();
                         return [2 /*return*/, {
-                                id: documentId,
-                                name: name,
-                                userId: userId,
-                                agentId: agentId || null
-                            }];
-                    case 2:
+                            id: documentId,
+                            name: name,
+                            userId: userId,
+                            agentId: agentId || null
+                        }];
+                    case 3:
                         error_1 = _a.sent();
                         console.error('Error uploading document:', error_1);
                         throw error_1;
-                    case 3: return [2 /*return*/];
+                    case 4: return [2 /*return*/];
                 }
             });
         });
     };
-    /**
-     * Get documents for a user
-     * @param userId The ID of the user
-     * @param agentId Optional agent ID to filter documents
-     * @returns List of documents
-     */
+
     DocumentService.prototype.getDocuments = function (userId, agentId) {
         return __awaiter(this, void 0, void 0, function () {
-            var query, params, rows, error_2;
+            var query, params, userRows, companyId, rows, error_2;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
-                        _a.trys.push([0, 2, , 3]);
+                        _a.trys.push([0, 3, , 4]);
                         query = 'SELECT id, user_id, agent_id, name, uploaded_at FROM documents WHERE user_id = ?';
                         params = [userId];
+                        // Fetch user's current company ID
+                        return [4 /*yield*/, this.mysqlPool.execute('SELECT current_company_id FROM users WHERE id = ?', [userId])];
+                    case 1:
+                        userRows = (_a.sent())[0];
+                        companyId = userRows.length > 0 ? userRows[0].current_company_id : null;
+                        if (companyId) {
+                            query += ' AND company_id = ?';
+                            params.push(companyId);
+                        }
+                        else {
+                            query += ' AND (company_id IS NULL OR company_id = "")';
+                        }
                         if (agentId) {
                             query += ' AND (agent_id = ? OR agent_id IS NULL)';
                             params.push(agentId);
@@ -114,23 +119,19 @@ var DocumentService = /** @class */ (function () {
                         }
                         query += ' ORDER BY uploaded_at DESC';
                         return [4 /*yield*/, this.mysqlPool.execute(query, params)];
-                    case 1:
+                    case 2:
                         rows = (_a.sent())[0];
                         return [2 /*return*/, rows];
-                    case 2:
+                    case 3:
                         error_2 = _a.sent();
                         console.error('Error fetching documents:', error_2);
                         throw error_2;
-                    case 3: return [2 /*return*/];
+                    case 4: return [2 /*return*/];
                 }
             });
         });
     };
-    /**
-     * Get document content by ID
-     * @param documentId The ID of the document
-     * @returns The document content
-     */
+
     DocumentService.prototype.getDocumentContent = function (documentId) {
         return __awaiter(this, void 0, void 0, function () {
             var rows, error_3;
@@ -154,10 +155,7 @@ var DocumentService = /** @class */ (function () {
             });
         });
     };
-    /**
-     * Delete a document
-     * @param documentId The ID of the document to delete
-     */
+ 
     DocumentService.prototype.deleteDocument = function (documentId) {
         return __awaiter(this, void 0, void 0, function () {
             var error_4;

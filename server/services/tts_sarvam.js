@@ -73,92 +73,53 @@ function detectAudioFormat(buffer) {
  */
 async function convertToPcm8k(audioBuffer, sourceFormat) {
     return new Promise((resolve, reject) => {
-        // Create temp files
-        const tempDir = os.tmpdir();
-        const inputExt = sourceFormat === 's16le' ? 'pcm' : sourceFormat;
-        const inputFile = path.join(tempDir, `sarvam_input_${Date.now()}.${inputExt}`);
-        const outputFile = path.join(tempDir, `sarvam_output_${Date.now()}.pcm`);
-
         try {
-            // Write input to temp file
-            fs.writeFileSync(inputFile, audioBuffer);
+            const inputExt = sourceFormat === 's16le' ? 'pcm' : sourceFormat;
 
-            // Build ffmpeg args
-            // We want strict S16LE 8kHz Mono output
+            // Build ffmpeg args for memory-based processing
             const args = [
                 '-y',
-                '-i', inputFile,
+                '-i', 'pipe:0',      // Input from stdin
                 '-f', 's16le',
                 '-ar', '8000',
                 '-ac', '1',
                 '-acodec', 'pcm_s16le',
-                outputFile
+                'pipe:1'             // Output to stdout
             ];
 
-            // If input is raw PCM, suggest input format params (assume 24kHz or let ffmpeg guess? Sarvam usually MP3/WAV now)
-            // But if we forced 8k in request, input might be 8k.
-            // Safe to let ffmpeg auto-detect if container exists (wav/mp3).
-            // If raw s16le, we might need to specify input rate.
             if (sourceFormat === 's16le') {
-                // Prepend input format args
-                args.unshift('-ac', '1');
-                args.unshift('-ar', '24000'); // Assume 24k default for raw Sarvam legacy? 
-                args.unshift('-f', 's16le');
+                args.splice(1, 0, '-f', 's16le', '-ar', '24000', '-ac', '1');
             }
 
             const ffmpeg = spawn('ffmpeg', args);
+            let pcmData = Buffer.alloc(0);
             let ffmpegError = '';
 
-            // Capture stderr for debugging
+            ffmpeg.stdout.on('data', (data) => {
+                pcmData = Buffer.concat([pcmData, data]);
+            });
+
             ffmpeg.stderr.on('data', (data) => {
                 ffmpegError += data.toString();
             });
 
-            // Add timeout to prevent hanging
-            const timeout = setTimeout(() => {
-                ffmpeg.kill();
-                cleanup();
-                reject(new Error('FFmpeg conversion timed out after 30 seconds'));
-            }, 30000);
-
             ffmpeg.on('close', (code) => {
-                clearTimeout(timeout);
-                cleanup();
                 if (code !== 0) {
                     reject(new Error(`ffmpeg exited with code ${code}. Error: ${ffmpegError}`));
                     return;
                 }
-
-                if (fs.existsSync(outputFile)) {
-                    const pcmData = fs.readFileSync(outputFile);
-                    try {
-                        fs.unlinkSync(outputFile);
-                    } catch (e) {
-                        console.error('Failed to cleanup output file:', e);
-                    }
-                    resolve(pcmData);
-                } else {
-                    reject(new Error('Output file not created'));
-                }
+                resolve(pcmData);
             });
 
             ffmpeg.on('error', (err) => {
-                clearTimeout(timeout);
-                cleanup();
-                reject(new Error(`FFmpeg error: ${err.message}. Make sure FFmpeg is installed.`));
+                reject(new Error(`FFmpeg error: ${err.message}`));
             });
 
-            function cleanup() {
-                try {
-                    if (fs.existsSync(inputFile)) fs.unlinkSync(inputFile);
-                    if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile);
-                } catch (e) {
-                    console.error('Cleanup error:', e);
-                }
-            }
+            // Write input buffer to ffmpeg stdin
+            ffmpeg.stdin.write(audioBuffer);
+            ffmpeg.stdin.end();
 
         } catch (err) {
-            if (fs.existsSync(inputFile)) fs.unlinkSync(inputFile);
             reject(err);
         }
     });
@@ -172,84 +133,50 @@ async function convertToPcm8k(audioBuffer, sourceFormat) {
  */
 async function convertToMp3(audioBuffer, sourceFormat) {
     return new Promise((resolve, reject) => {
-        const tempDir = os.tmpdir();
-        const inputExt = sourceFormat === 's16le' ? 'pcm' : sourceFormat;
-        const inputFile = path.join(tempDir, `sarvam_input_${Date.now()}.${inputExt}`);
-        const outputFile = path.join(tempDir, `sarvam_output_${Date.now()}.mp3`);
-
         try {
-            // Write input to temp file
-            fs.writeFileSync(inputFile, audioBuffer);
-
-            // Build ffmpeg args for MP3 conversion
             const args = [
                 '-y',
-                '-i', inputFile,
+                '-i', 'pipe:0',
                 '-codec:a', 'libmp3lame',
                 '-b:a', '128k',
                 '-ar', '44100',
                 '-ac', '2',
-                outputFile
+                '-f', 'mp3',
+                'pipe:1'
             ];
 
-            // If input is raw PCM, specify input format
             if (sourceFormat === 's16le') {
-                args.unshift('-ac', '1');
-                args.unshift('-ar', '24000');
-                args.unshift('-f', 's16le');
+                args.splice(1, 0, '-f', 's16le', '-ar', '24000', '-ac', '1');
             }
 
             const ffmpeg = spawn('ffmpeg', args);
+            let mp3Data = Buffer.alloc(0);
             let ffmpegError = '';
+
+            ffmpeg.stdout.on('data', (data) => {
+                mp3Data = Buffer.concat([mp3Data, data]);
+            });
 
             ffmpeg.stderr.on('data', (data) => {
                 ffmpegError += data.toString();
             });
 
-            const timeout = setTimeout(() => {
-                ffmpeg.kill();
-                cleanup();
-                reject(new Error('FFmpeg MP3 conversion timed out after 30 seconds'));
-            }, 30000);
-
             ffmpeg.on('close', (code) => {
-                clearTimeout(timeout);
-                cleanup();
                 if (code !== 0) {
                     reject(new Error(`ffmpeg MP3 conversion failed with code ${code}. Error: ${ffmpegError}`));
                     return;
                 }
-
-                if (fs.existsSync(outputFile)) {
-                    const mp3Data = fs.readFileSync(outputFile);
-                    try {
-                        fs.unlinkSync(outputFile);
-                    } catch (e) {
-                        console.error('Failed to cleanup MP3 output file:', e);
-                    }
-                    resolve(mp3Data);
-                } else {
-                    reject(new Error('MP3 output file not created'));
-                }
+                resolve(mp3Data);
             });
 
             ffmpeg.on('error', (err) => {
-                clearTimeout(timeout);
-                cleanup();
-                reject(new Error(`FFmpeg MP3 conversion error: ${err.message}. Make sure FFmpeg is installed.`));
+                reject(new Error(`FFmpeg MP3 conversion error: ${err.message}`));
             });
 
-            function cleanup() {
-                try {
-                    if (fs.existsSync(inputFile)) fs.unlinkSync(inputFile);
-                    if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile);
-                } catch (e) {
-                    console.error('Cleanup error:', e);
-                }
-            }
+            ffmpeg.stdin.write(audioBuffer);
+            ffmpeg.stdin.end();
 
         } catch (err) {
-            if (fs.existsSync(inputFile)) fs.unlinkSync(inputFile);
             reject(err);
         }
     });
@@ -270,8 +197,8 @@ async function generateSarvamTTS(text, options = {}) {
             throw new Error("SARVAM_API_KEY not configured in environment variables");
         }
 
-        const language = options.language || process.env.SARVAM_TTS_LANGUAGE || "en-IN";
-        const speaker = options.speaker || process.env.SARVAM_TTS_SPEAKER || "anushka";
+        const language = options.target_language_code || options.language || 'en-IN';
+        const speaker = options.speaker;
 
         console.log(`[TTS] Using provider: Sarvam`);
         console.log(`   Text: "${text.substring(0, 50)}..."`);
@@ -324,11 +251,17 @@ async function generateSarvamTTS(text, options = {}) {
             let errorMessage = `Sarvam API error: ${response.status}`;
             try {
                 const errorData = await response.json();
-                errorMessage += ` - ${errorData.message || errorData.error || JSON.stringify(errorData)}`;
+                // Properly serialize the error object
+                errorMessage += ` - ${typeof errorData === 'string' ? errorData : JSON.stringify(errorData)}`;
             } catch (e) {
-                const errorText = await response.text();
-                errorMessage += ` - ${errorText}`;
+                try {
+                    const errorText = await response.text();
+                    errorMessage += ` - ${errorText}`;
+                } catch (e2) {
+                    errorMessage += ' - (could not read error body)';
+                }
             }
+            console.error('[TTS] Sarvam error details:', errorMessage);
             throw new Error(errorMessage);
         }
 

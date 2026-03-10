@@ -9,8 +9,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 var __generator = (this && this.__generator) || function (thisArg, body) {
-    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
-    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    var _ = { label: 0, sent: function () { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
+    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function () { return this; }), g;
     function verb(n) { return function (v) { return step([n, v]); }; }
     function step(op) {
         if (f) throw new TypeError("Generator is already executing.");
@@ -40,7 +40,7 @@ var __asyncValues = (this && this.__asyncValues) || function (o) {
     var m = o[Symbol.asyncIterator], i;
     return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i);
     function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
-    function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
+    function settle(resolve, reject, d, v) { Promise.resolve(v).then(function (v) { resolve({ value: v, done: d }); }, reject); }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ElevenLabsStreamHandler = void 0;
@@ -125,9 +125,9 @@ var ElevenLabsStreamHandler = /** @class */ (function () {
                         agentPrompt = agentConfig.identity;
                         voiceId = agentConfig.voiceId;
                         agentModel = agentConfig.model || 'gemini-2.5-flash';
-                        elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+                        elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY;
                         if (!elevenLabsApiKey) {
-                            console.error('ELEVENLABS_API_KEY not configured');
+                            console.error('ELEVEN_LABS_API_KEY not configured');
                             ws.close();
                             return [2 /*return*/];
                         }
@@ -141,50 +141,52 @@ var ElevenLabsStreamHandler = /** @class */ (function () {
                         }, 25000);
                         _this = this;
                         // Handle incoming messages from Twilio
-                        ws.on('message', function (message) { return __awaiter(_this, void 0, void 0, function () {
-                            var data, greetingLine;
-                            return __generator(this, function (_a) {
-                                switch (_a.label) {
-                                    case 0:
-                                        try {
-                                            data = JSON.parse(message.toString());
-                                            switch (data.event) {
-                                                case 'connected':
-                                                    console.log("Call ".concat(callId, " connected to media stream"));
-                                                    greetingLine = agentConfig.settings && agentConfig.settings.greetingLine ? agentConfig.settings.greetingLine : 'Hello, how can I help you today?';
-                                                    return [4 /*yield*/, this.generateTTS(session, greetingLine)];
-                                                case 1:
-                                                    _a.sent();
-                                                    return [2 /*return*/];
-                                                case 2:
-                                                    if (data.media && data.media.payload) {
-                                                        return [4 /*yield*/, this.handleIncomingAudio(session, data.media.payload)];
-                                                    }
-                                                    return [3 /*break*/, 4];
-                                                case 3:
-                                                    _a.sent();
-                                                    _a.label = 4;
-                                                case 4:
-                                                    if (data.event === 'mark') {
-                                                        console.log("Mark received: ".concat(data.mark && data.mark.requestId ? data.mark.requestId : 'unknown'));
-                                                    }
-                                                    if (data.event === 'stop') {
-                                                        console.log("Call ".concat(callId, " media stream stopped"));
-                                                        this.endSession(callId);
-                                                    }
-                                                    if (data.event !== 'connected' && data.event !== 'media' && data.event !== 'mark' && data.event !== 'stop') {
-                                                        console.log("Unknown Twilio event: ".concat(data.event));
-                                                    }
-                                                    return [2 /*return*/];
+                        ws.on('message', function (message) {
+                            return __awaiter(_this, void 0, void 0, function () {
+                                var data, greetingLine;
+                                return __generator(this, function (_a) {
+                                    switch (_a.label) {
+                                        case 0:
+                                            try {
+                                                data = JSON.parse(message.toString());
+                                                switch (data.event) {
+                                                    case 'connected':
+                                                        console.log("Call ".concat(callId, " connected to media stream"));
+                                                        greetingLine = agentConfig.settings && agentConfig.settings.greetingLine ? agentConfig.settings.greetingLine : 'Hello, how can I help you today?';
+                                                        return [4 /*yield*/, this.generateTTS(session, greetingLine)];
+                                                    case 1:
+                                                        _a.sent();
+                                                        return [2 /*return*/];
+                                                    case 2:
+                                                        if (data.media && data.media.payload) {
+                                                            return [4 /*yield*/, this.handleIncomingAudio(session, data.media.payload)];
+                                                        }
+                                                        return [3 /*break*/, 4];
+                                                    case 3:
+                                                        _a.sent();
+                                                        _a.label = 4;
+                                                    case 4:
+                                                        if (data.event === 'mark') {
+                                                            console.log("Mark received: ".concat(data.mark && data.mark.requestId ? data.mark.requestId : 'unknown'));
+                                                        }
+                                                        if (data.event === 'stop') {
+                                                            console.log("Call ".concat(callId, " media stream stopped"));
+                                                            this.endSession(callId);
+                                                        }
+                                                        if (data.event !== 'connected' && data.event !== 'media' && data.event !== 'mark' && data.event !== 'stop') {
+                                                            console.log("Unknown Twilio event: ".concat(data.event));
+                                                        }
+                                                        return [2 /*return*/];
+                                                }
                                             }
-                                        }
-                                        catch (error) {
-                                            console.error('Error processing WebSocket message:', error);
-                                        }
-                                        return [2 /*return*/];
+                                            catch (error) {
+                                                console.error('Error processing WebSocket message:', error);
+                                            }
+                                            return [2 /*return*/];
                                     }
                                 });
-                            }); });
+                            });
+                        });
                         // Handle WebSocket connection close
                         ws.on('close', function (code, reason) {
                             console.log("WebSocket connection closed for call ".concat(callId, ". Code: ").concat(code, ", Reason: ").concat(reason));
@@ -357,12 +359,12 @@ var ElevenLabsStreamHandler = /** @class */ (function () {
                     case 0:
                         _a.trys.push([0, 2, , 3]);
                         return [4 /*yield*/, this.llmService.generateContent({
-                                model: session.agentModel,
-                                contents: session.context,
-                                config: {
-                                    systemInstruction: session.agentPrompt
-                                }
-                            })];
+                            model: session.agentModel,
+                            contents: session.context,
+                            config: {
+                                systemInstruction: session.agentPrompt
+                            }
+                        })];
                     case 1:
                         response = _a.sent();
                         return [2 /*return*/, response.text];
@@ -388,7 +390,7 @@ var ElevenLabsStreamHandler = /** @class */ (function () {
                         _e.trys.push([0, 18, , 19]);
                         if (!session.elevenLabsClient) {
                             console.error('ElevenLabs client not initialized');
-                             // Send error to client
+                            // Send error to client
                             if (session.ws && session.ws.readyState === session.ws.OPEN) {
                                 session.ws.send(JSON.stringify({
                                     event: 'error',
@@ -404,7 +406,7 @@ var ElevenLabsStreamHandler = /** @class */ (function () {
                     case 2:
                         _e.sent();
                         return [3 /*break*/, 1];
-                    case 3: 
+                    case 3:
                         console.log('Generating TTS for text:', text.substring(0, 100) + (text.length > 100 ? '...' : ''));
                         return [4 /*yield*/, session.elevenLabsClient.textToSpeech.convert(session.voiceId, {
                             text: text,
@@ -461,7 +463,7 @@ var ElevenLabsStreamHandler = /** @class */ (function () {
                     case 18:
                         error_4 = _e.sent();
                         console.error('Error generating TTS:', error_4);
-                          // Send error to client
+                        // Send error to client
                         if (session.ws && session.ws.readyState === session.ws.OPEN) {
                             session.ws.send(JSON.stringify({
                                 event: 'error',
