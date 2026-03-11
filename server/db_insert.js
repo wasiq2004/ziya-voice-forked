@@ -2,12 +2,19 @@ const mysql = require('mysql2/promise');
 const crypto = require('crypto');
 (async () => {
     try {
+        // const pool = mysql.createPool({
+        //     host: 'localhost',
+        //     port: 3306,
+        //     user: 'root',
+        //     password: '1234',
+        //     database: 'ziya_voice_agent'
+        // });
         const pool = mysql.createPool({
-            host: 'localhost',
+            host: '76.13.245.20',
             port: 3306,
-            user: 'root',
-            password: '1234',
-            database: 'ziya_voice_agent'
+            user: 'ziya_user',
+            password: 'Ziya@123',
+            database: 'ziya_voice'
         });
         const [campaigns] = await pool.execute('SELECT id, user_id FROM campaigns LIMIT 1');
         if (campaigns.length > 0) {
