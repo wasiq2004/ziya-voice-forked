@@ -1,13 +1,11 @@
 version: '3.8'
 
 services:
-  node-app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  ziya-voice:
+    image: aspirentech/ziya-voice:latest
     container_name: ziya-voice
     restart: unless-stopped
     ports:
-      - "80:3000"
+      - "3000:3000"
     environment:
       NODE_ENV: development
