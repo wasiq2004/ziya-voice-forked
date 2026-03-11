@@ -60,8 +60,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser(authenticatedUser);
         // Store user in localStorage for session persistence
         localStorage.setItem('ziya-user', JSON.stringify(authenticatedUser));
-        // Navigate to the dashboard after successful login
-        navigate('/agents');
+        // Navigate based on role
+        const role = authenticatedUser.role;
+        if (role === 'super_admin') {
+          navigate('/superadmin/dashboard');
+        } else if (role === 'org_admin') {
+          navigate('/admin/dashboard');
+        } else {
+          navigate('/agents');
+        }
         return { data: { user: authenticatedUser }, error: null };
       } else {
         throw new Error('Invalid credentials');

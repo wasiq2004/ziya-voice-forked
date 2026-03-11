@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { SIDEBAR_ITEMS, ADMIN_SIDEBAR_ITEMS, APP_VERSION } from '../constants';
+import { SIDEBAR_ITEMS, ADMIN_SIDEBAR_ITEMS, SUPER_ADMIN_SIDEBAR_ITEMS, APP_VERSION } from '../constants';
 import { Page } from '../types';
 import { CreditCardIcon, ArrowLeftOnRectangleIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
@@ -112,6 +112,19 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                 return '/admin/users';
             case Page.AdminPlans:
                 return '/admin/plans';
+            // Super Admin routes
+            case Page.SuperAdminDashboard:
+                return '/superadmin/dashboard';
+            case Page.SuperAdminOrganizations:
+                return '/superadmin/organizations';
+            case Page.SuperAdminOrgAdmins:
+                return '/superadmin/org-admins';
+            case Page.SuperAdminUsers:
+                return '/superadmin/users';
+            case Page.SuperAdminPlans:
+                return '/superadmin/plans';
+            case Page.SuperAdminAnalytics:
+                return '/superadmin/analytics';
             default:
                 return '/dashboard';
         }
@@ -119,10 +132,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
 
     const getCurrentPage = (): Page => {
         const path = location.pathname;
+        // Super admin routes
+        if (path.startsWith('/superadmin/dashboard')) return Page.SuperAdminDashboard;
+        if (path.startsWith('/superadmin/organizations')) return Page.SuperAdminOrganizations;
+        if (path.startsWith('/superadmin/org-admins')) return Page.SuperAdminOrgAdmins;
+        if (path.startsWith('/superadmin/users')) return Page.SuperAdminUsers;
+        if (path.startsWith('/superadmin/plans')) return Page.SuperAdminPlans;
+        if (path.startsWith('/superadmin/analytics')) return Page.SuperAdminAnalytics;
+        // Admin routes
         if (path.startsWith('/admin/dashboard')) return Page.AdminDashboard;
         if (path.startsWith('/admin/users')) return Page.AdminUsers;
         if (path.startsWith('/admin/plans')) return Page.AdminPlans;
-
+        // User routes
         if (path === '/dashboard' || path === '/') return Page.Dashboard;
         if (path.startsWith('/campaigns')) return Page.Campaigns;
         if (path.startsWith('/agents')) return Page.Agent;
@@ -136,8 +157,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
         return Page.Dashboard;
     };
 
+    const isSuperAdminRoute = location.pathname.startsWith('/superadmin');
     const isAdminRoute = location.pathname.startsWith('/admin');
-    const displayItems = isAdminRoute ? ADMIN_SIDEBAR_ITEMS : SIDEBAR_ITEMS;
+    const displayItems = isSuperAdminRoute
+        ? SUPER_ADMIN_SIDEBAR_ITEMS
+        : isAdminRoute
+            ? ADMIN_SIDEBAR_ITEMS
+            : SIDEBAR_ITEMS;
     const activePage = getCurrentPage();
 
     return (
@@ -169,7 +195,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                 </div>
 
                 {/* Company Switcher — only show on normal user routes */}
-                {!isAdminRoute && (
+                {!isAdminRoute && !isSuperAdminRoute && (
                     <CompanySwitcher isCollapsed={isCollapsed} />
                 )}
             </div>
@@ -232,7 +258,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                 </ul>
             </nav>
             <div className="p-3 border-t border-gray-200 dark:border-gray-800">
-                {!isAdminRoute && (
+                {!isAdminRoute && !isSuperAdminRoute && (
                     <a
                         href="#"
                         onClick={(e) => {

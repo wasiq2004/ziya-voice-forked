@@ -38,9 +38,12 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
     const [adminUser, setAdminUser] = useState<any>(null);
 
     useEffect(() => {
-        const storedAdmin = localStorage.getItem('admin');
+        const storedAdmin = localStorage.getItem('ziya-user');
         if (storedAdmin) {
-            setAdminUser(JSON.parse(storedAdmin));
+            const parsed = JSON.parse(storedAdmin);
+            if (parsed.role === 'org_admin' || parsed.role === 'super_admin') {
+                setAdminUser(parsed);
+            }
         }
     }, []);
 
@@ -344,14 +347,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                                 {/* Logout Button */}
                                 <div className="p-2 border-t border-slate-100 dark:border-slate-700">
                                     <button
-                                        onClick={() => {
-                                            if (adminUser) {
-                                                localStorage.removeItem('admin');
-                                                navigate('/admin/login');
-                                            } else {
-                                                handleLogout();
-                                            }
-                                        }}
+                                        onClick={handleLogout}
                                         className="w-full px-3 py-2.5 text-left text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl flex items-center space-x-3 transition-colors"
                                     >
                                         <ArrowLeftOnRectangleIcon className="h-5 w-5" />

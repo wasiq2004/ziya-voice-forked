@@ -13,6 +13,35 @@ export enum Page {
     AdminDashboard = 'Admin Dashboard',
     AdminUsers = 'Users',
     AdminPlans = 'Plans',
+    // Super Admin Pages
+    SuperAdminDashboard = 'Super Admin Dashboard',
+    SuperAdminOrganizations = 'Organizations',
+    SuperAdminOrgAdmins = 'Org Admins',
+    SuperAdminUsers = 'All Users',
+    SuperAdminPlans = 'Platform Plans',
+    SuperAdminAnalytics = 'Platform Analytics',
+}
+
+export interface Organization {
+    id: number;
+    name: string;
+    created_by: number | null;
+    status: 'active' | 'inactive';
+    created_at: string;
+    updated_at: string;
+    admin_count?: number;
+    user_count?: number;
+}
+
+export interface OrgAdmin {
+    id: string;
+    email: string;
+    username: string;
+    organization_id: number | null;
+    organization_name?: string;
+    role: 'org_admin';
+    status: 'active' | 'inactive' | 'locked';
+    created_at: string;
 }
 
 export enum CampaignStatus {

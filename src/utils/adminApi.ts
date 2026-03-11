@@ -2,6 +2,27 @@ import { getApiBaseUrl } from './api';
 
 const API_BASE_URL = `${getApiBaseUrl()}/api`;
 
+const appendOrgId = (params?: URLSearchParams): string => {
+  let queryStr = '';
+  // Try to extract orgId from current user session
+  const userStr = localStorage.getItem('ziya-user');
+  if (userStr) {
+    try {
+      const user = JSON.parse(userStr);
+      if (user.role === 'org_admin' && user.organization_id) {
+        if (params) {
+          params.append('orgId', user.organization_id.toString());
+        } else {
+          queryStr = `?orgId=${user.organization_id}`;
+        }
+      }
+    } catch (e) {
+      // Ignore parse error
+    }
+  }
+  return params ? `?${params.toString()}` : queryStr;
+};
+
 export interface Admin {
   id: string;
   email: string;
@@ -85,7 +106,7 @@ export const adminLogin = async (email: string, password: string): Promise<Admin
 
 // Get dashboard statistics
 export const getDashboardStats = async (): Promise<DashboardStats> => {
-  const response = await fetch(`${API_BASE_URL}/admin/stats`);
+  const response = await fetch(`${API_BASE_URL}/admin/stats${appendOrgId()}`);
 
   // Validate content type before parsing JSON
   const contentType = response.headers.get('content-type');
@@ -107,7 +128,7 @@ export const getUsers = async (page: number = 1, limit: number = 50, search: str
     search
   });
 
-  const response = await fetch(`${API_BASE_URL}/admin/users?${params}`);
+  const response = await fetch(`${API_BASE_URL}/admin/users${appendOrgId(params)}`);
 
   // Validate content type before parsing JSON
   const contentType = response.headers.get('content-type');
@@ -574,6 +595,27 @@ export const checkUserPlanAccess = async (userId: string): Promise<PlanAccessInf
   if (!response.ok) {
     const e = await response.json();
     throw new Error(e.message || 'Failed to check plan access');
+  }
+  return response.json();
+};
+
+/** Create a new user under an organization (used by org admins) */
+export const createUser = async (payload: {
+  email: string;
+  username: string;
+  password: string;
+  organization_id?: number | null;
+}): Promise<{ success: boolean; message: string; userId: string }> => {
+  const response = await fetch(`${API_BASE_URL}/admin/users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const contentType = response.headers.get('content-type');
+  if (!contentType?.includes('application/json')) throw new Error('Non-JSON response from server');
+  if (!response.ok) {
+    const e = await response.json();
+    throw new Error(e.message || 'Failed to create user');
   }
   return response.json();
 };
