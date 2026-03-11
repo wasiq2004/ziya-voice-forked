@@ -11,7 +11,8 @@ export default defineConfig(({ mode }) => {
         allowedHosts: true,
         proxy: {
           '/api': {
-            target: 'http://localhost:5000',
+            //target: 'http://localhost:5000',
+            target: 'http://ziyasuite.com',
             changeOrigin: true,
             secure: false,
           }
