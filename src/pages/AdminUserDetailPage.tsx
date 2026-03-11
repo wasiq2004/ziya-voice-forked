@@ -55,13 +55,18 @@ const AdminUserDetailPage: React.FC = () => {
   });
 
   useEffect(() => {
-    const adminData = localStorage.getItem('admin');
+    const adminData = localStorage.getItem('ziya-user');
     if (!adminData) {
-      navigate('/admin/login');
+      navigate('/login');
+      return;
+    }
+    const parsed = JSON.parse(adminData);
+    if (parsed.role !== 'org_admin' && parsed.role !== 'super_admin') {
+      navigate('/login');
       return;
     }
 
-    setAdmin(JSON.parse(adminData));
+    setAdmin(parsed);
     fetchUserDetails();
   }, [userId, navigate]);
 

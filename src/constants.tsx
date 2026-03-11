@@ -24,6 +24,9 @@ import {
     PencilIcon,
     ClipboardDocumentListIcon,
     CalendarIcon,
+    BuildingOfficeIcon,
+    UsersIcon,
+    PresentationChartBarIcon,
 } from '@heroicons/react/24/outline';
 // FIX: Add missing icon import
 import { PhoneIcon as SolidPhoneIcon, MicrophoneIcon } from '@heroicons/react/24/solid';
@@ -72,6 +75,15 @@ export const ADMIN_SIDEBAR_ITEMS: SidebarItem[] = [
     { id: Page.AdminDashboard, icon: ChartBarIcon },
     { id: Page.AdminUsers, icon: UserGroupIcon },
     { id: Page.AdminPlans, icon: CircleStackIcon },
+];
+
+export const SUPER_ADMIN_SIDEBAR_ITEMS: SidebarItem[] = [
+    { id: Page.SuperAdminDashboard, icon: ChartBarIcon },
+    { id: Page.SuperAdminOrganizations, icon: BuildingOfficeIcon },
+    { id: Page.SuperAdminOrgAdmins, icon: UserGroupIcon },
+    { id: Page.SuperAdminUsers, icon: UsersIcon },
+    { id: Page.SuperAdminPlans, icon: CircleStackIcon },
+    { id: Page.SuperAdminAnalytics, icon: PresentationChartBarIcon },
 ];
 
 

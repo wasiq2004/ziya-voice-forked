@@ -24,8 +24,7 @@ export const getAuthParams = () => {
 };
 
 export const getApiBaseUrl = () => {
-  //return "http://localhost:5000";
-  return "https://ziyasuite.com";
+  return (import.meta as any).env?.VITE_API_BASE_URL;
 };
 
 export const fetchCampaigns = async (userId: string) => {

@@ -36,7 +36,7 @@ class AdminService {
   }
 
   // Get all users with their credit usage
-  async getAllUsers(page = 1, limit = 50, search = '') {
+  async getAllUsers(page = 1, limit = 50, search = '', orgId = null) {
     try {
       // Ensure page and limit are valid numbers
       const validPage = Number(page) || 1;
@@ -63,10 +63,24 @@ class AdminService {
       `;
 
       const params = [];
+      let whereClauses = [];
+
+      if (orgId) {
+        // Org admin context: only show accounts from their org
+        whereClauses.push('u.organization_id = ?');
+        params.push(orgId);
+      }
+
+      // Always only show 'user' roles in the admin page, never other admins
+      whereClauses.push("u.role = 'user'");
 
       if (search && search.trim() !== '') {
-        query += ` WHERE u.email LIKE ? OR u.username LIKE ?`;
+        whereClauses.push('(u.email LIKE ? OR u.username LIKE ?)');
         params.push(`%${search}%`, `%${search}%`);
+      }
+
+      if (whereClauses.length > 0) {
+        query += ` WHERE ` + whereClauses.join(' AND ');
       }
 
       // Use string interpolation for LIMIT and OFFSET since MySQL has issues with them as prepared statement params
@@ -75,15 +89,12 @@ class AdminService {
       const [users] = await this.mysqlPool.execute(query, params);
 
       // Get total count
-      let countQuery = 'SELECT COUNT(*) as total FROM users';
-      const countParams = [];
-
-      if (search && search.trim() !== '') {
-        countQuery += ' WHERE email LIKE ? OR username LIKE ?';
-        countParams.push(`%${search}%`, `%${search}%`);
+      let countQuery = 'SELECT COUNT(*) as total FROM users u';
+      if (whereClauses.length > 0) {
+        countQuery += ` WHERE ` + whereClauses.join(' AND ');
       }
 
-      const [countResult] = await this.mysqlPool.execute(countQuery, countParams);
+      const [countResult] = await this.mysqlPool.execute(countQuery, params);
       const total = countResult[0].total;
 
       return {
@@ -459,9 +470,11 @@ class AdminService {
   }
 
   // Get administrative audit logs
-  async getAuditLogs(page = 1, limit = 50) {
+  async getAuditLogs(page = 1, limit = 50, orgId = null) {
     try {
       const offset = (page - 1) * limit;
+      let userJoin = orgId ? 'JOIN users target_org_filter ON l.target_user_id = target_org_filter.id AND target_org_filter.organization_id = ?' : '';
+      let params = orgId ? [orgId, limit, offset] : [limit, offset];
 
       const [logs] = await this.mysqlPool.execute(`
         SELECT 
@@ -473,11 +486,16 @@ class AdminService {
         FROM admin_activity_log l
         LEFT JOIN admin_users a ON l.admin_id = a.id
         LEFT JOIN users u ON l.target_user_id = u.id
+        ${userJoin}
         ORDER BY l.created_at DESC
         LIMIT ? OFFSET ?
-      `, [limit, offset]);
+      `, params);
 
-      const [countResult] = await this.mysqlPool.execute('SELECT COUNT(*) as total FROM admin_activity_log');
+      const countQuery = orgId
+        ? 'SELECT COUNT(*) as total FROM admin_activity_log l JOIN users tgt ON l.target_user_id = tgt.id WHERE tgt.organization_id = ?'
+        : 'SELECT COUNT(*) as total FROM admin_activity_log';
+      const countParams = orgId ? [orgId] : [];
+      const [countResult] = await this.mysqlPool.execute(countQuery, countParams);
       const total = countResult[0].total;
 
       return {
@@ -496,42 +514,51 @@ class AdminService {
   }
 
   // Get dashboard statistics
-  async getDashboardStats() {
+  async getDashboardStats(orgId = null) {
     try {
+      const orgParam = orgId ? [orgId] : [];
+
       // Total users
-      const [userCount] = await this.mysqlPool.execute('SELECT COUNT(*) as total FROM users');
+      const userWhere = orgId ? 'WHERE organization_id = ?' : '';
+      const [userCount] = await this.mysqlPool.execute(`SELECT COUNT(*) as total FROM users ${userWhere}`, orgParam);
 
       // Active users this month (users with usage)
+      const userJoin = orgId ? 'JOIN users u ON u.id = usu.user_id AND u.organization_id = ?' : '';
       const [activeUsers] = await this.mysqlPool.execute(`
-        SELECT COUNT(DISTINCT user_id) as total
-        FROM user_service_usage
-        WHERE period_start >= DATE_FORMAT(NOW(), '%Y-%m-01')
-      `);
+        SELECT COUNT(DISTINCT usu.user_id) as total
+        FROM user_service_usage usu
+        ${userJoin}
+        WHERE usu.period_start >= DATE_FORMAT(NOW(), '%Y-%m-01')
+      `, orgParam);
 
       // Total revenue this month
+      const pbJoin = orgId ? 'JOIN users u ON u.id = pb.user_id AND u.organization_id = ?' : '';
       const [revenue] = await this.mysqlPool.execute(`
-        SELECT COALESCE(SUM(total_amount), 0) as total
-        FROM platform_billing
-        WHERE billing_period_start >= DATE_FORMAT(NOW(), '%Y-%m-01')
-      `);
+        SELECT COALESCE(SUM(pb.total_amount), 0) as total
+        FROM platform_billing pb
+        ${pbJoin}
+        WHERE pb.billing_period_start >= DATE_FORMAT(NOW(), '%Y-%m-01')
+      `, orgParam);
 
       // Pending billing
       const [pending] = await this.mysqlPool.execute(`
-        SELECT COALESCE(SUM(total_amount), 0) as total
-        FROM platform_billing
-        WHERE status = 'pending'
-      `);
+        SELECT COALESCE(SUM(pb.total_amount), 0) as total
+        FROM platform_billing pb
+        ${pbJoin}
+        WHERE pb.status = 'pending'
+      `, orgParam);
 
       // Service usage breakdown for current month
       const [serviceUsage] = await this.mysqlPool.execute(`
         SELECT 
-          service_name,
-          COUNT(DISTINCT user_id) as user_count,
-          SUM(usage_amount) as total_usage
-        FROM user_service_usage
-        WHERE period_start >= DATE_FORMAT(NOW(), '%Y-%m-01')
-        GROUP BY service_name
-      `);
+          usu.service_name,
+          COUNT(DISTINCT usu.user_id) as user_count,
+          SUM(usu.usage_amount) as total_usage
+        FROM user_service_usage usu
+        ${userJoin}
+        WHERE usu.period_start >= DATE_FORMAT(NOW(), '%Y-%m-01')
+        GROUP BY usu.service_name
+      `, orgParam);
 
       return {
         totalUsers: userCount[0].total,

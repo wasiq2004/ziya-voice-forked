@@ -37,6 +37,7 @@ const { TwilioBasicService } = require('./services/twilioBasicService.js');
 const { MediaStreamHandler } = require('./services/mediaStreamHandler.js');
 const { ElevenLabsStreamHandler } = require('./services/elevenLabsStreamHandler.js');
 const AdminService = require('./services/adminService.js');
+const OrganizationService = require('./services/organizationService.js');
 const WalletService = require('./services/walletService.js');
 const CostCalculator = require('./services/costCalculator.js');
 const VoiceSyncService = require('./services/voiceSyncService.js');
@@ -84,6 +85,7 @@ const twilioService = new TwilioService();
 const twilioBasicService = new TwilioBasicService();
 const companyService = new CompanyService(mysqlPool);
 const adminService = new AdminService(mysqlPool);
+const organizationService = new OrganizationService(mysqlPool);
 // Google Sheets service removed
 
 // Initialize MediaStreamHandler for voice call pipeline
@@ -1595,6 +1597,219 @@ app.get('/api/create-admin-user', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+// ============================================================
+// SUPER ADMIN USER INITIALIZATION (runs at startup)
+// ============================================================
+(async () => {
+  try {
+    const superAdminEmail = 'superadmin@ziyavoice.com';
+    const superAdminPassword = 'ZiyaVoice@2026';
+    const [existing] = await mysqlPool.execute(
+      "SELECT id FROM users WHERE email = ? AND role = 'super_admin'",
+      [superAdminEmail]
+    );
+    if (existing.length === 0) {
+      const bcryptLib = require('bcryptjs');
+      const hash = await bcryptLib.hash(superAdminPassword, 10);
+      const superAdminId = require('crypto').randomBytes(8).toString('hex');
+      await mysqlPool.execute(
+        `INSERT INTO users (id, email, username, password_hash, role, status)
+         VALUES (?, ?, ?, ?, 'super_admin', 'active')`,
+        [superAdminId, superAdminEmail, 'superadmin', hash]
+      );
+      console.log('✅ Default super admin created: superadmin@ziyavoice.com');
+    } else {
+      console.log('✅ Super admin account already exists');
+    }
+  } catch (err) {
+    console.error('⚠️  Super admin init error:', err.message);
+  }
+})();
+
+// ============================================================
+// SUPER ADMIN API ROUTES
+// ============================================================
+
+// Super Admin stats
+app.get('/api/superadmin/stats', async (req, res) => {
+  try {
+    const stats = await organizationService.getSuperAdminStats();
+    res.json({ success: true, stats });
+  } catch (err) {
+    console.error('Super admin stats error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// List organizations
+app.get('/api/superadmin/organizations', async (req, res) => {
+  try {
+    const organizations = await organizationService.listOrganizations();
+    res.json({ success: true, organizations });
+  } catch (err) {
+    console.error('List organizations error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Create organization
+app.post('/api/superadmin/organizations', async (req, res) => {
+  try {
+    const { name, createdBy } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Organization name is required' });
+    }
+    const organization = await organizationService.createOrganization(name.trim(), createdBy);
+    res.json({ success: true, organization });
+  } catch (err) {
+    console.error('Create organization error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Update organization
+app.put('/api/superadmin/organizations/:orgId', async (req, res) => {
+  try {
+    const { orgId } = req.params;
+    const { name, status } = req.body;
+    const organization = await organizationService.updateOrganization(parseInt(orgId), { name, status });
+    res.json({ success: true, organization });
+  } catch (err) {
+    console.error('Update organization error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Disable organization
+app.patch('/api/superadmin/organizations/:orgId/disable', async (req, res) => {
+  try {
+    const { orgId } = req.params;
+    await organizationService.disableOrganization(parseInt(orgId));
+    res.json({ success: true, message: 'Organization disabled' });
+  } catch (err) {
+    console.error('Disable organization error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// List org admins
+app.get('/api/superadmin/org-admins', async (req, res) => {
+  try {
+    const orgAdmins = await organizationService.listOrgAdmins();
+    res.json({ success: true, orgAdmins });
+  } catch (err) {
+    console.error('List org admins error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Create org admin
+app.post('/api/superadmin/org-admins', async (req, res) => {
+  try {
+    const { email, username, password, organization_id } = req.body;
+    if (!email || !username || !password || !organization_id) {
+      return res.status(400).json({ success: false, message: 'All fields are required' });
+    }
+    const orgAdmin = await organizationService.createOrgAdmin({ email, username, password, organization_id });
+    res.json({ success: true, orgAdmin });
+  } catch (err) {
+    console.error('Create org admin error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// List all users (super admin)
+app.get('/api/superadmin/users', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const search = req.query.search || '';
+    const orgId = req.query.orgId ? parseInt(req.query.orgId) : null;
+    const result = await organizationService.listAllUsers({ page, limit, search, orgId });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Super admin list users error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Block / unblock user (super admin)
+app.patch('/api/superadmin/users/:userId/status', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { status } = req.body;
+    if (!['active', 'locked', 'inactive'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status' });
+    }
+    await mysqlPool.execute('UPDATE users SET status = ? WHERE id = ?', [status, userId]);
+    res.json({ success: true, message: `User status set to ${status}` });
+  } catch (err) {
+    console.error('Super admin block user error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Assign plan to user (super admin — delegates to admin logic)
+app.post('/api/superadmin/users/:userId/assign-plan', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { planId } = req.body;
+    if (!planId) return res.status(400).json({ success: false, message: 'planId is required' });
+    // Look up plan
+    const [plans] = await mysqlPool.execute('SELECT * FROM plans WHERE id = ?', [planId]);
+    if (plans.length === 0) return res.status(404).json({ success: false, message: 'Plan not found' });
+    const plan = plans[0];
+    // Compute expiry
+    const validUntil = new Date();
+    validUntil.setDate(validUntil.getDate() + (plan.validity_days || 30));
+    await mysqlPool.execute(
+      'UPDATE users SET plan_id = ?, plan_valid_until = ?, credits_balance = ? WHERE id = ?',
+      [planId, validUntil.toISOString().split('T')[0], plan.credit_limit, userId]
+    );
+    res.json({ success: true, message: 'Plan assigned successfully' });
+  } catch (err) {
+    console.error('Super admin assign plan error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Create user under an org (used by org admins from their admin panel)
+app.post('/api/admin/users', async (req, res) => {
+  try {
+    const { email, username, password, organization_id } = req.body;
+    if (!email || !username || !password) {
+      return res.status(400).json({ success: false, message: 'Email, username and password are required' });
+    }
+    // Check email uniqueness
+    const [existing] = await mysqlPool.execute('SELECT id FROM users WHERE email = ?', [email]);
+    if (existing.length > 0) {
+      return res.status(409).json({ success: false, message: 'Email already in use' });
+    }
+    const bcryptLib = require('bcryptjs');
+    const passwordHash = await bcryptLib.hash(password, 10);
+    const userId = require('crypto').randomBytes(8).toString('hex');
+    await mysqlPool.execute(
+      `INSERT INTO users (id, email, username, password_hash, role, organization_id, status)
+       VALUES (?, ?, ?, ?, 'user', ?, 'active')`,
+      [userId, email, username, passwordHash, organization_id || null]
+    );
+    // Create default company for the new user
+    const companyId = uuidv4();
+    await mysqlPool.execute(
+      'INSERT INTO companies (id, user_id, name) VALUES (?, ?, ?)',
+      [companyId, userId, `${username}'s Company`]
+    );
+    await mysqlPool.execute('UPDATE users SET current_company_id = ? WHERE id = ?', [companyId, userId]);
+    res.json({ success: true, message: 'User created successfully', userId });
+  } catch (err) {
+    console.error('Create admin user error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ============================================================
+// END SUPER ADMIN ROUTES
+// ============================================================
 
 // Admin login
 app.post('/api/admin/login', async (req, res) => {
@@ -1619,7 +1834,8 @@ app.get('/api/admin/logs', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
-    const logsData = await adminService.getAuditLogs(page, limit);
+    const orgId = req.query.orgId && req.query.orgId !== 'null' ? parseInt(req.query.orgId) : null;
+    const logsData = await adminService.getAuditLogs(page, limit, orgId);
     res.json({ success: true, ...logsData });
   } catch (error) {
     console.error('Error fetching audit logs:', error);
@@ -1630,7 +1846,8 @@ app.get('/api/admin/logs', async (req, res) => {
 // Get dashboard statistics
 app.get('/api/admin/stats', async (req, res) => {
   try {
-    const stats = await adminService.getDashboardStats();
+    const orgId = req.query.orgId && req.query.orgId !== 'null' ? parseInt(req.query.orgId) : null;
+    const stats = await adminService.getDashboardStats(orgId);
     res.json({ success: true, stats });
   } catch (error) {
     console.error('Error fetching admin stats:', error);
@@ -1644,8 +1861,9 @@ app.get('/api/admin/users', async (req, res) => {
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 50;
     const search = req.query.search || '';
+    const orgId = req.query.orgId && req.query.orgId !== 'null' ? parseInt(req.query.orgId) : null;
 
-    const result = await adminService.getAllUsers(page, limit, search);
+    const result = await adminService.getAllUsers(page, limit, search, orgId);
     res.json({ success: true, ...result });
   } catch (error) {
     console.error('Error fetching users:', error);

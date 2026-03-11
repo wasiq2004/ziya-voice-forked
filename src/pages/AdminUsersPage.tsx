@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getUsers, getUserBalance, Admin, updateUserStatus, impersonateUser, updateUserPlan } from '../utils/adminApi';
+import { getUsers, getUserBalance, Admin, updateUserStatus, impersonateUser, updateUserPlan, createUser } from '../utils/adminApi';
 import { addCredits, listPlans, assignPlanToUser, Plan } from '../utils/adminApi';
 import AppLayout from '../components/AppLayout';
 import Skeleton from '../components/Skeleton';
@@ -17,6 +17,8 @@ import {
     UserGroupIcon,
     CurrencyDollarIcon,
     ClipboardDocumentCheckIcon,
+    PlusIcon,
+    XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { getApiBaseUrl } from '../utils/api';
 
@@ -62,13 +64,24 @@ const AdminUsersPage: React.FC = () => {
     const [assignLoading, setAssignLoading] = useState(false);
     const [plansLoading, setPlansLoading] = useState(false);
 
+    // Create user modal state
+    const [createModal, setCreateModal] = useState(false);
+    const [createForm, setCreateForm] = useState({ email: '', username: '', password: '' });
+    const [createLoading, setCreateLoading] = useState(false);
+    const [createError, setCreateError] = useState('');
+
     useEffect(() => {
-        const adminData = localStorage.getItem('admin');
+        const adminData = localStorage.getItem('ziya-user');
         if (!adminData) {
-            navigate('/admin/login');
+            navigate('/login');
             return;
         }
-        setAdmin(JSON.parse(adminData));
+        const parsed = JSON.parse(adminData);
+        if (parsed.role !== 'org_admin' && parsed.role !== 'super_admin') {
+            navigate('/login');
+            return;
+        }
+        setAdmin(parsed);
     }, [navigate]);
 
     useEffect(() => {
@@ -233,6 +246,28 @@ const AdminUsersPage: React.FC = () => {
         setPagination(prev => ({ ...prev, page: 1 }));
     };
 
+    const handleCreateUser = async () => {
+        if (!createForm.email || !createForm.username || !createForm.password) {
+            setCreateError('All fields are required');
+            return;
+        }
+        setCreateLoading(true);
+        setCreateError('');
+        try {
+            // Pass the org admin's organization_id automatically
+            const orgId = (admin as any)?.organization_id ?? null;
+            await createUser({ ...createForm, organization_id: orgId });
+            showSuccess(`User ${createForm.email} created successfully`);
+            setCreateModal(false);
+            setCreateForm({ email: '', username: '', password: '' });
+            fetchUsers();
+        } catch (err: any) {
+            setCreateError(err.message || 'Failed to create user');
+        } finally {
+            setCreateLoading(false);
+        }
+    };
+
     if (!admin) return null;
 
     return (
@@ -251,6 +286,13 @@ const AdminUsersPage: React.FC = () => {
                     >
                         <ArrowPathIcon className="w-4 h-4 mr-2" />
                         Refresh
+                    </button>
+                    <button
+                        onClick={() => { setCreateForm({ email: '', username: '', password: '' }); setCreateError(''); setCreateModal(true); }}
+                        className="flex items-center px-5 py-2 bg-gradient-to-r from-primary to-blue-600 text-white rounded-xl font-black text-sm shadow-lg shadow-primary/20 hover:shadow-xl hover:scale-105 transition-all"
+                    >
+                        <PlusIcon className="w-4 h-4 mr-2" />
+                        Add User
                     </button>
                 </div>
             }
@@ -701,6 +743,59 @@ const AdminUsersPage: React.FC = () => {
                                 className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-2xl font-black text-sm hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 transition-all"
                             >
                                 Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Create User Modal */}
+            {createModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl p-8 w-full max-w-md mx-4 border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-xl font-black text-slate-900 dark:text-white">Create New User</h3>
+                            <button onClick={() => setCreateModal(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+                                <XMarkIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+                        {createError && (
+                            <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm font-medium">{createError}</div>
+                        )}
+                        <div className="space-y-4">
+                            {[
+                                { key: 'email', label: 'Email Address', type: 'email', placeholder: 'user@company.com' },
+                                { key: 'username', label: 'Username', type: 'text', placeholder: 'john_doe' },
+                                { key: 'password', label: 'Password', type: 'password', placeholder: '••••••••' },
+                            ].map((field) => (
+                                <div key={field.key}>
+                                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{field.label}</label>
+                                    <input
+                                        type={field.type}
+                                        value={(createForm as any)[field.key]}
+                                        onChange={(e) => setCreateForm(f => ({ ...f, [field.key]: e.target.value }))}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') handleCreateUser(); }}
+                                        placeholder={field.placeholder}
+                                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary outline-none font-medium text-slate-900 dark:text-white placeholder-slate-400 transition-all"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                        <p className="mt-4 text-xs text-slate-400 dark:text-slate-500">This user will be created under your organization and can log in via the main login page.</p>
+                        <div className="flex gap-3 mt-6">
+                            <button
+                                onClick={() => setCreateModal(false)}
+                                disabled={createLoading}
+                                className="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleCreateUser}
+                                disabled={createLoading}
+                                className="flex-1 py-3 bg-gradient-to-r from-primary to-blue-600 text-white rounded-xl font-black shadow-lg shadow-primary/30 hover:shadow-xl transition-all disabled:opacity-60"
+                            >
+                                {createLoading ? 'Creating...' : 'Create User'}
                             </button>
                         </div>
                     </div>
