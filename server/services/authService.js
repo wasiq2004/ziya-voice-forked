@@ -1,4 +1,4 @@
-"use strict";
+    "use strict";
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -53,42 +53,56 @@ var AuthService = /** @class */ (function () {
     function AuthService(mysqlPool) {
         this.mysqlPool = mysqlPool;
     }
-    /**
-     * Authenticate user with email and password
-     * @param email User's email
-     * @param password User's password
-     * @returns User object if authentication successful, null otherwise
-     */
-    AuthService.prototype.authenticateUser = function (email, password) {
-        return __awaiter(this, void 0, void 0, function () {
-            var rows, user, isValidPassword, password_hash, userWithoutPassword, error_1;
-            return __generator(this, function (_a) {
-                switch (_a.label) {
-                    case 0:
-                        _a.trys.push([0, 3, , 4]);
-                        return [4 /*yield*/, this.mysqlPool.execute('SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, password_hash, current_company_id, role, organization_id, status, plan_type, plan_valid_until, trial_started_at FROM users WHERE email = ?', [email])];
-                    case 1:
-                        rows = (_a.sent())[0];
-                        if (rows.length === 0) {
-                            return [2 /*return*/, null];
-                        }
-                        user = rows[0];
-                        return [4 /*yield*/, bcrypt.compare(password, user.password_hash)];
-                    case 2:
-                        isValidPassword = _a.sent();
-                        if (!isValidPassword) {
-                            return [2 /*return*/, null];
-                        }
-                        password_hash = user.password_hash, userWithoutPassword = __rest(user, ["password_hash"]);
-                        return [2 /*return*/, userWithoutPassword];
-                    case 3:
-                        error_1 = _a.sent();
-                        console.error('Authentication error:', error_1);
-                        throw error_1;
-                    case 4: return [2 /*return*/];
+  
+    AuthService.prototype.authenticateUser = async function (email, password) {
+        try {
+            const [rows] = await this.mysqlPool.execute('SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, password_hash, current_company_id, role, organization_id, status, plan_type, plan_valid_until, trial_started_at FROM users WHERE email = ?', [email]);
+            
+            if (rows.length === 0) {
+                const [adminRows] = await this.mysqlPool.execute('SELECT id, email, name as username, password_hash, role FROM admin_users WHERE email = ?', [email]);
+                
+                if (adminRows.length === 0) {
+                    return null;
                 }
-            });
-        });
+                
+                const adminUser = adminRows[0];
+                const isValidAdminPassword = await bcrypt.compare(password, adminUser.password_hash);
+                
+                if (!isValidAdminPassword) {
+                    return null;
+                }
+                
+                const { password_hash, ...adminWithoutPassword } = adminUser;
+                adminWithoutPassword.status = 'active';
+
+                try {
+                    const { v4: uuidv4 } = require('uuid');
+                    const logId = uuidv4();
+                    await this.mysqlPool.execute(
+                        'INSERT INTO admin_activity_log (id, admin_id, action_type, target_user_id, details) VALUES (?, ?, ?, ?, ?)',
+                        [logId, adminUser.id, 'admin_login', null, 'Admin logged in via unified login']
+                    );
+                } catch (err) {
+                    console.error('Error logging admin activity:', err);
+                }
+                
+                return adminWithoutPassword;
+            }
+            
+            const user = rows[0];
+            const isValidPassword = await bcrypt.compare(password, user.password_hash);
+            
+            if (!isValidPassword) {
+                return null;
+            }
+            
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { password_hash, ...userWithoutPassword } = user;
+            return userWithoutPassword;
+        } catch (error) {
+            console.error('Authentication error:', error);
+            throw error;
+        }
     };
     /**
      * Register a new user

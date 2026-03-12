@@ -8,10 +8,12 @@ import {
     LockClosedIcon,
     LockOpenIcon,
     BuildingOfficeIcon,
+    TrashIcon,
 } from '@heroicons/react/24/outline';
-import { listAllUsers, blockUser, listOrganizations } from '../utils/superAdminApi';
+import { listAllUsers, blockUser, listOrganizations, impersonateUser, deleteSuperAdminUser } from '../utils/superAdminApi';
 import { listPlans, assignPlanToUser } from '../utils/adminApi';
 import { Organization } from '../types';
+import { ArrowLeftOnRectangleIcon } from '@heroicons/react/24/outline';
 
 const SuperAdminUsersPage: React.FC = () => {
     const navigate = useNavigate();
@@ -34,10 +36,11 @@ const SuperAdminUsersPage: React.FC = () => {
         fetchAll();
     }, [navigate]);
 
-    const fetchAll = async (page = 1) => {
+    const fetchAll = async (page = 1, orgIdOverride?: string) => {
         setLoading(true);
         try {
-            const orgId = selectedOrg ? parseInt(selectedOrg) : undefined;
+            const orgIdToUse = orgIdOverride !== undefined ? orgIdOverride : selectedOrg;
+            const orgId = orgIdToUse ? parseInt(orgIdToUse) : undefined;
             const [userData, orgs, planData] = await Promise.all([
                 listAllUsers(page, 50, search, orgId),
                 listOrganizations(),
@@ -53,6 +56,12 @@ const SuperAdminUsersPage: React.FC = () => {
             setLoading(false);
         }
     };
+
+    // Auto-refresh when org filter changes
+    useEffect(() => {
+        if (!currentUser || currentUser.role !== 'super_admin') return;
+        fetchAll(1, selectedOrg);
+    }, [selectedOrg]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
@@ -80,6 +89,34 @@ const SuperAdminUsersPage: React.FC = () => {
             alert('Failed: ' + err.message);
         } finally {
             setAssigningPlan(null);
+        }
+    };
+
+    const handleImpersonate = async (targetUserId: string) => {
+        try {
+            const user = await impersonateUser(targetUserId);
+            const currentUserStr = localStorage.getItem('ziya-user');
+            localStorage.setItem('ziya-original-superadmin', currentUserStr!);
+            localStorage.setItem('ziya-user', JSON.stringify(user));
+            
+            // Force reload to dashboard corresponding to user role
+            if (user.role === 'org_admin') {
+                window.location.href = '/admin/dashboard';
+            } else {
+                window.location.href = '/dashboard';
+            }
+        } catch(err: any) {
+            alert(err.message);
+        }
+    };
+
+    const handleDelete = async (user: any) => {
+        if (!window.confirm(`Are you absolutely sure you want to PERMANENTLY delete user "${user.username}"??\n\nThis action CANNOT be undone and will erase all data.`)) return;
+        try {
+            await deleteSuperAdminUser(user.id);
+            fetchAll(pagination.page);
+        } catch (err: any) {
+            alert('Failed: ' + err.message);
         }
     };
 
@@ -121,7 +158,7 @@ const SuperAdminUsersPage: React.FC = () => {
                     </form>
                     <select
                         value={selectedOrg}
-                        onChange={(e) => { setSelectedOrg(e.target.value); fetchAll(1); }}
+                        onChange={(e) => setSelectedOrg(e.target.value)}
                         className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm font-medium text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
                     >
                         <option value="">All Organizations</option>
@@ -230,6 +267,20 @@ const SuperAdminUsersPage: React.FC = () => {
                                                             ? <LockOpenIcon className="w-4 h-4" />
                                                             : <LockClosedIcon className="w-4 h-4" />
                                                         }
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleImpersonate(user.id)}
+                                                        className="p-1.5 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-all"
+                                                        title="Login as User"
+                                                    >
+                                                        <ArrowLeftOnRectangleIcon className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(user)}
+                                                        className="p-1.5 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                                                        title="Delete User"
+                                                    >
+                                                        <TrashIcon className="w-4 h-4" />
                                                     </button>
                                                 </div>
                                             </td>

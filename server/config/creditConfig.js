@@ -1,5 +1,5 @@
 const INR_TO_CREDIT_RATE = 1;
-const USD_TO_INR_RATE = 85;
+const USD_TO_INR_RATE = 92.23;
 const HIDDEN_PROFIT_PERCENTAGE = 0.30; // 30% hidden profit
 
 function inrToCredits(inr) {

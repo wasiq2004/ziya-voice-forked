@@ -1223,9 +1223,16 @@ app.patch('/api/admin/users/:userId/plan', async (req, res) => {
 // GET /api/admin/plans - List all plans
 app.get('/api/admin/plans', async (req, res) => {
   try {
-    const [plans] = await mysqlPool.execute(
-      'SELECT * FROM plans ORDER BY created_at DESC'
-    );
+    const orgId = req.query.orgId && req.query.orgId !== 'null' ? parseInt(req.query.orgId) : null;
+    let query = 'SELECT * FROM plans';
+    let params = [];
+    if (orgId) {
+      query += ' WHERE organization_id = ? ORDER BY created_at DESC';
+      params.push(orgId);
+    } else {
+      query += ' WHERE (organization_id IS NULL) ORDER BY created_at DESC';
+    }
+    const [plans] = await mysqlPool.execute(query, params);
     res.json({ success: true, plans });
   } catch (error) {
     console.error('Error fetching plans:', error);
@@ -1249,7 +1256,7 @@ app.get('/api/admin/plans/:planId', async (req, res) => {
 // POST /api/admin/plans - Create a new plan
 app.post('/api/admin/plans', async (req, res) => {
   try {
-    const { plan_name, credit_limit, validity_days, plan_type, adminId } = req.body;
+    const { plan_name, credit_limit, validity_days, plan_type, adminId, organization_id } = req.body;
 
     if (!plan_name || !credit_limit || !validity_days) {
       return res.status(400).json({ success: false, message: 'plan_name, credit_limit, and validity_days are required' });
@@ -1258,10 +1265,22 @@ app.post('/api/admin/plans', async (req, res) => {
       return res.status(400).json({ success: false, message: 'credit_limit and validity_days must be positive numbers' });
     }
 
+    // Check organization capacity if it's an org admin creating an internal plan
+    if (organization_id) {
+       const [orgs] = await mysqlPool.execute('SELECT credit_balance FROM organizations WHERE id = ?', [organization_id]);
+       if (orgs.length === 0) return res.status(404).json({ success: false, message: 'Organization not found' });
+       if (orgs[0].credit_balance < parseInt(credit_limit)) {
+         return res.status(400).json({ success: false, message: 'Insufficient organization credit balance to create this plan.' });
+       }
+    }
+
     const planId = uuidv4();
+    const finalPlanType = organization_id ? 'organization_plan' : 'platform_plan';
+    const finalOrgId = organization_id || null;
+
     await mysqlPool.execute(
-      'INSERT INTO plans (id, plan_name, credit_limit, validity_days, plan_type) VALUES (?, ?, ?, ?, ?)',
-      [planId, plan_name.trim(), parseInt(credit_limit), parseInt(validity_days), plan_type || null]
+      'INSERT INTO plans (id, plan_name, credit_limit, validity_days, plan_type, organization_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [planId, plan_name.trim(), parseInt(credit_limit), parseInt(validity_days), finalPlanType, finalOrgId, adminId || null]
     );
 
     if (adminId) {
@@ -1359,6 +1378,17 @@ app.post('/api/admin/users/:userId/assign-plan', async (req, res) => {
     const now = new Date();
     const planValidUntil = new Date(now);
     planValidUntil.setDate(planValidUntil.getDate() + parseInt(plan.validity_days));
+
+    // Organization credit pool deduction for organization plans
+    if (plan.organization_id) {
+       const [orgs] = await mysqlPool.execute('SELECT credit_balance FROM organizations WHERE id = ?', [plan.organization_id]);
+       if (orgs.length === 0) return res.status(404).json({ success: false, message: 'Organization not found' });
+       if (orgs[0].credit_balance < parseInt(plan.credit_limit)) {
+         return res.status(400).json({ success: false, message: 'Organization has insufficient credits. Contact Super Admin to upgrade organization plan.' });
+       }
+       // Deduct from organization pool
+       await mysqlPool.execute('UPDATE organizations SET credit_balance = credit_balance - ? WHERE id = ?', [parseInt(plan.credit_limit), plan.organization_id]);
+    }
 
     // Update user with plan details
     await mysqlPool.execute(
@@ -1597,38 +1627,6 @@ app.get('/api/create-admin-user', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-// ============================================================
-// SUPER ADMIN USER INITIALIZATION (runs at startup)
-// ============================================================
-(async () => {
-  try {
-    const superAdminEmail = 'superadmin@ziyavoice.com';
-    const superAdminPassword = 'ZiyaVoice@2026';
-    const [existing] = await mysqlPool.execute(
-      "SELECT id FROM users WHERE email = ? AND role = 'super_admin'",
-      [superAdminEmail]
-    );
-    if (existing.length === 0) {
-      const bcryptLib = require('bcryptjs');
-      const hash = await bcryptLib.hash(superAdminPassword, 10);
-      const superAdminId = require('crypto').randomBytes(8).toString('hex');
-      await mysqlPool.execute(
-        `INSERT INTO users (id, email, username, password_hash, role, status)
-         VALUES (?, ?, ?, ?, 'super_admin', 'active')`,
-        [superAdminId, superAdminEmail, 'superadmin', hash]
-      );
-      console.log('✅ Default super admin created: superadmin@ziyavoice.com');
-    } else {
-      console.log('✅ Super admin account already exists');
-    }
-  } catch (err) {
-    console.error('⚠️  Super admin init error:', err.message);
-  }
-})();
-
-// ============================================================
-// SUPER ADMIN API ROUTES
-// ============================================================
 
 // Super Admin stats
 app.get('/api/superadmin/stats', async (req, res) => {
@@ -1680,6 +1678,62 @@ app.put('/api/superadmin/organizations/:orgId', async (req, res) => {
   }
 });
 
+// Impersonate User
+app.post('/api/superadmin/impersonate', async (req, res) => {
+  try {
+    const { targetUserId } = req.body;
+    const [rows] = await mysqlPool.execute(
+      'SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, current_company_id, role, organization_id, status, plan_type, plan_valid_until, trial_started_at FROM users WHERE id = ?', 
+      [targetUserId]
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+    const user = rows[0];
+    res.json({ success: true, user });
+  } catch (err) {
+    console.error('Impersonate user error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Assign plain to organization
+app.post('/api/superadmin/organizations/:orgId/assign-plan', async (req, res) => {
+  try {
+    const { orgId } = req.params;
+    const { planId, adminId } = req.body;
+    
+    // Get plan details
+    const [plans] = await mysqlPool.execute('SELECT * FROM plans WHERE id = ?', [planId]);
+    if (plans.length === 0) return res.status(404).json({ success: false, message: 'Plan not found' });
+    const plan = plans[0];
+
+    const now = new Date();
+    const validUntil = new Date();
+    validUntil.setDate(validUntil.getDate() + parseInt(plan.validity_days));
+
+    // Insert into organization_plans
+    await mysqlPool.execute(
+      `INSERT INTO organization_plans (organization_id, plan_id, credits_allocated, plan_started_at, plan_valid_until)
+       VALUES (?, ?, ?, ?, ?)`,
+      [parseInt(orgId), planId, parseInt(plan.credit_limit), now, validUntil]
+    );
+
+    // Update organization credit balance
+    await mysqlPool.execute(
+      'UPDATE organizations SET credit_balance = ? WHERE id = ?', 
+      [parseInt(plan.credit_limit), parseInt(orgId)]
+    );
+
+    if (adminId) {
+      await adminService.logActivity(adminId, 'assign_org_plan', null, `Assigned plan ${plan.plan_name} to Organization ${orgId}`, req.ip);
+    }
+
+    res.json({ success: true, message: 'Plan assigned to organization successfully.' });
+  } catch (err) {
+    console.error('Assign org plan error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // Disable organization
 app.patch('/api/superadmin/organizations/:orgId/disable', async (req, res) => {
   try {
@@ -1688,6 +1742,35 @@ app.patch('/api/superadmin/organizations/:orgId/disable', async (req, res) => {
     res.json({ success: true, message: 'Organization disabled' });
   } catch (err) {
     console.error('Disable organization error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Delete organization and its dependent users/admins
+app.delete('/api/superadmin/organizations/:orgId', async (req, res) => {
+  try {
+    const { orgId } = req.params;
+    const [rows] = await mysqlPool.execute('SELECT id FROM organizations WHERE id = ?', [orgId]);
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Organization not found' });
+    
+    // First find all users in this org
+    const [users] = await mysqlPool.execute('SELECT id FROM users WHERE organization_id = ?', [orgId]);
+    const userIds = users.map(u => u.id);
+    
+    // Try cascade cleanup for all users in the org
+    for (const uId of userIds) {
+      await mysqlPool.execute('DELETE FROM user_wallets WHERE user_id = ?', [uId]).catch(() => {});
+      await mysqlPool.execute('DELETE FROM wallet_transactions WHERE user_id = ?', [uId]).catch(() => {});
+    }
+    
+    // Delete users associated with the org
+    await mysqlPool.execute('DELETE FROM users WHERE organization_id = ?', [orgId]).catch(() => {});
+    
+    // Finally, delete the organization
+    await mysqlPool.execute('DELETE FROM organizations WHERE id = ?', [orgId]);
+    res.json({ success: true, message: 'Organization permanently deleted' });
+  } catch (err) {
+    console.error('Delete organization error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -1714,6 +1797,23 @@ app.post('/api/superadmin/org-admins', async (req, res) => {
     res.json({ success: true, orgAdmin });
   } catch (err) {
     console.error('Create org admin error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Delete org admin
+app.delete('/api/superadmin/org-admins/:adminId', async (req, res) => {
+  try {
+    const { adminId } = req.params;
+    const [rows] = await mysqlPool.execute("SELECT id, role FROM users WHERE id = ? AND role = 'org_admin'", [adminId]);
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Org Admin not found' });
+
+    await mysqlPool.execute('DELETE FROM user_wallets WHERE user_id = ?', [adminId]).catch(() => {});
+    await mysqlPool.execute('DELETE FROM wallet_transactions WHERE user_id = ?', [adminId]).catch(() => {});
+    await mysqlPool.execute('DELETE FROM users WHERE id = ?', [adminId]);
+    res.json({ success: true, message: 'Org Admin permanently deleted' });
+  } catch (err) {
+    console.error('Delete org admin error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -1745,6 +1845,167 @@ app.patch('/api/superadmin/users/:userId/status', async (req, res) => {
     res.json({ success: true, message: `User status set to ${status}` });
   } catch (err) {
     console.error('Super admin block user error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Delete user (super admin)
+app.delete('/api/superadmin/users/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const [rows] = await mysqlPool.execute("SELECT id, role FROM users WHERE id = ? AND role = 'user'", [userId]);
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+
+    await mysqlPool.execute('DELETE FROM user_wallets WHERE user_id = ?', [userId]).catch(() => {});
+    await mysqlPool.execute('DELETE FROM wallet_transactions WHERE user_id = ?', [userId]).catch(() => {});
+    await mysqlPool.execute('DELETE FROM users WHERE id = ?', [userId]);
+    res.json({ success: true, message: 'User permanently deleted' });
+  } catch (err) {
+    console.error('Delete user error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── Super Admin: Price Management Dashboard ────────────────────────────────
+
+// GET all service pricing rows
+app.get('/api/superadmin/pricing/services', async (req, res) => {
+  try {
+    const [rows] = await mysqlPool.execute('SELECT * FROM service_pricing ORDER BY service_type ASC');
+    res.json({ success: true, pricing: rows });
+  } catch (err) {
+    console.error('Get service pricing error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PUT update a single service's cost_per_unit
+app.put('/api/superadmin/pricing/services/:serviceType', async (req, res) => {
+  try {
+    const { serviceType } = req.params;
+    const { costPerUnit } = req.body;
+    if (costPerUnit === undefined || isNaN(parseFloat(costPerUnit))) {
+      return res.status(400).json({ success: false, message: 'costPerUnit is required and must be a number' });
+    }
+    const [result] = await mysqlPool.execute(
+      'UPDATE service_pricing SET cost_per_unit = ?, updated_at = NOW() WHERE service_type = ?',
+      [parseFloat(costPerUnit), serviceType]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Service type not found' });
+    }
+    // Invalidate the in-memory cache in costCalculator
+    if (costCalculator) { costCalculator.lastCacheUpdate = 0; }
+    res.json({ success: true, message: `Pricing for ${serviceType} updated successfully.` });
+  } catch (err) {
+    console.error('Update service pricing error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// In-memory state for dynamic config overrides (persists until server restart)
+let dynamicPlatformConfig = null;
+
+// GET platform config rates (reads live from creditConfig.js)
+app.get('/api/superadmin/pricing/config', async (req, res) => {
+  try {
+    const creditConfig = require('./config/creditConfig');
+    const current = dynamicPlatformConfig || {
+      usdToInrRate: creditConfig.USD_TO_INR_RATE,
+      inrToCreditRate: creditConfig.INR_TO_CREDIT_RATE,
+      hiddenProfitPercentage: creditConfig.HIDDEN_PROFIT_PERCENTAGE,
+    };
+    res.json({ success: true, config: current });
+  } catch (err) {
+    console.error('Get platform config error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PUT update platform config rates at runtime (without file edit)
+app.put('/api/superadmin/pricing/config', async (req, res) => {
+  try {
+    const { usdToInrRate, inrToCreditRate, hiddenProfitPercentage } = req.body;
+    if (usdToInrRate !== undefined) dynamicPlatformConfig = { ...(dynamicPlatformConfig || {}), usdToInrRate: parseFloat(usdToInrRate) };
+    if (inrToCreditRate !== undefined) dynamicPlatformConfig = { ...(dynamicPlatformConfig || {}), inrToCreditRate: parseFloat(inrToCreditRate) };
+    if (hiddenProfitPercentage !== undefined) dynamicPlatformConfig = { ...(dynamicPlatformConfig || {}), hiddenProfitPercentage: parseFloat(hiddenProfitPercentage) };
+    
+    // Apply overrides to the live creditConfig module
+    const creditConfig = require('./config/creditConfig');
+    if (dynamicPlatformConfig.usdToInrRate !== undefined) creditConfig.USD_TO_INR_RATE = dynamicPlatformConfig.usdToInrRate;
+    if (dynamicPlatformConfig.inrToCreditRate !== undefined) creditConfig.INR_TO_CREDIT_RATE = dynamicPlatformConfig.inrToCreditRate;
+    if (dynamicPlatformConfig.hiddenProfitPercentage !== undefined) creditConfig.HIDDEN_PROFIT_PERCENTAGE = dynamicPlatformConfig.hiddenProfitPercentage;
+    
+    // Invalidate cost cache
+    if (costCalculator) { costCalculator.lastCacheUpdate = 0; }
+    res.json({ success: true, message: 'Platform config updated. Changes are active immediately.', config: dynamicPlatformConfig });
+  } catch (err) {
+    console.error('Update platform config error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── Individual Users (role = individual_user) ───────────────────────────────
+
+
+// GET /api/superadmin/individual-users - List all individual_user accounts
+app.get('/api/superadmin/individual-users', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const search = req.query.search || '';
+    const offset = (page - 1) * limit;
+
+    const searchParam = `%${search}%`;
+    const [users] = await mysqlPool.execute(
+      `SELECT u.id, u.email, u.username, u.role, u.status, u.credits_balance, u.plan_type, u.plan_valid_until, u.created_at
+       FROM users u
+       WHERE u.role = 'individual_user'
+         AND (u.email LIKE ? OR u.username LIKE ?)
+       ORDER BY u.created_at DESC
+       LIMIT ${limit} OFFSET ${offset}`,
+      [searchParam, searchParam]
+    );
+    const [[{ total }]] = await mysqlPool.execute(
+      `SELECT COUNT(*) as total FROM users WHERE role = 'individual_user' AND (email LIKE ? OR username LIKE ?)`,
+      [searchParam, searchParam]
+    );
+    res.json({ success: true, users, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+  } catch (err) {
+    console.error('Individual users list error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// DELETE /api/superadmin/individual-users/:userId - Permanently delete an individual user
+app.delete('/api/superadmin/individual-users/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const [rows] = await mysqlPool.execute('SELECT id, role FROM users WHERE id = ? AND role = ?', [userId, 'individual_user']);
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Individual user not found' });
+
+    // Cascade cleanup (best-effort)
+    await mysqlPool.execute('DELETE FROM user_wallets WHERE user_id = ?', [userId]).catch(() => {});
+    await mysqlPool.execute('DELETE FROM wallet_transactions WHERE user_id = ?', [userId]).catch(() => {});
+    await mysqlPool.execute('DELETE FROM users WHERE id = ?', [userId]);
+
+    res.json({ success: true, message: 'User deleted permanently.' });
+  } catch (err) {
+    console.error('Delete individual user error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PATCH /api/superadmin/individual-users/:userId/status - Block/Unblock
+app.patch('/api/superadmin/individual-users/:userId/status', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { status } = req.body;
+    if (!['active', 'locked'].includes(status)) return res.status(400).json({ success: false, message: 'Invalid status' });
+    await mysqlPool.execute('UPDATE users SET status = ? WHERE id = ? AND role = ?', [status, userId, 'individual_user']);
+    res.json({ success: true, message: `User ${status}` });
+  } catch (err) {
+    console.error('Update individual user status error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
