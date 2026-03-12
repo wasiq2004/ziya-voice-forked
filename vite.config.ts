@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: true,
-      allowedHosts: true,
+      allowedHosts: ["ziyasuite.com", "www.ziyasuite.com"],
       proxy: {
         '/api': {
           target: JSON.stringify(env.VITE_API_URL),
