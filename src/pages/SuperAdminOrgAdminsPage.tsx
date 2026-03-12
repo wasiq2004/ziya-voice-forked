@@ -7,9 +7,11 @@ import {
     ArrowPathIcon,
     MagnifyingGlassIcon,
     BuildingOfficeIcon,
+    TrashIcon,
 } from '@heroicons/react/24/outline';
-import { listOrgAdmins, createOrgAdmin, listOrganizations } from '../utils/superAdminApi';
+import { listOrgAdmins, createOrgAdmin, listOrganizations, impersonateUser, deleteOrgAdmin } from '../utils/superAdminApi';
 import { OrgAdmin, Organization } from '../types';
+import { ArrowLeftOnRectangleIcon } from '@heroicons/react/24/outline';
 
 const SuperAdminOrgAdminsPage: React.FC = () => {
     const navigate = useNavigate();
@@ -70,6 +72,29 @@ const SuperAdminOrgAdminsPage: React.FC = () => {
             setFormError(err.message);
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleImpersonate = async (targetUserId: string) => {
+        try {
+            const user = await impersonateUser(targetUserId);
+            const currentUserStr = localStorage.getItem('ziya-user');
+            localStorage.setItem('ziya-original-superadmin', currentUserStr!);
+            localStorage.setItem('ziya-user', JSON.stringify(user));
+            // Force reload to org admin dashboard
+            window.location.href = '/admin/dashboard';
+        } catch(err: any) {
+            alert(err.message);
+        }
+    };
+
+    const handleDelete = async (admin: OrgAdmin) => {
+        if (!window.confirm(`Are you absolutely sure you want to PERMANENTLY delete Org Admin "${admin.username}"?\n\nThis action CANNOT be undone.`)) return;
+        try {
+            await deleteOrgAdmin(admin.id);
+            fetchAll();
+        } catch (err: any) {
+            alert('Failed: ' + err.message);
         }
     };
 
@@ -139,6 +164,7 @@ const SuperAdminOrgAdminsPage: React.FC = () => {
                                         <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Organization</th>
                                         <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
                                         <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Created</th>
+                                        <th className="text-right px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -176,6 +202,25 @@ const SuperAdminOrgAdminsPage: React.FC = () => {
                                                 <span className="text-sm text-slate-500 dark:text-slate-400">
                                                     {new Date(admin.created_at).toLocaleDateString()}
                                                 </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <button
+                                                        onClick={() => handleImpersonate(admin.id)}
+                                                        className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                                                        title="Login as Admin"
+                                                    >
+                                                        <ArrowLeftOnRectangleIcon className="w-4 h-4" />
+                                                        Login
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(admin)}
+                                                        className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                                                        title="Delete Admin"
+                                                    >
+                                                        <TrashIcon className="w-4 h-4" />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}

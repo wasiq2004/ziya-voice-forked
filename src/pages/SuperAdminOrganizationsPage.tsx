@@ -9,8 +9,9 @@ import {
     CheckCircleIcon,
     ArrowPathIcon,
     MagnifyingGlassIcon,
+    TrashIcon,
 } from '@heroicons/react/24/outline';
-import { listOrganizations, createOrganization, updateOrganization, disableOrganization } from '../utils/superAdminApi';
+import { listOrganizations, createOrganization, updateOrganization, disableOrganization, deleteOrganization } from '../utils/superAdminApi';
 import { Organization } from '../types';
 
 const SuperAdminOrganizationsPage: React.FC = () => {
@@ -84,6 +85,16 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         if (!window.confirm(`Disable organization "${org.name}"? This will restrict all org members.`)) return;
         try {
             await disableOrganization(org.id);
+            fetchOrgs();
+        } catch (err: any) {
+            alert('Failed: ' + err.message);
+        }
+    };
+
+    const handleDelete = async (org: Organization) => {
+        if (!window.confirm(`Are you absolutely sure you want to PERMANENTLY delete organization "${org.name}"?\n\nThis will permanently delete ALL users, org admins, wallets, and settings associated with it. This action CANNOT be undone.`)) return;
+        try {
+            await deleteOrganization(org.id);
             fetchOrgs();
         } catch (err: any) {
             alert('Failed: ' + err.message);
@@ -278,6 +289,13 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                                                             <CheckCircleIcon className="w-4 h-4" />
                                                         </button>
                                                     )}
+                                                    <button
+                                                        onClick={() => handleDelete(org)}
+                                                        className="p-2 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                                                        title="Delete"
+                                                    >
+                                                        <TrashIcon className="w-4 h-4" />
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>

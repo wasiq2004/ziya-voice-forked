@@ -479,12 +479,13 @@ class AdminService {
       const [logs] = await this.mysqlPool.execute(`
         SELECT 
           l.*,
-          a.name as admin_name,
-          a.email as admin_email,
+          COALESCE(a.name, org_a.username) as admin_name,
+          COALESCE(a.email, org_a.email) as admin_email,
           u.username as target_user_name,
           u.email as target_user_email
         FROM admin_activity_log l
         LEFT JOIN admin_users a ON l.admin_id = a.id
+        LEFT JOIN users org_a ON l.admin_id = org_a.id
         LEFT JOIN users u ON l.target_user_id = u.id
         ${userJoin}
         ORDER BY l.created_at DESC
