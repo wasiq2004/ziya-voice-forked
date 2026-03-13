@@ -6,8 +6,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
     server: {
-      port: JSON.stringify(env.VITE_SERVER_PORT_NUMBER),
-      host: JSON.stringify(env.VITE_SERVER_HOST),
+      port: 3000,
+      host: true,
       allowedHosts: ["ziyasuite.com", "www.ziyasuite.com"],
       proxy: {
         '/api': {
@@ -15,9 +15,6 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         }
-      },
-      watch: {
-      usePolling: true
       }
     },
 
