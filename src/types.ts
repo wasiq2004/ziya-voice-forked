@@ -27,6 +27,7 @@ export enum Page {
 export interface Organization {
     id: number;
     name: string;
+    logo_url?: string | null;
     created_by: number | null;
     status: 'active' | 'inactive';
     created_at: string;

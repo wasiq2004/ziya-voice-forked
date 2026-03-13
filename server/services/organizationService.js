@@ -33,10 +33,10 @@ class OrganizationService {
         return rows[0];
     }
 
-    async createOrganization(name, createdBy) {
+    async createOrganization(name, createdBy, logo_url = null) {
         const [result] = await this.mysqlPool.execute(
-            'INSERT INTO organizations (name, created_by, status) VALUES (?, ?, ?)',
-            [name, createdBy || null, 'active']
+            'INSERT INTO organizations (name, created_by, status, logo_url) VALUES (?, ?, ?, ?)',
+            [name, createdBy || null, 'active', logo_url]
         );
         const [org] = await this.mysqlPool.execute(
             'SELECT * FROM organizations WHERE id = ?',
@@ -45,11 +45,12 @@ class OrganizationService {
         return org[0];
     }
 
-    async updateOrganization(orgId, { name, status }) {
+    async updateOrganization(orgId, { name, status, logo_url }) {
         const fields = [];
         const values = [];
         if (name !== undefined) { fields.push('name = ?'); values.push(name); }
         if (status !== undefined) { fields.push('status = ?'); values.push(status); }
+        if (logo_url !== undefined) { fields.push('logo_url = ?'); values.push(logo_url); }
         if (fields.length === 0) throw new Error('Nothing to update');
         values.push(orgId);
         await this.mysqlPool.execute(

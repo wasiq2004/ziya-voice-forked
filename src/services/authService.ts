@@ -11,6 +11,9 @@ export interface User {
   google_id?: string;
   current_company_id?: string;
   role?: string;
+  organization_id?: number | null;
+  organization_name?: string | null;
+  organization_logo_url?: string | null;
   created_at?: string;
   updated_at?: string;
   // Trial & Plan fields

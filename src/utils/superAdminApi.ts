@@ -33,12 +33,13 @@ export const listOrganizations = async (): Promise<Organization[]> => {
 /** Create an organization */
 export const createOrganization = async (
     name: string,
-    createdBy: string
+    createdBy: string,
+    logo_url?: string
 ): Promise<Organization> => {
     const response = await fetch(`${API_BASE_URL}/superadmin/organizations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, createdBy }),
+        body: JSON.stringify({ name, createdBy, logo_url }),
     });
     const contentType = response.headers.get('content-type');
     if (!contentType?.includes('application/json')) throw new Error('Non-JSON response');
@@ -53,7 +54,7 @@ export const createOrganization = async (
 /** Update an organization */
 export const updateOrganization = async (
     orgId: number,
-    payload: { name?: string; status?: string }
+    payload: { name?: string; status?: string; logo_url?: string }
 ): Promise<Organization> => {
     const response = await fetch(`${API_BASE_URL}/superadmin/organizations/${orgId}`, {
         method: 'PUT',

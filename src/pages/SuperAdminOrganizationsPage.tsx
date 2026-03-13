@@ -23,6 +23,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [editOrg, setEditOrg] = useState<Organization | null>(null);
     const [formName, setFormName] = useState('');
+    const [formLogoUrl, setFormLogoUrl] = useState('');
     const [saving, setSaving] = useState(false);
     const [formError, setFormError] = useState('');
 
@@ -54,8 +55,9 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         try {
             const userStr = localStorage.getItem('ziya-user');
             const user = userStr ? JSON.parse(userStr) : {};
-            await createOrganization(formName.trim(), user.id);
+            await createOrganization(formName.trim(), user.id, formLogoUrl.trim());
             setFormName('');
+            setFormLogoUrl('');
             setShowCreateModal(false);
             fetchOrgs();
         } catch (err: any) {
@@ -70,9 +72,10 @@ const SuperAdminOrganizationsPage: React.FC = () => {
         setSaving(true);
         setFormError('');
         try {
-            await updateOrganization(editOrg.id, { name: formName.trim() });
+            await updateOrganization(editOrg.id, { name: formName.trim(), logo_url: formLogoUrl.trim() });
             setEditOrg(null);
             setFormName('');
+            setFormLogoUrl('');
             fetchOrgs();
         } catch (err: any) {
             setFormError(err.message);
@@ -127,6 +130,17 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                             autoFocus
                         />
                     </div>
+                    <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Logo URL (Optional)</label>
+                        <input
+                            type="text"
+                            value={formLogoUrl}
+                            onChange={(e) => setFormLogoUrl(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && onSubmit()}
+                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none font-medium text-slate-900 dark:text-white"
+                            placeholder="https://example.com/logo.png"
+                        />
+                    </div>
                 </div>
                 <div className="flex gap-3 mt-6">
                     <button
@@ -165,7 +179,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                         Refresh
                     </button>
                     <button
-                        onClick={() => { setFormName(''); setFormError(''); setShowCreateModal(true); }}
+                        onClick={() => { setFormName(''); setFormLogoUrl(''); setFormError(''); setShowCreateModal(true); }}
                         className="flex items-center px-5 py-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-xl font-black text-sm shadow-lg shadow-violet-500/20 hover:shadow-xl transition-all"
                     >
                         <PlusIcon className="w-4 h-4 mr-2" />
@@ -209,7 +223,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                             </p>
                             {!search && (
                                 <button
-                                    onClick={() => { setFormName(''); setFormError(''); setShowCreateModal(true); }}
+                                    onClick={() => { setFormName(''); setFormLogoUrl(''); setFormError(''); setShowCreateModal(true); }}
                                     className="mt-4 px-5 py-2 bg-violet-500 text-white rounded-xl font-bold text-sm hover:bg-violet-600 transition-all"
                                 >
                                     Create First Organization
@@ -234,9 +248,13 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                                         <tr key={org.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-9 h-9 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 dark:text-violet-400 font-black text-sm flex-shrink-0">
-                                                        {org.name.charAt(0).toUpperCase()}
-                                                    </div>
+                                                    {org.logo_url ? (
+                                                        <img src={org.logo_url} alt={org.name} className="w-9 h-9 rounded-xl object-contain bg-slate-50 dark:bg-slate-800 flex-shrink-0 border border-slate-200 dark:border-slate-700" />
+                                                    ) : (
+                                                        <div className="w-9 h-9 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 dark:text-violet-400 font-black text-sm flex-shrink-0">
+                                                            {org.name.charAt(0).toUpperCase()}
+                                                        </div>
+                                                    )}
                                                     <div>
                                                         <p className="font-bold text-slate-900 dark:text-white text-sm">{org.name}</p>
                                                         <p className="text-xs text-slate-400">ID: {org.id}</p>
@@ -266,7 +284,7 @@ const SuperAdminOrganizationsPage: React.FC = () => {
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center justify-end gap-2">
                                                     <button
-                                                        onClick={() => { setEditOrg(org); setFormName(org.name); setFormError(''); }}
+                                                        onClick={() => { setEditOrg(org); setFormName(org.name); setFormLogoUrl(org.logo_url || ''); setFormError(''); }}
                                                         className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-all"
                                                         title="Edit"
                                                     >

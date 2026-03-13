@@ -186,16 +186,24 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                 <div className="flex items-center space-x-3 mb-3">
 
                     {/* Logo - Change w-14 h-14 to control logo size */}
-                    <img
-                        src="/assets/ziya-logo.png"
-                        alt="Ziya Logo"
-                        className="w-14 h-10 flex-shrink-0 transition-all duration-300"
-                    />
+                    {user?.organization_logo_url ? (
+                        <img
+                            src={user.organization_logo_url}
+                            alt={user.organization_name || "Organization Logo"}
+                            className="w-14 h-10 object-contain flex-shrink-0 transition-all duration-300 rounded"
+                        />
+                    ) : (
+                        <img
+                            src="/assets/ziya-logo.png"
+                            alt="Ziya Logo"
+                            className="w-14 h-10 flex-shrink-0 transition-all duration-300"
+                        />
+                    )}
 
                     {/* Text - Change text-2xl to control logo text size */}
                     {!isCollapsed && (
                         <h1 className="text-2xl font-bold text-slate-800 dark:text-white truncate">
-                            Ziya Voice
+                            {user?.organization_name || "Ziya Voice"}
                         </h1>
                     )}
                 </div>
