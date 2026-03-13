@@ -4,23 +4,12 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // MySQL connection configuration
-// const MYSQL_CONFIG = {
-//   host: process.env.MYSQL_HOST || 'localhost',
-//   port: parseInt(process.env.MYSQL_PORT || '3306'),
-//   user: process.env.MYSQL_USER || 'root',
-//   password: process.env.MYSQL_PASSWORD || '1234',
-//   database: process.env.MYSQL_DATABASE || 'ziya_voice_agent',
-//   waitForConnections: true,
-//   connectionLimit: 10,
-//   queueLimit: 0
-// };
-
 const MYSQL_CONFIG = {
-  host: process.env.MYSQL_HOST || '76.13.245.20',
+  host: process.env.MYSQL_HOST || 'localhost',
   port: parseInt(process.env.MYSQL_PORT || '3306'),
-  user: process.env.MYSQL_USER || 'ziya_voice',
-  password: process.env.MYSQL_PASSWORD || 'Ziya@123',
-  database: process.env.MYSQL_DATABASE || 'ziya_voice',
+  user: process.env.MYSQL_USER || 'root',
+  password: process.env.MYSQL_PASSWORD || '1234',
+  database: process.env.MYSQL_DATABASE || 'ziya_voice_agent',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0

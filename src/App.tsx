@@ -24,7 +24,9 @@ import SuperAdminDashboardPage from './pages/SuperAdminDashboardPage';
 import SuperAdminOrganizationsPage from './pages/SuperAdminOrganizationsPage';
 import SuperAdminOrgAdminsPage from './pages/SuperAdminOrgAdminsPage';
 import SuperAdminUsersPage from './pages/SuperAdminUsersPage';
+import SuperAdminIndividualUsersPage from './pages/SuperAdminIndividualUsersPage';
 import SuperAdminPlansPage from './pages/SuperAdminPlansPage';
+import SuperAdminPricingPage from './pages/SuperAdminPricingPage';
 import SuperAdminAnalyticsPage from './pages/SuperAdminAnalyticsPage';
 
 // ─── Route guards ────────────────────────────────────────────────────────────
@@ -65,7 +67,9 @@ const App: React.FC = () => {
                     <Route path="/superadmin/organizations" element={<SuperAdminRoute><SuperAdminOrganizationsPage /></SuperAdminRoute>} />
                     <Route path="/superadmin/org-admins" element={<SuperAdminRoute><SuperAdminOrgAdminsPage /></SuperAdminRoute>} />
                     <Route path="/superadmin/users" element={<SuperAdminRoute><SuperAdminUsersPage /></SuperAdminRoute>} />
+                    <Route path="/superadmin/individual-users" element={<SuperAdminRoute><SuperAdminIndividualUsersPage /></SuperAdminRoute>} />
                     <Route path="/superadmin/plans" element={<SuperAdminRoute><SuperAdminPlansPage /></SuperAdminRoute>} />
+                    <Route path="/superadmin/pricing" element={<SuperAdminRoute><SuperAdminPricingPage /></SuperAdminRoute>} />
                     <Route path="/superadmin/analytics" element={<SuperAdminRoute><SuperAdminAnalyticsPage /></SuperAdminRoute>} />
 
                     {/* ── Org Admin Routes (/admin/*) ───────────────── */}

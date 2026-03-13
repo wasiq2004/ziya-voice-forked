@@ -82,7 +82,9 @@ export const SUPER_ADMIN_SIDEBAR_ITEMS: SidebarItem[] = [
     { id: Page.SuperAdminOrganizations, icon: BuildingOfficeIcon },
     { id: Page.SuperAdminOrgAdmins, icon: UserGroupIcon },
     { id: Page.SuperAdminUsers, icon: UsersIcon },
+    { id: Page.SuperAdminIndividualUsers, icon: CpuChipIcon },
     { id: Page.SuperAdminPlans, icon: CircleStackIcon },
+    { id: Page.SuperAdminPricing, icon: AdjustmentsHorizontalIcon },
     { id: Page.SuperAdminAnalytics, icon: PresentationChartBarIcon },
 ];
 

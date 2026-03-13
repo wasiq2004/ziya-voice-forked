@@ -12,13 +12,15 @@ export enum Page {
     Reports = 'Reports',
     AdminDashboard = 'Admin Dashboard',
     AdminUsers = 'Users',
-    AdminPlans = 'Plans',
+    AdminPlans = 'Organization Plans',
     // Super Admin Pages
     SuperAdminDashboard = 'Super Admin Dashboard',
     SuperAdminOrganizations = 'Organizations',
     SuperAdminOrgAdmins = 'Org Admins',
     SuperAdminUsers = 'All Users',
+    SuperAdminIndividualUsers = 'Individual Users',
     SuperAdminPlans = 'Platform Plans',
+    SuperAdminPricing = 'Price Management',
     SuperAdminAnalytics = 'Platform Analytics',
 }
 

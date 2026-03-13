@@ -121,8 +121,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                 return '/superadmin/org-admins';
             case Page.SuperAdminUsers:
                 return '/superadmin/users';
+            case Page.SuperAdminIndividualUsers:
+                return '/superadmin/individual-users';
             case Page.SuperAdminPlans:
                 return '/superadmin/plans';
+            case Page.SuperAdminPricing:
+                return '/superadmin/pricing';
             case Page.SuperAdminAnalytics:
                 return '/superadmin/analytics';
             default:
@@ -136,8 +140,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
         if (path.startsWith('/superadmin/dashboard')) return Page.SuperAdminDashboard;
         if (path.startsWith('/superadmin/organizations')) return Page.SuperAdminOrganizations;
         if (path.startsWith('/superadmin/org-admins')) return Page.SuperAdminOrgAdmins;
+        if (path.startsWith('/superadmin/individual-users')) return Page.SuperAdminIndividualUsers;
         if (path.startsWith('/superadmin/users')) return Page.SuperAdminUsers;
         if (path.startsWith('/superadmin/plans')) return Page.SuperAdminPlans;
+        if (path.startsWith('/superadmin/pricing')) return Page.SuperAdminPricing;
         if (path.startsWith('/superadmin/analytics')) return Page.SuperAdminAnalytics;
         // Admin routes
         if (path.startsWith('/admin/dashboard')) return Page.AdminDashboard;
