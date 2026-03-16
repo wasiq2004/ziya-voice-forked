@@ -1,4 +1,4 @@
-const dotenv = require('dotenv');
+﻿const dotenv = require('dotenv');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -22,7 +22,7 @@ if (fs.existsSync(rootEnvLocal)) {
   console.log(`Loading env from: ${serverEnv}`);
   dotenv.config({ path: serverEnv });
 } else {
-  console.warn('⚠️ No .env file found!');
+  console.warn('âš ï¸ No .env file found!');
 }
 // Import services (STATIC classes)
 const { ApiKeyService } = require('./services/apiKeyService.js');
@@ -66,10 +66,10 @@ const expressWsInstance = expressWs(app, server, {
     perMessageDeflate: false,
     clientTracking: true,
     maxPayload: 100 * 1024 * 1024,
-    skipUTF8Validation: true  // ← THIS IS THE CRITICAL FIX
+    skipUTF8Validation: true  // â† THIS IS THE CRITICAL FIX
   }
 });
-console.log('✅ WebSocket with skipUTF8Validation enabled');
+console.log('âœ… WebSocket with skipUTF8Validation enabled');
 
 // ADD THIS BLOCK HERE:
 console.log('=== ENVIRONMENT CHECK ===');
@@ -96,9 +96,9 @@ const agentService = new AgentService(mysqlPool);
 // Initialize Voice Sync Service
 const voiceSyncService = new VoiceSyncService(mysqlPool);
 const voiceWsHandler = new VoiceWebSocketHandler(voiceSyncService);
-console.log('✅ Voice Sync Service initialized');
+console.log('âœ… Voice Sync Service initialized');
 
-console.log('✅ WebSocket support enabled on HTTP server');
+console.log('âœ… WebSocket support enabled on HTTP server');
 
 // Initialize Google Voice Stream Handler
 const GoogleVoiceStreamHandler = require('./services/GoogleVoiceStreamHandler.js');
@@ -106,7 +106,7 @@ const googleVoiceHandler = new GoogleVoiceStreamHandler(voiceSyncService, wallet
 app.ws('/voice-stream-google', (ws, req) => {
   googleVoiceHandler.handleConnection(ws, req);
 });
-console.log('✅ Google Voice Stream Handler initialized at /voice-stream-google');
+console.log('âœ… Google Voice Stream Handler initialized at /voice-stream-google');
 
 // Initialize Deepgram Browser Handler
 const { DeepgramBrowserHandler } = require('./services/DeepgramBrowserHandler.js');
@@ -124,12 +124,12 @@ if (deepgramApiKey) {
     app.ws('/voice-stream-deepgram', (ws, req) => {
       deepgramBrowserHandler.handleConnection(ws, req);
     });
-    console.log('✅ Deepgram Browser Handler initialized at /voice-stream-deepgram');
+    console.log('âœ… Deepgram Browser Handler initialized at /voice-stream-deepgram');
   } catch (error) {
     console.error('Failed to initialize DeepgramBrowserHandler:', error.message);
   }
 } else {
-  console.warn('⚠️ DeepgramBrowserHandler not initialized (missing API keys)');
+  console.warn('âš ï¸ DeepgramBrowserHandler not initialized (missing API keys)');
 }
 
 // Initialize BrowserVoiceHandler for production-level browser voice interactions
@@ -151,15 +151,15 @@ if (sarvamApiKey) {
     app.ws('/browser-voice-stream', (ws, req) => {
       browserVoiceHandler.handleConnection(ws, req);
     });
-    console.log('✅ Browser Voice Handler initialized at /browser-voice-stream');
-    console.log('   - Sarvam STT: ✅');
-    console.log('   - Gemini LLM: ' + (geminiApiKey ? '✅' : '❌'));
-    console.log('   - ElevenLabs TTS: ' + (elevenLabsApiKey ? '✅' : '❌'));
+    console.log('âœ… Browser Voice Handler initialized at /browser-voice-stream');
+    console.log('   - Sarvam STT: âœ…');
+    console.log('   - Gemini LLM: ' + (geminiApiKey ? 'âœ…' : 'âŒ'));
+    console.log('   - ElevenLabs TTS: ' + (elevenLabsApiKey ? 'âœ…' : 'âŒ'));
   } catch (error) {
     console.error('Failed to initialize BrowserVoiceHandler:', error.message);
   }
 } else {
-  console.warn('⚠️ BrowserVoiceHandler not initialized (missing SARVAM_API_KEY)');
+  console.warn('âš ï¸ BrowserVoiceHandler not initialized (missing SARVAM_API_KEY)');
 }
 
 // === ADD THIS BLOCK ===
@@ -191,7 +191,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Initialize and mount voice routes
 app.use('/api/voices', initVoiceSync(mysqlPool));
-console.log('✅ Voice API routes mounted at /api/voices');
+console.log('âœ… Voice API routes mounted at /api/voices');
 
 
 // ==================== SESSION & GOOGLE OAUTH ====================
@@ -239,7 +239,7 @@ app.get('/api/auth/google/callback',
   (req, res) => {
     // Successful authentication
     const user = req.user;
-    console.log('✅ Google OAuth successful for:', user.email);
+    console.log('âœ… Google OAuth successful for:', user.email);
 
     // Redirect to frontend with user data
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5000';
@@ -257,43 +257,40 @@ app.post('/api/auth/logout', (req, res) => {
   });
 });
 
-console.log('✅ Google OAuth routes configured');
+console.log('âœ… Google OAuth routes configured');
 
 // Initialize and mount call routes
 const callRoutes = require('./routes/callRoutes.js');
 app.set('mysqlPool', mysqlPool); // Make pool available to routes
 app.use('/api/calls', callRoutes);
-console.log('✅ Call API routes mounted at /api/calls');
+console.log('âœ… Call API routes mounted at /api/calls');
 
 const documentRoutes = require('./routes/documentRoutes.js')(mysqlPool);
 app.use('/api/documents', documentRoutes);
-console.log('✅ Document API routes mounted at /api/documents');
+console.log('âœ… Document API routes mounted at /api/documents');
 
 // Initialize and mount company routes
 const companyRoutes = require('./routes/companyRoutes.js')(companyService);
 app.use('/api/companies', companyRoutes);
-console.log('✅ Company API routes mounted at /api/companies');
+console.log('âœ… Company API routes mounted at /api/companies');
 
 // Trigger initial voice sync
 voiceSyncService.syncAllProviders()
   .then(result => {
-    console.log(`✅ Initial voice sync complete: ${result.synced} voices synced`);
+    console.log(`âœ… Initial voice sync complete: ${result.synced} voices synced`);
     if (result.errors.length > 0) {
-      console.warn('⚠️ Voice sync errors:', result.errors);
+      console.warn('âš ï¸ Voice sync errors:', result.errors);
     }
   })
-  .catch(err => console.error('❌ Initial voice sync failed:', err.message));
+  .catch(err => console.error('âŒ Initial voice sync failed:', err.message));
 
 // Get user wallet balance
 app.get('/api/wallet/balance/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
 
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: 'User ID is required'
-      });
+    if (!userId || userId === 'null' || userId === 'undefined') {
+      return res.json({ success: true, balance: 0, currency: 'USD' });
     }
 
     const balance = await walletService.getBalance(userId);
@@ -304,16 +301,11 @@ app.get('/api/wallet/balance/:userId', async (req, res) => {
       currency: 'USD'
     });
   } catch (error) {
-    console.error('Error fetching wallet balance:', error);
-
-    // Return 404 if user not found, 500 for other errors
+    // Silently return 0 for non-existent users (e.g., admin impersonation sessions)
     if (error.message && error.message.includes('User not found')) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found. Please ensure the user is registered.'
-      });
+      return res.json({ success: true, balance: 0, currency: 'USD' });
     }
-
+    console.error('Error fetching wallet balance:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -378,10 +370,10 @@ app.post('/api/admin/wallet/add-credits', async (req, res) => {
   try {
     const { userId, amount, description, adminId } = req.body; // amount is in INR
 
-    if (!userId || !amount || !adminId) {
+    if (!userId || !amount) {
       return res.status(400).json({
         success: false,
-        message: 'User ID, amount (INR), and admin ID are required'
+        message: 'User ID and amount (INR) are required'
       });
     }
 
@@ -396,16 +388,16 @@ app.post('/api/admin/wallet/add-credits', async (req, res) => {
     const result = await walletService.addCredits(
       userId,
       amount,
-      description || `Admin added ₹${amount} INR`,
+      description || `Admin added â‚¹${amount} INR`,
       adminId
     );
 
     // Log admin activity with INR + credits info
-    await adminService.logActivity(
+    adminService.logActivity(
       adminId,
       'add_wallet_credits',
       userId,
-      `Added ₹${amount} INR (≈${result.creditsAdded} Credits) to wallet. Reason: ${description || 'N/A'}`,
+      `Added â‚¹${amount} INR (â‰ˆ${result.creditsAdded} Credits) to wallet. Reason: ${description || 'N/A'}`,
       req.ip
     );
 
@@ -451,7 +443,7 @@ app.post('/api/admin/wallet/deduct-credits', async (req, res) => {
     );
 
     // Log admin activity
-    await adminService.logActivity(
+    adminService.logActivity(
       adminId,
       'deduct_wallet_credits',
       userId,
@@ -500,7 +492,7 @@ app.post('/api/admin/wallet/update-pricing', async (req, res) => {
     await walletService.updatePricing(serviceType, costPerUnit, adminId);
 
     // Log admin activity
-    await adminService.logActivity(
+    adminService.logActivity(
       adminId,
       'update_service_pricing',
       null,
@@ -545,7 +537,526 @@ app.get('/api/admin/wallet/all-balances', async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
-// ------------------------------------------------
+// -----------------------------------------------
+
+// ==================== SUPPORT TICKETS ENDPOINTS ====================
+
+// POST /api/support/tickets — Create a new ticket
+app.post('/api/support/tickets', async (req, res) => {
+  try {
+    const { subject, category, priority, message, created_by, created_by_role, target_role, organization_id } = req.body;
+    
+    if (!subject || !category || !message || !created_by || !created_by_role || !target_role) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+    
+    const ticketId = require('crypto').randomBytes(8).toString('hex');
+    
+    await mysqlPool.execute(
+      `INSERT INTO support_tickets 
+       (id, subject, category, priority, message, status, created_by, created_by_role, target_role, organization_id) 
+       VALUES (?, ?, ?, ?, ?, 'Open', ?, ?, ?, ?)`,
+      [ticketId, subject, category, priority || 'Medium', message, created_by, created_by_role, target_role, organization_id || null]
+    );
+    
+    const [rows] = await mysqlPool.execute('SELECT * FROM support_tickets WHERE id = ?', [ticketId]);
+    res.json({ success: true, ticket: rows[0] });
+  } catch (error) {
+    console.error('Error creating support ticket:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/support/tickets — List tickets based on filters (role/organization)
+app.get('/api/support/tickets', async (req, res) => {
+  try {
+    const { created_by, created_by_role, target_role, organization_id, limit = 100 } = req.query;
+    
+    let query = `
+      SELECT t.*, u.email as creator_email, u.username as creator_name
+      FROM support_tickets t
+      LEFT JOIN users u ON t.created_by = u.id
+      WHERE 1=1
+    `;
+    const params = [];
+    
+    if (created_by) {
+      query += ` AND t.created_by = ?`;
+      params.push(created_by);
+    }
+    if (created_by_role) {
+      query += ` AND t.created_by_role = ?`;
+      params.push(created_by_role);
+    }
+    if (target_role) {
+      query += ` AND t.target_role = ?`;
+      params.push(target_role);
+    }
+    if (organization_id) {
+      query += ` AND t.organization_id = ?`;
+      params.push(organization_id);
+    }
+    
+    query += ` ORDER BY t.created_at DESC LIMIT ${parseInt(limit)}`;
+    
+    const [tickets] = await mysqlPool.execute(query, params);
+    
+    // Fetch replies for each ticket
+    for (let ticket of tickets) {
+      const [replies] = await mysqlPool.execute(
+        `SELECT r.*, u.email as user_email, u.username as user_name 
+         FROM support_ticket_replies r
+         LEFT JOIN users u ON r.reply_by = u.id
+         WHERE r.ticket_id = ? 
+         ORDER BY r.created_at ASC`,
+        [ticket.id]
+      );
+      ticket.replies = replies;
+    }
+    
+    res.json({ success: true, tickets });
+  } catch (error) {
+    console.error('Error listing support tickets:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/support/tickets/:ticketId/reply — Reply to a ticket
+app.post('/api/support/tickets/:ticketId/reply', async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const { message, user_id, user_role } = req.body;
+    
+    if (!message || !user_id || !user_role) {
+      return res.status(400).json({ success: false, message: 'Message, user_id, and user_role are required' });
+    }
+    
+    const replyId = require('crypto').randomBytes(8).toString('hex');
+    
+    await mysqlPool.execute(
+      `INSERT INTO support_ticket_replies 
+       (id, ticket_id, message, user_id, user_role) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [replyId, ticketId, message, user_id, user_role]
+    );
+    
+    // Auto-update ticket status to 'In Progress' if it was 'Open'
+    await mysqlPool.execute(
+      `UPDATE support_tickets SET status = 'In Progress', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'Open'`,
+      [ticketId]
+    );
+    
+    res.json({ success: true, message: 'Reply submitted' });
+  } catch (error) {
+    console.error('Error replying to ticket:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// PATCH /api/support/tickets/:ticketId/status — Update ticket status
+app.patch('/api/support/tickets/:ticketId/status', async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const { status } = req.body;
+    
+    if (!status) {
+      return res.status(400).json({ success: false, message: 'Status is required' });
+    }
+    
+    await mysqlPool.execute(
+      `UPDATE support_tickets SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [status, ticketId]
+    );
+    
+    res.json({ success: true, message: 'Ticket status updated' });
+  } catch (error) {
+    console.error('Error updating ticket status:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== END SUPPORT TICKETS ENDPOINTS ====================
+
+// ==================== SUPPORT TICKETS ENDPOINTS ====================
+
+// POST /api/support/tickets — Create a new ticket
+app.post('/api/support/tickets', async (req, res) => {
+  try {
+    const { subject, category, priority, message, created_by, created_by_role, target_role, organization_id } = req.body;
+    
+    if (!subject || !category || !message || !created_by || !created_by_role || !target_role) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+    
+    const ticketId = require('crypto').randomBytes(8).toString('hex');
+    
+    await mysqlPool.execute(
+      `INSERT INTO support_tickets 
+       (id, subject, category, priority, message, status, created_by, created_by_role, target_role, organization_id) 
+       VALUES (?, ?, ?, ?, ?, 'Open', ?, ?, ?, ?)`,
+      [ticketId, subject, category, priority || 'Medium', message, created_by, created_by_role, target_role, organization_id || null]
+    );
+    
+    const [rows] = await mysqlPool.execute('SELECT * FROM support_tickets WHERE id = ?', [ticketId]);
+    res.json({ success: true, ticket: rows[0] });
+  } catch (error) {
+    console.error('Error creating support ticket:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/support/tickets — List tickets based on filters
+app.get('/api/support/tickets', async (req, res) => {
+  try {
+    const { created_by, created_by_role, target_role, organization_id, limit = 100 } = req.query;
+    
+    let query = `
+      SELECT t.*, u.email as creator_email, u.username as creator_name
+      FROM support_tickets t
+      LEFT JOIN users u ON t.created_by = u.id
+      WHERE 1=1
+    `;
+    const params = [];
+    
+    if (created_by) {
+      query += ` AND t.created_by = ?`; params.push(created_by);
+    }
+    if (created_by_role) {
+      query += ` AND t.created_by_role = ?`; params.push(created_by_role);
+    }
+    if (target_role) {
+      query += ` AND t.target_role = ?`; params.push(target_role);
+    }
+    if (organization_id) {
+      query += ` AND t.organization_id = ?`; params.push(organization_id);
+    }
+    
+    query += ` ORDER BY t.created_at DESC LIMIT ${parseInt(limit)}`;
+    
+    const [tickets] = await mysqlPool.execute(query, params);
+    
+    // Fetch replies for each ticket
+    for (let ticket of tickets) {
+      const [replies] = await mysqlPool.execute(
+        `SELECT r.*, u.email as user_email, u.username as user_name 
+         FROM support_ticket_replies r
+         LEFT JOIN users u ON r.reply_by = u.id
+         WHERE r.ticket_id = ? 
+         ORDER BY r.created_at ASC`,
+        [ticket.id]
+      );
+      ticket.replies = replies;
+    }
+    
+    res.json({ success: true, tickets });
+  } catch (error) {
+    console.error('Error listing support tickets:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/support/tickets/:ticketId/reply — Reply to a ticket
+app.post('/api/support/tickets/:ticketId/reply', async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const { message, user_id, user_role } = req.body;
+    
+    if (!message || !user_id || !user_role) {
+      return res.status(400).json({ success: false, message: 'Message, user_id, and user_role are required' });
+    }
+    
+    const replyId = require('crypto').randomBytes(8).toString('hex');
+    
+    await mysqlPool.execute(
+      `INSERT INTO support_ticket_replies 
+       (id, ticket_id, message, user_id, user_role) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [replyId, ticketId, message, user_id, user_role]
+    );
+    
+    await mysqlPool.execute(
+      `UPDATE support_tickets SET status = 'In Progress', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'Open'`,
+      [ticketId]
+    );
+    
+    res.json({ success: true, message: 'Reply submitted' });
+  } catch (error) {
+    console.error('Error replying to ticket:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// PATCH /api/support/tickets/:ticketId/status — Update ticket status
+app.patch('/api/support/tickets/:ticketId/status', async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const { status } = req.body;
+    
+    if (!status) { return res.status(400).json({ success: false, message: 'Status is required' }); }
+    
+    await mysqlPool.execute(
+      `UPDATE support_tickets SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [status, ticketId]
+    );
+    
+    res.json({ success: true, message: 'Ticket status updated' });
+  } catch (error) {
+    console.error('Error updating ticket status:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== ADMIN USER MANAGEMENT ENDPOINTS ====================
+
+// GET /api/admin/users â€” list users scoped to org (or all for super admin)
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const rawPage = Array.isArray(req.query.page) ? req.query.page[0] : req.query.page;
+    const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+    const search = Array.isArray(req.query.search) ? req.query.search[0] : (req.query.search || '');
+    const rawOrgId = Array.isArray(req.query.orgId) ? req.query.orgId[0] : req.query.orgId;
+    const page = parseInt(rawPage) || 1;
+    const limit = parseInt(rawLimit) || 50;
+    const orgId = rawOrgId && rawOrgId !== 'null' ? parseInt(rawOrgId) : null;
+    const result = await adminService.getAllUsers(page, limit, search, orgId);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/admin/users/:userId â€” single user detail including wallet_balance
+app.get('/api/admin/users/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const data = await adminService.getUserDetails(userId);
+    // Attach live wallet balance
+    const wallet = await walletService.getOrCreateWallet(userId).catch(() => null);
+    if (data.user && wallet) {
+      data.user.wallet_balance = parseFloat(wallet.balance || '0');
+    }
+    // Normalise limits from array to object keyed by service_name
+    const limitsMap = {};
+    if (Array.isArray(data.limits)) {
+      data.limits.forEach(l => { limitsMap[l.service_name] = l; });
+    }
+    res.json({ success: true, user: data.user, limits: limitsMap, usage: data.usage, billing: data.billing });
+  } catch (error) {
+    console.error('Error fetching user details:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// DELETE /api/admin/users/:userId â€” permanently delete a user (org-scoped)
+app.delete('/api/admin/users/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { adminId } = req.body;
+    // Ensure the user exists and is a regular user (not another admin)
+    const [rows] = await mysqlPool.execute("SELECT id, role FROM users WHERE id = ? AND role = 'user'", [userId]);
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+    // Cascade delete
+    await mysqlPool.execute('DELETE FROM user_wallets WHERE user_id = ?', [userId]).catch(() => {});
+    await mysqlPool.execute('DELETE FROM wallet_transactions WHERE user_id = ?', [userId]).catch(() => {});
+    await mysqlPool.execute('DELETE FROM user_service_limits WHERE user_id = ?', [userId]).catch(() => {});
+    await mysqlPool.execute('DELETE FROM user_service_usage WHERE user_id = ?', [userId]).catch(() => {});
+    await mysqlPool.execute('DELETE FROM agents WHERE user_id = ?', [userId]).catch(() => {});
+    await mysqlPool.execute('DELETE FROM campaigns WHERE user_id = ?', [userId]).catch(() => {});
+    await mysqlPool.execute('DELETE FROM users WHERE id = ?', [userId]);
+    if (adminId) {
+      adminService.logActivity(adminId, 'delete_user', userId, 'User permanently deleted', null);
+    }
+    res.json({ success: true, message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// PUT /api/admin/users/:userId/status â€” block or unblock user
+app.put('/api/admin/users/:userId/status', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { status, adminId } = req.body;
+    if (!['active', 'locked', 'inactive'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status value' });
+    }
+    const result = await adminService.updateUserStatus(userId, status, adminId);
+    res.json({ success: true, message: result.message });
+  } catch (error) {
+    console.error('Error updating user status:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/admin/wallet/summary?orgId=X â€” org-level credit KPIs
+app.get('/api/admin/wallet/summary', async (req, res) => {
+  try {
+    const { orgId } = req.query;
+    let userFilter = "WHERE u.role = 'user'";
+    const params = [];
+    if (orgId) { userFilter += ' AND u.organization_id = ?'; params.push(parseInt(orgId)); }
+    const [[totals]] = await mysqlPool.execute(`
+      SELECT
+        COUNT(DISTINCT u.id) AS totalUsers,
+        COALESCE(SUM(uw.balance), 0) AS totalBalance,
+        COALESCE((SELECT SUM(wt.amount) FROM wallet_transactions wt JOIN users u2 ON u2.id = wt.user_id ${orgId ? "AND u2.organization_id = ?" : ""} WHERE wt.transaction_type = 'debit'), 0) AS totalDebited,
+        COALESCE((SELECT SUM(wt.amount) FROM wallet_transactions wt JOIN users u2 ON u2.id = wt.user_id ${orgId ? "AND u2.organization_id = ?" : ""} WHERE wt.transaction_type = 'credit'), 0) AS totalCredited
+      FROM users u
+      LEFT JOIN user_wallets uw ON uw.user_id = u.id
+      ${userFilter}
+    `, orgId ? [...params, parseInt(orgId), parseInt(orgId)] : []);
+    res.json({ success: true, summary: totals });
+  } catch (error) {
+    console.error('Error fetching wallet summary:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/admin/wallet/transactions?orgId=X â€” org-level transaction log
+app.get('/api/admin/wallet/transactions', async (req, res) => {
+  try {
+    const { orgId, limit = 100, type } = req.query;
+    let where = "WHERE u.role = 'user'";
+    const params = [];
+    if (orgId) { where += ' AND u.organization_id = ?'; params.push(parseInt(orgId)); }
+    if (type && type !== 'All') { where += ' AND wt.transaction_type = ?'; params.push(type === 'Purchased' ? 'credit' : 'debit'); }
+    const [transactions] = await mysqlPool.execute(`
+      SELECT wt.*, u.username, u.email
+      FROM wallet_transactions wt
+      JOIN users u ON u.id = wt.user_id
+      ${where}
+      ORDER BY wt.created_at DESC
+      LIMIT ${parseInt(limit)}
+    `, params);
+    res.json({ success: true, transactions });
+  } catch (error) {
+    console.error('Error fetching org wallet transactions:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/admin/impersonate/:userId â€” get user profile for impersonation
+app.get('/api/admin/users/:userId/impersonate', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { adminId } = req.query;
+    const result = await adminService.getImpersonateUser(userId, adminId);
+    res.json({ success: true, user: result });
+  } catch (error) {
+    console.error('Error impersonating user:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/admin/logs?orgId=X â€” audit logs
+app.get('/api/admin/logs', async (req, res) => {
+  try {
+    const { page = 1, limit = 50, orgId } = req.query;
+    const result = await adminService.getAuditLogs(parseInt(page), parseInt(limit), orgId || null);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Error fetching audit logs:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/admin/stats â€” dashboard statistics
+app.get('/api/admin/stats', async (req, res) => {
+  try {
+    const { orgId } = req.query;
+    const stats = await adminService.getDashboardStats(orgId || null);
+    res.json({ success: true, stats });
+  } catch (error) {
+    console.error('Error fetching admin stats:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/admin/users/:userId/resources â€” user agents + campaigns
+app.get('/api/admin/users/:userId/resources', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const result = await adminService.getUserResources(userId);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Error fetching user resources:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/admin/users/:userId/reset-password
+app.post('/api/admin/users/:userId/reset-password', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { newPassword, adminId } = req.body;
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+    const result = await adminService.resetUserPassword(userId, newPassword, adminId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error resetting password:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/admin/users/:userId/service-limits â€” set service limit
+app.post('/api/admin/users/:userId/service-limits', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { serviceName, monthlyLimit, dailyLimit, isEnabled, adminId } = req.body;
+    await adminService.setServiceLimit(userId, serviceName, monthlyLimit, dailyLimit, isEnabled, adminId);
+    res.json({ success: true, message: 'Service limit updated' });
+  } catch (error) {
+    console.error('Error setting service limit:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/admin/billing/:billingId/status â€” update billing status
+app.post('/api/admin/billing/:billingId/status', async (req, res) => {
+  try {
+    const { billingId } = req.params;
+    const { status, notes, adminId } = req.body;
+    await adminService.updateBillingStatus(billingId, status, notes || '');
+    if (adminId) adminService.logActivity(adminId, 'update_billing_status', null, `Updated billing ${billingId} to ${status}`, null);
+    res.json({ success: true, message: 'Billing status updated' });
+  } catch (error) {
+    console.error('Error updating billing status:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/admin/create-user â€” create user under org (org-scoped)
+app.post('/api/admin/create-user', async (req, res) => {
+  try {
+    const { email, username, password, organization_id } = req.body;
+    if (!email || !username || !password) {
+      return res.status(400).json({ success: false, message: 'Email, username, and password are required' });
+    }
+    // Check uniqueness
+    const [existing] = await mysqlPool.execute('SELECT id FROM users WHERE email = ?', [email]);
+    if (existing.length > 0) return res.status(409).json({ success: false, message: 'Email already in use' });
+    const bcrypt = require('bcryptjs');
+    const passwordHash = await bcrypt.hash(password, 10);
+    const userId = require('crypto').randomBytes(8).toString('hex');
+    await mysqlPool.execute(
+      `INSERT INTO users (id, email, username, password_hash, role, organization_id, status) VALUES (?, ?, ?, ?, 'user', ?, 'active')`,
+      [userId, email, username, passwordHash, organization_id || 5]
+    );
+    // Give them a wallet
+    await walletService.getOrCreateWallet(userId).catch(() => {});
+    const [rows] = await mysqlPool.execute('SELECT id, email, username, role, status, created_at, organization_id FROM users WHERE id = ?', [userId]);
+    res.json({ success: true, user: rows[0] });
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// -----------------------------------------------
 // For Twilio webhook form data
 
 // Health check endpoint for Railway
@@ -630,12 +1141,12 @@ app.get('/api/voice-config-check', (req, res) => {
           result.apiTest = {
             status: testResponse.status,
             ok: testResponse.ok,
-            message: testResponse.ok ? 'API key is valid ✅' : 'API key is invalid ❌'
+            message: testResponse.ok ? 'API key is valid âœ…' : 'API key is invalid âŒ'
           };
         } catch (error) {
           result.apiTest = {
             error: error.message,
-            message: 'Failed to test API key ❌'
+            message: 'Failed to test API key âŒ'
           };
         }
       }
@@ -657,8 +1168,8 @@ app.get('/api/voice-config-check', (req, res) => {
       websocketUrl: `${wsUrl}/api/call`,
       expectedFormat: 'wss://your-domain.railway.app/api/call?callId=xxx&agentId=xxx&contactId=xxx',
       registeredEndpoints: {
-        '/api/call': 'WebSocket handler for Twilio media streams ✅',
-        '/voice-stream': 'WebSocket handler for frontend voice chat ✅'
+        '/api/call': 'WebSocket handler for Twilio media streams âœ…',
+        '/voice-stream': 'WebSocket handler for frontend voice chat âœ…'
       },
       instructions: 'Make sure Twilio TwiML uses this exact WebSocket URL format'
     });
@@ -720,7 +1231,7 @@ app.get('/api/voice-config-check', (req, res) => {
         audioFormat: 'ulaw_8000',
         voiceId: testVoiceId,
         keyUsed: `${apiKey.substring(0, 8)}...`,
-        message: 'Voice pipeline is working correctly ✅'
+        message: 'Voice pipeline is working correctly âœ…'
       });
 
     } catch (error) {
@@ -739,7 +1250,7 @@ app.get('/api/voice-config-check', (req, res) => {
     config.checks.appUrl.isPublic &&
     config.checks.mediaStreamHandler.initialized;
 
-  config.overallStatus = allConfigured ? 'READY ✅' : 'NOT READY ❌';
+  config.overallStatus = allConfigured ? 'READY âœ…' : 'NOT READY âŒ';
   config.readyToMakeCalls = allConfigured;
 
   // Add missing items
@@ -847,7 +1358,7 @@ app.get('/api/test-voice-pipeline', async (req, res) => {
     results.tests.elevenlabs.configured &&
     (!results.tests.elevenlabs.apiWorking || results.tests.elevenlabs.apiWorking === true);
 
-  results.overallStatus = allPassed ? 'ALL TESTS PASSED ✅' : 'SOME TESTS FAILED ❌';
+  results.overallStatus = allPassed ? 'ALL TESTS PASSED âœ…' : 'SOME TESTS FAILED âŒ';
   results.readyForCalls = allPassed;
 
   res.json(results);
@@ -893,12 +1404,12 @@ app.get('/api/test-deepgram-key', async (req, res) => {
 
       if (testResponse.ok) {
         const data = await testResponse.json();
-        result.apiTest.message = '✅ API key is VALID and working!';
+        result.apiTest.message = 'âœ… API key is VALID and working!';
         result.apiTest.projectsFound = data.projects ? data.projects.length : 0;
         result.status = 'SUCCESS';
       } else {
         const errorText = await testResponse.text();
-        result.apiTest.message = '❌ API key is INVALID or EXPIRED';
+        result.apiTest.message = 'âŒ API key is INVALID or EXPIRED';
         result.apiTest.error = errorText;
         result.status = 'FAILED';
         result.recommendation = 'Create a new API key at https://console.deepgram.com/ and update DEEPGRAM_API_KEY in Railway';
@@ -906,7 +1417,7 @@ app.get('/api/test-deepgram-key', async (req, res) => {
     } catch (error) {
       result.apiTest = {
         error: error.message,
-        message: '❌ Failed to connect to Deepgram API'
+        message: 'âŒ Failed to connect to Deepgram API'
       };
       result.status = 'ERROR';
     }
@@ -1091,11 +1602,11 @@ app.post('/api/auth/register', async (req, res) => {
     const txId = uuidv4();
     await mysqlPool.execute(
       `INSERT INTO wallet_transactions (id, user_id, transaction_type, amount, balance_after, service_type, description, created_by)
-       VALUES (?, ?, 'credit', ?, ?, 'initial_credit', 'Free trial — 50 credits', NULL)`,
+       VALUES (?, ?, 'credit', ?, ?, 'initial_credit', 'Free trial â€” 50 credits', NULL)`,
       [txId, user.id, TRIAL_CREDITS, TRIAL_CREDITS]
     );
 
-    console.log(`✅ New user ${email} registered with 14-day trial and ${TRIAL_CREDITS} credits`);
+    console.log(`âœ… New user ${email} registered with 14-day trial and ${TRIAL_CREDITS} credits`);
     res.json({ success: true, user });
   } catch (error) {
     console.error('Registration error:', error);
@@ -1197,7 +1708,7 @@ app.patch('/api/admin/users/:userId/plan', async (req, res) => {
     values.push(userId);
     await mysqlPool.execute(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
 
-    await adminService.logActivity(
+    adminService.logActivity(
       adminId,
       'update_user_plan',
       userId,
@@ -1284,7 +1795,7 @@ app.post('/api/admin/plans', async (req, res) => {
     );
 
     if (adminId) {
-      await adminService.logActivity(adminId, 'create_plan', null, `Created plan: ${plan_name}`, req.ip);
+      adminService.logActivity(adminId, 'create_plan', null, `Created plan: ${plan_name}`, req.ip);
     }
 
     const [newPlan] = await mysqlPool.execute('SELECT * FROM plans WHERE id = ?', [planId]);
@@ -1317,7 +1828,7 @@ app.put('/api/admin/plans/:planId', async (req, res) => {
     await mysqlPool.execute(`UPDATE plans SET ${updates.join(', ')} WHERE id = ?`, values);
 
     if (adminId) {
-      await adminService.logActivity(adminId, 'update_plan', null, `Updated plan ${planId}`, req.ip);
+      adminService.logActivity(adminId, 'update_plan', null, `Updated plan ${planId}`, req.ip);
     }
 
     const [updated] = await mysqlPool.execute('SELECT * FROM plans WHERE id = ?', [planId]);
@@ -1348,7 +1859,7 @@ app.delete('/api/admin/plans/:planId', async (req, res) => {
     await mysqlPool.execute('DELETE FROM plans WHERE id = ?', [planId]);
 
     if (adminId) {
-      await adminService.logActivity(adminId, 'delete_plan', null, `Deleted plan ${planId}`, req.ip);
+      adminService.logActivity(adminId, 'delete_plan', null, `Deleted plan ${planId}`, req.ip);
     }
 
     res.json({ success: true, message: 'Plan deleted successfully' });
@@ -1436,7 +1947,7 @@ app.post('/api/admin/users/:userId/assign-plan', async (req, res) => {
       console.warn('Could not log wallet transaction:', txErr.message);
     }
 
-    await adminService.logActivity(
+    adminService.logActivity(
       adminId,
       'assign_plan',
       userId,
@@ -1653,11 +2164,11 @@ app.get('/api/superadmin/organizations', async (req, res) => {
 // Create organization
 app.post('/api/superadmin/organizations', async (req, res) => {
   try {
-    const { name, createdBy } = req.body;
+    const { name, createdBy, logo_url } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Organization name is required' });
     }
-    const organization = await organizationService.createOrganization(name.trim(), createdBy);
+    const organization = await organizationService.createOrganization(name.trim(), createdBy, logo_url);
     res.json({ success: true, organization });
   } catch (err) {
     console.error('Create organization error:', err);
@@ -1669,8 +2180,8 @@ app.post('/api/superadmin/organizations', async (req, res) => {
 app.put('/api/superadmin/organizations/:orgId', async (req, res) => {
   try {
     const { orgId } = req.params;
-    const { name, status } = req.body;
-    const organization = await organizationService.updateOrganization(parseInt(orgId), { name, status });
+    const { name, status, logo_url } = req.body;
+    const organization = await organizationService.updateOrganization(parseInt(orgId), { name, status, logo_url });
     res.json({ success: true, organization });
   } catch (err) {
     console.error('Update organization error:', err);
@@ -1724,7 +2235,7 @@ app.post('/api/superadmin/organizations/:orgId/assign-plan', async (req, res) =>
     );
 
     if (adminId) {
-      await adminService.logActivity(adminId, 'assign_org_plan', null, `Assigned plan ${plan.plan_name} to Organization ${orgId}`, req.ip);
+      adminService.logActivity(adminId, 'assign_org_plan', null, `Assigned plan ${plan.plan_name} to Organization ${orgId}`, req.ip);
     }
 
     res.json({ success: true, message: 'Plan assigned to organization successfully.' });
@@ -1866,7 +2377,7 @@ app.delete('/api/superadmin/users/:userId', async (req, res) => {
   }
 });
 
-// ─── Super Admin: Price Management Dashboard ────────────────────────────────
+// â”€â”€â”€ Super Admin: Price Management Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // GET all service pricing rows
 app.get('/api/superadmin/pricing/services', async (req, res) => {
@@ -1945,7 +2456,7 @@ app.put('/api/superadmin/pricing/config', async (req, res) => {
   }
 });
 
-// ─── Individual Users (role = individual_user) ───────────────────────────────
+// â”€â”€â”€ Individual Users (role = individual_user) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 // GET /api/superadmin/individual-users - List all individual_user accounts
@@ -2010,7 +2521,7 @@ app.patch('/api/superadmin/individual-users/:userId/status', async (req, res) =>
   }
 });
 
-// Assign plan to user (super admin — delegates to admin logic)
+// Assign plan to user (super admin â€” delegates to admin logic)
 app.post('/api/superadmin/users/:userId/assign-plan', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -2052,7 +2563,7 @@ app.post('/api/admin/users', async (req, res) => {
     await mysqlPool.execute(
       `INSERT INTO users (id, email, username, password_hash, role, organization_id, status)
        VALUES (?, ?, ?, ?, 'user', ?, 'active')`,
-      [userId, email, username, passwordHash, organization_id || null]
+      [userId, email, username, passwordHash, organization_id || 5]
     );
     // Create default company for the new user
     const companyId = uuidv4();
@@ -2069,8 +2580,439 @@ app.post('/api/admin/users', async (req, res) => {
 });
 
 // ============================================================
+// PROFILE & SETTINGS ENDPOINTS
+// ============================================================
+
+// POST /api/admin/profile/update â€” Update org admin profile (name, username)
+app.post('/api/admin/profile/update', async (req, res) => {
+  try {
+    const { userId, name, username } = req.body;
+    if (!userId) return res.status(400).json({ success: false, message: 'userId required' });
+
+    const updates = [];
+    const values = [];
+    if (name !== undefined)     { updates.push('name = ?');     values.push(name); }
+    if (username !== undefined) { updates.push('username = ?'); values.push(username); }
+    if (updates.length === 0)   return res.status(400).json({ success: false, message: 'Nothing to update' });
+
+    values.push(userId);
+    await mysqlPool.execute(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
+
+    // Return updated user row
+    const [rows] = await mysqlPool.execute(
+      'SELECT id, email, username, name, role, organization_id FROM users WHERE id = ?',
+      [userId]
+    );
+    res.json({ success: true, message: 'Profile updated successfully', user: rows[0] });
+  } catch (err) {
+    console.error('Profile update error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/admin/branding/update â€” Update org branding (logo URL, custom domain)
+app.post('/api/admin/branding/update', async (req, res) => {
+  try {
+    const { adminId, logoUrl, customDomain } = req.body;
+    if (!adminId) return res.status(400).json({ success: false, message: 'adminId required' });
+
+    // Get org id for this admin
+    const [adminRows] = await mysqlPool.execute('SELECT organization_id FROM users WHERE id = ?', [adminId]);
+    if (adminRows.length === 0) return res.status(404).json({ success: false, message: 'Admin not found' });
+    const orgId = adminRows[0].organization_id;
+    if (!orgId) return res.status(400).json({ success: false, message: 'Admin has no organization' });
+
+    const updates = [];
+    const values = [];
+    if (logoUrl !== undefined)      { updates.push('logo_url = ?');      values.push(logoUrl); }
+    if (customDomain !== undefined) { updates.push('custom_domain = ?'); values.push(customDomain); }
+
+    if (updates.length > 0) {
+      values.push(orgId);
+      // Add columns if they don't exist (graceful)
+      try {
+        await mysqlPool.execute('ALTER TABLE organizations ADD COLUMN IF NOT EXISTS logo_url VARCHAR(512) DEFAULT NULL');
+        await mysqlPool.execute('ALTER TABLE organizations ADD COLUMN IF NOT EXISTS custom_domain VARCHAR(255) DEFAULT NULL');
+      } catch (_) {}
+      await mysqlPool.execute(`UPDATE organizations SET ${updates.join(', ')} WHERE id = ?`, values);
+    }
+
+    res.json({ success: true, message: 'Branding settings updated!' });
+  } catch (err) {
+    console.error('Branding update error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Auto-create platform_settings table
+(async () => {
+  try {
+    await mysqlPool.execute(`
+      CREATE TABLE IF NOT EXISTS platform_settings (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        setting_key VARCHAR(100) UNIQUE NOT NULL,
+        setting_value TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    `);
+    // Seed defaults if empty
+    const [rows] = await mysqlPool.execute('SELECT COUNT(*) as cnt FROM platform_settings');
+    if (rows[0].cnt === 0) {
+      await mysqlPool.execute(
+        `INSERT INTO platform_settings (setting_key, setting_value) VALUES
+          ('platform_name', 'Ziya Voice'),
+          ('support_email', 'support@ziyavoice.com'),
+          ('maintenance_mode', '0'),
+          ('max_concurrent_calls', '2000'),
+          ('storage_quota_gb', '50'),
+          ('platform_margin', '25'),
+          ('notify_daily_report', '1'),
+          ('notify_critical', '1'),
+          ('notify_new_org', '1'),
+          ('notify_wallet_empty', '0')`
+      );
+    }
+    console.log('âœ… Platform settings table ready');
+  } catch (err) {
+    console.warn('âš ï¸ Could not create platform_settings table:', err.message);
+  }
+})();
+
+// GET /api/superadmin/settings â€” Get all platform settings
+app.get('/api/superadmin/settings', async (req, res) => {
+  try {
+    const [rows] = await mysqlPool.execute('SELECT setting_key, setting_value FROM platform_settings');
+    const settings = {};
+    rows.forEach((r) => { settings[r.setting_key] = r.setting_value; });
+    res.json({ success: true, settings });
+  } catch (err) {
+    console.error('Get settings error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/superadmin/settings â€” Bulk upsert platform settings
+app.post('/api/superadmin/settings', async (req, res) => {
+  try {
+    const { settings } = req.body; // { key: value, ... }
+    if (!settings || typeof settings !== 'object') {
+      return res.status(400).json({ success: false, message: 'settings object required' });
+    }
+    for (const [key, value] of Object.entries(settings)) {
+      await mysqlPool.execute(
+        `INSERT INTO platform_settings (setting_key, setting_value)
+         VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+        [key, String(value)]
+      );
+    }
+    res.json({ success: true, message: 'Settings saved successfully' });
+  } catch (err) {
+    console.error('Save settings error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ============================================================
+// SUPPORT TICKET SYSTEM
+// ============================================================
+
+
+// Auto-create support_tickets table if it doesn't exist
+(async () => {
+  try {
+    await mysqlPool.execute(`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id VARCHAR(36) PRIMARY KEY,
+        subject VARCHAR(255) NOT NULL,
+        category VARCHAR(100) DEFAULT 'Technical',
+        priority ENUM('Low','Medium','High','Urgent') DEFAULT 'Medium',
+        status ENUM('Open','In Progress','Resolved','Closed') DEFAULT 'Open',
+        message TEXT NOT NULL,
+        created_by VARCHAR(36) NOT NULL,
+        created_by_role ENUM('user','org_admin','super_admin') NOT NULL,
+        organization_id INT NULL,
+        assigned_to VARCHAR(36) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_created_by (created_by),
+        INDEX idx_organization_id (organization_id),
+        INDEX idx_status (status),
+        INDEX idx_created_by_role (created_by_role)
+      )
+    `);
+    await mysqlPool.execute(`
+      CREATE TABLE IF NOT EXISTS support_ticket_replies (
+        id VARCHAR(36) PRIMARY KEY,
+        ticket_id VARCHAR(36) NOT NULL,
+        reply_by VARCHAR(36) NOT NULL,
+        reply_by_role ENUM('user','org_admin','super_admin') NOT NULL,
+        message TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (ticket_id) REFERENCES support_tickets(id) ON DELETE CASCADE
+      )
+    `);
+    console.log('âœ… Support ticket tables ready');
+  } catch (err) {
+    console.warn('âš ï¸ Could not create support_tickets table:', err.message);
+  }
+})();
+
+// POST /api/support/tickets – Create a new ticket
+app.post('/api/support/tickets', async (req, res) => {
+  try {
+    const { subject, category, priority, message, created_by, created_by_role, target_role, organization_id } = req.body;
+    if (!subject || !message || !created_by || !created_by_role || !target_role) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+    const ticketId = uuidv4();
+    await mysqlPool.execute(
+      `INSERT INTO support_tickets (id, subject, category, priority, message, created_by, created_by_role, target_role, organization_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [ticketId, subject, category || 'Technical', priority || 'Medium', message, created_by, created_by_role, target_role, organization_id || null]
+    );
+    const [rows] = await mysqlPool.execute('SELECT * FROM support_tickets WHERE id = ?', [ticketId]);
+    res.json({ success: true, ticket: rows[0] });
+  } catch (err) {
+    console.error('Create ticket error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/support/tickets â€” List tickets (scoped by role & query params)
+app.get('/api/support/tickets', async (req, res) => {
+  try {
+    const { created_by, created_by_role, organization_id, page = 1, limit = 50 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    let where = [];
+    let params = [];
+
+    if (created_by_role === 'user' && created_by) {
+      // Regular users see only their own tickets
+      where.push('t.created_by = ?');
+      params.push(created_by);
+    } else if (created_by_role === 'org_admin' && organization_id) {
+      // Org admins see tickets from their org users + their own tickets to super admin
+      where.push('(t.organization_id = ? OR (t.created_by = ? AND t.created_by_role = "org_admin"))');
+      params.push(parseInt(organization_id), created_by);
+    }
+    // super_admin sees all â€” no WHERE filter
+
+    const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+
+    const [tickets] = await mysqlPool.execute(
+      `SELECT t.*,
+              COALESCE(u.username, oa.username, 'Unknown') as created_by_name,
+              COALESCE(u.email, oa.email, 'Unknown') as created_by_email
+       FROM support_tickets t
+       LEFT JOIN users u ON t.created_by = u.id AND t.created_by_role = 'user'
+       LEFT JOIN users oa ON t.created_by = oa.id AND t.created_by_role = 'org_admin'
+       ${whereClause}
+       ORDER BY t.created_at DESC
+       LIMIT ${parseInt(limit)} OFFSET ${offset}`,
+      params
+    );
+
+    const [[{ total }]] = await mysqlPool.execute(
+      `SELECT COUNT(*) as total FROM support_tickets t ${whereClause}`, params
+    );
+
+    // Attach last reply to each ticket
+    const enriched = await Promise.all(tickets.map(async (ticket) => {
+      const [replies] = await mysqlPool.execute(
+        'SELECT message, reply_by_role, created_at FROM support_ticket_replies WHERE ticket_id = ? ORDER BY created_at DESC LIMIT 1',
+        [ticket.id]
+      );
+      return {
+        ...ticket,
+        lastMessage: replies.length > 0 ? (`${replies[0].reply_by_role}: ${replies[0].message}`) : ticket.message,
+      };
+    }));
+
+    res.json({ success: true, tickets: enriched, pagination: { page: parseInt(page), limit: parseInt(limit), total, totalPages: Math.ceil(total / parseInt(limit)) } });
+  } catch (err) {
+    console.error('List tickets error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/support/tickets/:id â€” Get full ticket with replies
+app.get('/api/support/tickets/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [tickets] = await mysqlPool.execute(`
+      SELECT t.*,
+             COALESCE(u.username, oa.username, 'Unknown') as created_by_name,
+             COALESCE(u.email, oa.email, 'Unknown') as created_by_email
+      FROM support_tickets t
+      LEFT JOIN users u ON t.created_by = u.id AND t.created_by_role = 'user'
+      LEFT JOIN users oa ON t.created_by = oa.id AND t.created_by_role = 'org_admin'
+      WHERE t.id = ?`, [id]);
+    if (tickets.length === 0) return res.status(404).json({ success: false, message: 'Ticket not found' });
+
+    const [replies] = await mysqlPool.execute(
+      `SELECT r.*, COALESCE(u.username, au.name, 'Support') as reply_by_name
+       FROM support_ticket_replies r
+       LEFT JOIN users u ON r.reply_by = u.id
+       LEFT JOIN admin_users au ON r.reply_by = au.id
+       WHERE r.ticket_id = ?
+       ORDER BY r.created_at ASC`,
+      [id]
+    );
+
+    res.json({ success: true, ticket: tickets[0], replies });
+  } catch (err) {
+    console.error('Get ticket error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/support/tickets/:id/reply â€” Add reply to ticket
+app.post('/api/support/tickets/:id/reply', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message, reply_by, reply_by_role } = req.body;
+    if (!message || !reply_by || !reply_by_role) {
+      return res.status(400).json({ success: false, message: 'Missing reply fields' });
+    }
+    const replyId = uuidv4();
+    await mysqlPool.execute(
+      'INSERT INTO support_ticket_replies (id, ticket_id, reply_by, reply_by_role, message) VALUES (?, ?, ?, ?, ?)',
+      [replyId, id, reply_by, reply_by_role, message]
+    );
+    // Update ticket status to In Progress if it was Open
+    await mysqlPool.execute(
+      `UPDATE support_tickets SET status = CASE WHEN status = 'Open' THEN 'In Progress' ELSE status END, updated_at = NOW() WHERE id = ?`,
+      [id]
+    );
+    res.json({ success: true, message: 'Reply added' });
+  } catch (err) {
+    console.error('Reply to ticket error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PATCH /api/support/tickets/:id â€” Update ticket status
+app.patch('/api/support/tickets/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!['Open', 'In Progress', 'Resolved', 'Closed'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status' });
+    }
+    await mysqlPool.execute('UPDATE support_tickets SET status = ?, updated_at = NOW() WHERE id = ?', [status, id]);
+    res.json({ success: true, message: `Ticket status updated to ${status}` });
+  } catch (err) {
+    console.error('Update ticket error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/support/stats â€” Ticket stats for dashboard widgets
+app.get('/api/support/stats', async (req, res) => {
+  try {
+    const { organization_id } = req.query;
+    let where = organization_id ? 'WHERE organization_id = ?' : '';
+    let params = organization_id ? [parseInt(organization_id)] : [];
+    const [rows] = await mysqlPool.execute(
+      `SELECT
+         COUNT(*) as total,
+         SUM(status = 'Open') as open_count,
+         SUM(status = 'In Progress') as in_progress_count,
+         SUM(status = 'Resolved') as resolved_count
+       FROM support_tickets ${where}`, params
+    );
+    res.json({ success: true, stats: rows[0] });
+  } catch (err) {
+    console.error('Support stats error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ============================================================
+// SUPERADMIN: ORG CREDIT ALLOCATION
+// ============================================================
+
+// POST /api/superadmin/credits/allocate â€” Allocate credits to an org admin wallet
+app.post('/api/superadmin/credits/allocate', async (req, res) => {
+  try {
+    const { target_admin_id, amount, description, allocated_by } = req.body;
+    if (!target_admin_id || !amount || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'target_admin_id and amount > 0 are required' });
+    }
+    // Add credits to the org admin's wallet
+    const result = await walletService.addCredits(
+      target_admin_id,
+      parseFloat(amount),
+      description || `Super Admin allocated ${amount} credits`,
+      allocated_by || 'super_admin'
+    );
+    // Log the action
+    try {
+      adminService.logActivity(
+        allocated_by || 'super_admin',
+        'superadmin_credit_allocation',
+        target_admin_id,
+        `Allocated ${amount} credits to org admin. Reason: ${description || 'N/A'}`,
+        null
+      );
+    } catch (_) {}
+
+    res.json({ success: true, newBalance: result.newBalance, creditsAdded: result.creditsAdded || parseFloat(amount) });
+  } catch (err) {
+    console.error('Super admin credit allocation error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/superadmin/credits/logs â€” Get credit allocation logs for super admin view
+app.get('/api/superadmin/credits/logs', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
+    const [logs] = await mysqlPool.execute(
+      `SELECT wt.*, u.username as recipient_name, u.email as recipient_email,
+              o.name as org_name
+       FROM wallet_transactions wt
+       JOIN users u ON wt.user_id = u.id
+       LEFT JOIN organizations o ON u.organization_id = o.id
+       WHERE wt.transaction_type = 'credit'
+         AND (wt.service_type = 'plan_assignment' OR wt.created_by LIKE '%admin%' OR wt.description LIKE '%Admin%' OR wt.description LIKE '%Super Admin%')
+       ORDER BY wt.created_at DESC
+       LIMIT ${limit} OFFSET ${offset}`,
+      []
+    );
+    res.json({ success: true, logs });
+  } catch (err) {
+    console.error('Super admin credit logs error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/superadmin/credits/org-balances â€” Get wallet balance for all org admins
+app.get('/api/superadmin/credits/org-balances', async (req, res) => {
+  try {
+    const [rows] = await mysqlPool.execute(
+      `SELECT u.id, u.username, u.email, o.id as org_id, o.name as org_name,
+              COALESCE(uw.balance, 0) as credits_balance
+       FROM users u
+       LEFT JOIN organizations o ON u.organization_id = o.id
+       LEFT JOIN user_wallets uw ON uw.user_id = u.id
+       WHERE u.role = 'org_admin'
+       ORDER BY credits_balance DESC`,
+      []
+    );
+    res.json({ success: true, admins: rows });
+  } catch (err) {
+    console.error('Org balances error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ============================================================
 // END SUPER ADMIN ROUTES
 // ============================================================
+
 
 // Admin login
 app.post('/api/admin/login', async (req, res) => {
@@ -2081,7 +3023,7 @@ app.post('/api/admin/login', async (req, res) => {
     }
 
     const admin = await adminService.login(email, password);
-    await adminService.logActivity(admin.id, 'admin_login', null, 'Admin logged in', req.ip);
+    adminService.logActivity(admin.id, 'admin_login', null, 'Admin logged in', req.ip);
 
     res.json({ success: true, admin });
   } catch (error) {
@@ -2122,7 +3064,9 @@ app.get('/api/admin/users', async (req, res) => {
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 50;
     const search = req.query.search || '';
-    const orgId = req.query.orgId && req.query.orgId !== 'null' ? parseInt(req.query.orgId) : null;
+    // Handle orgId which may come as array if duplicated in URL params
+    const rawOrgId = Array.isArray(req.query.orgId) ? req.query.orgId[0] : req.query.orgId;
+    const orgId = rawOrgId && rawOrgId !== 'null' ? parseInt(rawOrgId) : null;
 
     const result = await adminService.getAllUsers(page, limit, search, orgId);
     res.json({ success: true, ...result });
@@ -2236,7 +3180,7 @@ app.post('/api/admin/users/:userId/limits', async (req, res) => {
       isEnabled
     );
 
-    await adminService.logActivity(
+    adminService.logActivity(
       adminId,
       'set_service_limit',
       userId,
@@ -2264,7 +3208,7 @@ app.post('/api/admin/wallet/add-credits', async (req, res) => {
 
     const result = await walletService.addCredits(userId, amount, description || 'Admin credit adjustment', adminId);
 
-    await adminService.logActivity(
+    adminService.logActivity(
       adminId,
       'add_credits',
       userId,
@@ -2354,7 +3298,7 @@ app.post('/api/admin/billing', async (req, res) => {
       platformFee
     );
 
-    await adminService.logActivity(
+    adminService.logActivity(
       adminId,
       'create_billing',
       userId,
@@ -2381,7 +3325,7 @@ app.patch('/api/admin/billing/:billingId', async (req, res) => {
 
     const result = await adminService.updateBillingStatus(billingId, status, notes);
 
-    await adminService.logActivity(
+    adminService.logActivity(
       adminId,
       'update_billing_status',
       null,
@@ -2547,7 +3491,7 @@ app.post('/api/admin/settings/snowfall/toggle', async (req, res) => {
     globalSnowfallEnabled = enabled !== undefined ? enabled : !globalSnowfallEnabled;
 
     // Log admin activity
-    await adminService.logActivity(
+    adminService.logActivity(
       adminId,
       'toggle_snowfall',
       null,
@@ -2555,7 +3499,7 @@ app.post('/api/admin/settings/snowfall/toggle', async (req, res) => {
       req.ip
     );
 
-    console.log(`🎄 Snowfall effect ${globalSnowfallEnabled ? 'enabled' : 'disabled'} by admin ${adminId}`);
+    console.log(`ðŸŽ„ Snowfall effect ${globalSnowfallEnabled ? 'enabled' : 'disabled'} by admin ${adminId}`);
 
     res.json({
       success: true,
@@ -2772,7 +3716,7 @@ app.post('/api/twilio/status', async (req, res) => {
     const { contactId, callId } = req.query;
     const { CallSid, CallStatus, CallDuration } = req.body;
 
-    console.log('📞 Twilio status callback:', {
+    console.log('ðŸ“ž Twilio status callback:', {
       contactId,
       callId,
       callSid: CallSid,
@@ -2891,7 +3835,7 @@ app.post('/api/twilio/recording-status', async (req, res) => {
           [RecordingUrl, callId]
         );
 
-        console.log(`✅ Recording URL saved for call ${callId}: ${RecordingUrl}`);
+        console.log(`âœ… Recording URL saved for call ${callId}: ${RecordingUrl}`);
 
         // Get campaign to check if Google Sheets is configured
         const [campaigns] = await mysqlPool.execute(
@@ -2932,7 +3876,7 @@ app.post('/api/twilio/recording-status', async (req, res) => {
                 metadata: contact.metadata ? JSON.parse(contact.metadata) : {}
               });
 
-              console.log(`✅ Updated Google Sheets with recording URL for ${contact.phone_number}`);
+              console.log(`âœ… Updated Google Sheets with recording URL for ${contact.phone_number}`);
             } catch (error) {
               console.error('Failed to update Google Sheets with recording URL:', error.message);
             }
@@ -3926,14 +4870,14 @@ app.post('/api/twilio/voice', async (req, res) => {
     const { CallSid, From, To } = req.body;
     const { userId, campaignId, agentId, callId } = req.query;
 
-    console.log('📞 ========== TWILIO VOICE WEBHOOK ==========');
+    console.log('ðŸ“ž ========== TWILIO VOICE WEBHOOK ==========');
     console.log('   CallSid:', CallSid);
     console.log('   From:', From);
     console.log('   To:', To);
     console.log('   Query params:', { userId, campaignId, agentId, callId });
 
     if (!agentId) {
-      console.error('❌ Missing agentId in voice webhook');
+      console.error('âŒ Missing agentId in voice webhook');
       const VoiceResponse = require('twilio').twiml.VoiceResponse;
       const response = new VoiceResponse();
       response.say("Configuration error. Agent not specified.");
@@ -3944,7 +4888,7 @@ app.post('/api/twilio/voice', async (req, res) => {
 
     let appUrl = getBackendUrl();
     if (!appUrl) {
-      console.error('❌ APP_URL not configured!');
+      console.error('âŒ APP_URL not configured!');
       const VoiceResponse = require('twilio').twiml.VoiceResponse;
       const response = new VoiceResponse();
       response.say("Server configuration error.");
@@ -3963,9 +4907,9 @@ app.post('/api/twilio/voice', async (req, res) => {
     const actualCallId = callId || CallSid;
     const streamUrl = `${wsUrl}/api/call?callId=${actualCallId}&agentId=${agentId}&contactId=${CallSid}`;
 
-    console.log('🔗 WebSocket Stream URL:', streamUrl);
+    console.log('ðŸ”— WebSocket Stream URL:', streamUrl);
 
-    // ✅ Create proper TwiML with Twilio SDK
+    // âœ… Create proper TwiML with Twilio SDK
     const VoiceResponse = require('twilio').twiml.VoiceResponse;
     const response = new VoiceResponse();
 
@@ -3977,7 +4921,7 @@ app.post('/api/twilio/voice', async (req, res) => {
       name: `stream_${actualCallId}`
     });
 
-    // ✅ CRITICAL: Add parameters to stream
+    // âœ… CRITICAL: Add parameters to stream
     stream.parameter({ name: 'callId', value: actualCallId });
     stream.parameter({ name: 'agentId', value: agentId });
     stream.parameter({ name: 'userId', value: userId || '' });
@@ -3986,7 +4930,7 @@ app.post('/api/twilio/voice', async (req, res) => {
 
     const twiml = response.toString();
 
-    console.log('📄 Generated TwiML:');
+    console.log('ðŸ“„ Generated TwiML:');
     console.log(twiml);
     console.log('=============================================');
 
@@ -4001,7 +4945,7 @@ app.post('/api/twilio/voice', async (req, res) => {
       ).catch(err => console.error('Error updating call status:', err));
     }
   } catch (error) {
-    console.error('❌ Voice webhook error:', error);
+    console.error('âŒ Voice webhook error:', error);
 
     const VoiceResponse = require('twilio').twiml.VoiceResponse;
     const response = new VoiceResponse();
@@ -4015,7 +4959,7 @@ app.post('/api/twilio/voice', async (req, res) => {
 
 // Stream fallback - keeps call alive if stream ends
 app.post('/api/twilio/stream-fallback', (req, res) => {
-  console.log('⚠️ Stream ended, keeping call alive...');
+  console.log('âš ï¸ Stream ended, keeping call alive...');
   const VoiceResponse = require('twilio').twiml.VoiceResponse;
   const response = new VoiceResponse();
 
@@ -4032,7 +4976,7 @@ app.post('/api/twilio/callback', async (req, res) => {
     const { CallSid, CallStatus, CallDuration } = req.body;
     const { callId } = req.query;
 
-    console.log('📊 Status callback:', { CallSid, CallStatus, CallDuration });
+    console.log('ðŸ“Š Status callback:', { CallSid, CallStatus, CallDuration });
 
     const statusMap = {
       'queued': 'initiated',
@@ -4059,7 +5003,7 @@ app.post('/api/twilio/callback', async (req, res) => {
 
     res.status(200).send('OK');
   } catch (error) {
-    console.error('❌ Callback error:', error);
+    console.error('âŒ Callback error:', error);
     res.status(500).send('Error');
   }
 });
@@ -4083,7 +5027,7 @@ app.get('/api/agents', async (req, res) => {
     res.json({
       success: true,
       data: agents,
-      agents: agents   // ← used by CampaignDetailPage dropdown
+      agents: agents   // â† used by CampaignDetailPage dropdown
     });
   } catch (error) {
     console.error('Error fetching agents:', error);
@@ -4170,7 +5114,6 @@ app.delete('/api/agents/:id', async (req, res) => {
 });
 
 // Campaign endpoints
-// Get all campaigns for a user
 app.get('/api/campaigns', async (req, res) => {
   try {
     const { userId } = req.query;
@@ -4182,6 +5125,34 @@ app.get('/api/campaigns', async (req, res) => {
     res.json({ success: true, data: campaigns });
   } catch (error) {
     console.error('Error fetching campaigns:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get all campaigns for an organization (used by Org Admin Dashboard)
+app.get('/api/campaigns/org', async (req, res) => {
+  try {
+    const { orgId, limit } = req.query;
+    const limitNum = parseInt(limit) || 10;
+    
+    let query = `
+      SELECT c.*, u.username, u.email as user_email
+      FROM campaigns c
+      JOIN users u ON c.user_id = u.id
+    `;
+    const params = [];
+
+    if (orgId && orgId !== 'null') {
+      query += ` WHERE u.organization_id = ?`;
+      params.push(parseInt(orgId));
+    }
+    
+    query += ` ORDER BY c.created_at DESC LIMIT ${limitNum}`;
+    
+    const [campaigns] = await mysqlPool.execute(query, params);
+    res.json({ success: true, campaigns });
+  } catch (error) {
+    console.error('Error fetching org campaigns:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -4449,14 +5420,14 @@ app.get('/api/voices/elevenlabs/list', async (req, res) => {
     const apiKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
 
     if (!apiKey) {
-      console.error('❌ ElevenLabs API key not configured on server');
+      console.error('âŒ ElevenLabs API key not configured on server');
       return res.status(500).json({
         success: false,
         message: 'ElevenLabs API key not configured on server. Please add ELEVEN_LABS_API_KEY to environment variables.'
       });
     }
 
-    console.log('✅ Fetching voices from ElevenLabs API with key:', apiKey.substring(0, 4) + '...');
+    console.log('âœ… Fetching voices from ElevenLabs API with key:', apiKey.substring(0, 4) + '...');
 
     // Fetch voices from ElevenLabs API
     const response = await nodeFetch('https://api.elevenlabs.io/v1/voices', {
@@ -4469,7 +5440,7 @@ app.get('/api/voices/elevenlabs/list', async (req, res) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ ElevenLabs API error:', response.status, errorText);
+      console.error('âŒ ElevenLabs API error:', response.status, errorText);
 
       // Check if the response is HTML (error page)
       if (errorText.startsWith('<!DOCTYPE') || errorText.includes('<html')) {
@@ -4488,7 +5459,7 @@ app.get('/api/voices/elevenlabs/list', async (req, res) => {
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       const errorText = await response.text();
-      console.error('❌ ElevenLabs API returned non-JSON response:', errorText.substring(0, 200));
+      console.error('âŒ ElevenLabs API returned non-JSON response:', errorText.substring(0, 200));
       return res.status(500).json({
         success: false,
         message: 'ElevenLabs API returned invalid response format. Expected JSON.'
@@ -4497,7 +5468,7 @@ app.get('/api/voices/elevenlabs/list', async (req, res) => {
 
     const data = await response.json();
 
-    console.log(`✅ Successfully fetched ${data.voices?.length || 0} voices from ElevenLabs`);
+    console.log(`âœ… Successfully fetched ${data.voices?.length || 0} voices from ElevenLabs`);
 
     // Return voices with the voice_id as the id field (not mapped)
     res.json({
@@ -4511,7 +5482,7 @@ app.get('/api/voices/elevenlabs/list', async (req, res) => {
       }))
     });
   } catch (error) {
-    console.error('❌ Error fetching ElevenLabs voices:', error);
+    console.error('âŒ Error fetching ElevenLabs voices:', error);
     res.status(500).json({
       success: false,
       message: `Error fetching ElevenLabs voices: ${error.message}`
@@ -4550,9 +5521,9 @@ if (process.env.SARVAM_API_KEY && process.env.GEMINI_API_KEY) {
     mysqlPool,
     process.env.SARVAM_API_KEY
   );
-  console.log("✅ MediaStreamHandler initialized with Sarvam STT + Gemini + OpenAI + Cost Tracking");
+  console.log("âœ… MediaStreamHandler initialized with Sarvam STT + Gemini + OpenAI + Cost Tracking");
 } else {
-  console.warn("⚠️ Voice call feature disabled — missing SARVAM_API_KEY or GEMINI_API_KEY");
+  console.warn("âš ï¸ Voice call feature disabled â€” missing SARVAM_API_KEY or GEMINI_API_KEY");
 }
 // WebSocket endpoint for ElevenLabs STT
 app.ws('/api/stt', function (ws, req) {
@@ -4568,7 +5539,7 @@ app.ws('/api/call', (ws, req) => {
   }
 });
 // WebSocket endpoint for voice stream (frontend voice chat + Twilio calls)
-app.ws('/voice-stream', async function (ws, req) {  // ✅ ADDED async
+app.ws('/voice-stream', async function (ws, req) {  // âœ… ADDED async
   console.log('New voice stream connection established');
   let audioChunksReceived = 0;
   const audioBuffer = [];
@@ -4582,7 +5553,7 @@ app.ws('/voice-stream', async function (ws, req) {  // ✅ ADDED async
   const agentId = req.query?.agentId;
   const voiceId = req.query?.voiceId;
   const identity = req.query?.identity ? decodeURIComponent(req.query.identity) : null;
-  const userId = req.query?.userId; // ✅ ADDED - Get userId from query params
+  const userId = req.query?.userId; // âœ… ADDED - Get userId from query params
   const isTwilioCall = !!(callId && agentId);
   const isFrontendChat = !!(voiceId && !callId);
 
@@ -4674,7 +5645,7 @@ app.ws('/voice-stream', async function (ws, req) {  // ✅ ADDED async
               const transcript = deepgramResult.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
               const confidence = deepgramResult.results?.channels?.[0]?.alternatives?.[0]?.confidence || 0;
 
-              // ✅ Track Deepgram usage
+              // âœ… Track Deepgram usage
               if (userId && callId) {
                 const audioDurationSeconds = combinedAudioBuffer.length / (16000 * 2);
                 try {
@@ -4721,7 +5692,7 @@ app.ws('/voice-stream', async function (ws, req) {  // ✅ ADDED async
                       const agentResponse = geminiResult.candidates?.[0]?.content?.parts?.[0]?.text || 'I could not generate a response.';
                       console.log('Gemini response:', agentResponse);
 
-                      // ✅ Track Gemini usage
+                      // âœ… Track Gemini usage
                       if (userId && callId) {
                         const estimatedTokens = (fullPrompt.length + agentResponse.length) / 4;
                         try {
@@ -4761,7 +5732,7 @@ app.ws('/voice-stream', async function (ws, req) {  // ✅ ADDED async
                             const audioBuffer = await ttsResponse.arrayBuffer();
                             const audioBase64 = Buffer.from(audioBuffer).toString('base64');
 
-                            // ✅ Track ElevenLabs usage
+                            // âœ… Track ElevenLabs usage
                             if (userId && callId) {
                               const characterCount = agentResponse.length;
                               try {
@@ -5241,11 +6212,11 @@ async function processCampaignCalls(campaignId, userId, campaign, records) {
         callId: callId,
         appUrl: cleanAppUrl
       });
-      // ✅ Log all incoming HTTP requests to spot patterns
+      // âœ… Log all incoming HTTP requests to spot patterns
       app.use((req, res, next) => {
         const isWebSocket = req.headers.upgrade === 'websocket';
         if (isWebSocket || req.url.includes('/api/call') || req.url.includes('/api/twilio')) {
-          console.log(`📥 ${req.method} ${req.url}`, {
+          console.log(`ðŸ“¥ ${req.method} ${req.url}`, {
             headers: {
               upgrade: req.headers.upgrade,
               connection: req.headers.connection,
@@ -5288,7 +6259,7 @@ app.get('/api/admin/migrate-schema', async (req, res) => {
 
     const alterQueries = [];
 
-    // ── campaigns table ──
+    // â”€â”€ campaigns table â”€â”€
     if (!(await checkColumn('campaigns', 'agent_id')))
       alterQueries.push("ALTER TABLE campaigns ADD COLUMN agent_id VARCHAR(50) NULL");
     if (!(await checkColumn('campaigns', 'phone_number_id')))
@@ -5298,7 +6269,7 @@ app.get('/api/admin/migrate-schema', async (req, res) => {
     if (!(await checkColumn('campaigns', 'retry_attempts')))
       alterQueries.push("ALTER TABLE campaigns ADD COLUMN retry_attempts INT DEFAULT 0");
 
-    // ── campaign_contacts table ──
+    // â”€â”€ campaign_contacts table â”€â”€
     const [ccTables] = await mysqlPool.execute("SHOW TABLES LIKE 'campaign_contacts'");
     if (ccTables.length > 0) {
       if (!(await checkColumn('campaign_contacts', 'email')))
@@ -5325,7 +6296,7 @@ app.get('/api/admin/migrate-schema', async (req, res) => {
         alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN completed_at DATETIME NULL");
     }
 
-    // ── users table ──
+    // â”€â”€ users table â”€â”€
     const [userTables] = await mysqlPool.execute("SHOW TABLES LIKE 'users'");
     if (userTables.length > 0) {
       if (!(await checkColumn('users', 'status')))
@@ -5336,9 +6307,9 @@ app.get('/api/admin/migrate-schema', async (req, res) => {
     for (const query of alterQueries) {
       try {
         await mysqlPool.execute(query);
-        results.push(`✅ Executed: ${query}`);
+        results.push(`âœ… Executed: ${query}`);
       } catch (alterErr) {
-        results.push(`❌ Failed: ${query} — ${alterErr.message}`);
+        results.push(`âŒ Failed: ${query} â€” ${alterErr.message}`);
       }
     }
 
@@ -5408,7 +6379,7 @@ app.put('/api/campaigns/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Campaign not found' });
     }
 
-    // Build dynamic UPDATE — only set columns that were provided
+    // Build dynamic UPDATE â€” only set columns that were provided
     const updates = [];
     const values = [];
 
@@ -5550,7 +6521,7 @@ app.post('/api/scheduled-calls/reschedule', async (req, res) => {
   }
 });
 
-// Get User Phone Numbers (from user_twilio_numbers) — for campaign dropdown
+// Get User Phone Numbers (from user_twilio_numbers) â€” for campaign dropdown
 app.get('/api/phone-numbers', async (req, res) => {
   try {
     const { userId } = req.query;
@@ -5748,7 +6719,7 @@ app.use((req, res, next) => {
   const isWebSocket = req.headers.upgrade === 'websocket';
 
   if (isWebSocket || req.url.includes('/api/call') || req.url.includes('/api/twilio')) {
-    console.log(`📥 ${req.method} ${req.url}`, {
+    console.log(`ðŸ“¥ ${req.method} ${req.url}`, {
       headers: {
         upgrade: req.headers.upgrade,
         connection: req.headers.connection,
@@ -5758,21 +6729,10 @@ app.use((req, res, next) => {
   }
   next();
 });
-// Run database migrations before starting the server
-const runAddStatusMigration = require('./migrations/add_status_to_users.js');
-
-(async () => {
-  try {
-    await runAddStatusMigration(mysqlPool);
-  } catch (err) {
-    console.error('❌ Startup migration failed:', err.message);
-    // Don't crash the server over a migration — log and continue
-  }
 
   // Start server and bind to 0.0.0.0 for Railway
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server listening on port ${PORT}`);
-    console.log(`🌐 Frontend URL: ${FRONTEND_URL}`);
-    console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`ðŸš€ Server listening on port ${PORT}`);
+    console.log(`ðŸŒ Frontend URL: ${FRONTEND_URL}`);
+    console.log(`ðŸ”§ Environment: ${process.env.NODE_ENV || 'development'}`);
   });
-})();

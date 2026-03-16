@@ -10,23 +10,26 @@ export enum Page {
     Credits = 'Credits',
     Schedule = 'Schedule',
     Reports = 'Reports',
+    Support = 'Support',
     AdminDashboard = 'Admin Dashboard',
-    AdminUsers = 'Users',
-    AdminPlans = 'Organization Plans',
+    AdminUsers = 'Admin Users',
+    AdminCredits = 'Admin Credit Management',
+    AdminReports = 'Admin Reports',
+    AdminSettings = 'Admin Settings',
+    AdminSupport = 'Admin Support',
     // Super Admin Pages
     SuperAdminDashboard = 'Super Admin Dashboard',
-    SuperAdminOrganizations = 'Organizations',
-    SuperAdminOrgAdmins = 'Org Admins',
-    SuperAdminUsers = 'All Users',
-    SuperAdminIndividualUsers = 'Individual Users',
-    SuperAdminPlans = 'Platform Plans',
-    SuperAdminPricing = 'Price Management',
-    SuperAdminAnalytics = 'Platform Analytics',
+    SuperAdminOrganizations = 'Super Admin Organizations',
+    SuperAdminPricing = 'Super Admin Pricing',
+    SuperAdminSettings = 'Super Admin Settings',
+    SuperAdminCredits = 'Super Admin Credit Management',
+    SuperAdminSupport = 'Super Admin Support',
 }
 
 export interface Organization {
     id: number;
     name: string;
+    logo_url?: string | null;
     created_by: number | null;
     status: 'active' | 'inactive';
     created_at: string;

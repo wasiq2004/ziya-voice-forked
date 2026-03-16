@@ -15,9 +15,11 @@ class OrganizationService {
       SELECT
         o.*,
         COUNT(DISTINCT CASE WHEN u.role = 'org_admin' THEN u.id END) AS admin_count,
-        COUNT(DISTINCT CASE WHEN u.role = 'user' THEN u.id END) AS user_count
+        COUNT(DISTINCT CASE WHEN u.role IN ('user', 'individual_user') THEN u.id END) AS user_count,
+        COALESCE(SUM(CASE WHEN u.role = 'org_admin' THEN w.balance ELSE 0 END), 0) AS credit_balance
       FROM organizations o
       LEFT JOIN users u ON u.organization_id = o.id
+      LEFT JOIN user_wallets w ON w.user_id = u.id
       GROUP BY o.id
       ORDER BY o.created_at DESC
     `);
@@ -33,10 +35,10 @@ class OrganizationService {
         return rows[0];
     }
 
-    async createOrganization(name, createdBy) {
+    async createOrganization(name, createdBy, logo_url = null) {
         const [result] = await this.mysqlPool.execute(
-            'INSERT INTO organizations (name, created_by, status) VALUES (?, ?, ?)',
-            [name, createdBy || null, 'active']
+            'INSERT INTO organizations (name, created_by, status, logo_url) VALUES (?, ?, ?, ?)',
+            [name, createdBy || null, 'active', logo_url]
         );
         const [org] = await this.mysqlPool.execute(
             'SELECT * FROM organizations WHERE id = ?',
@@ -45,11 +47,12 @@ class OrganizationService {
         return org[0];
     }
 
-    async updateOrganization(orgId, { name, status }) {
+    async updateOrganization(orgId, { name, status, logo_url }) {
         const fields = [];
         const values = [];
         if (name !== undefined) { fields.push('name = ?'); values.push(name); }
         if (status !== undefined) { fields.push('status = ?'); values.push(status); }
+        if (logo_url !== undefined) { fields.push('logo_url = ?'); values.push(logo_url); }
         if (fields.length === 0) throw new Error('Nothing to update');
         values.push(orgId);
         await this.mysqlPool.execute(

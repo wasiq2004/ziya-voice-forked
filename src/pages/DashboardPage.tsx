@@ -59,7 +59,6 @@ const DashboardPage: React.FC = () => {
             setPhoneNumberCount(phoneNumbers.length);
 
             // TODO: Fetch active calls from API when endpoint is available
-            // For now, we'll use a placeholder value
             setActiveCalls(0);
 
             // Fetch campaigns for analytics
@@ -70,7 +69,6 @@ const DashboardPage: React.FC = () => {
                 const activeCampaigns = camps.filter((c: any) => c.status === 'running').length;
                 const totalLeads = camps.reduce((sum: number, c: any) => sum + (c.total_contacts || 0), 0);
                 const totalCalls = camps.reduce((sum: number, c: any) => sum + (c.completed_calls || 0), 0);
-                // Mock conversion rate for now (completed calls / leads * 100) or 0
                 const conversionRate = totalLeads > 0 ? Math.round((totalCalls / totalLeads) * 100) : 0;
 
                 setStats({
@@ -82,6 +80,19 @@ const DashboardPage: React.FC = () => {
                 });
             }
 
+            // Fetch real wallet balance
+            try {
+                const API_BASE = (await import('../utils/api')).getApiBaseUrl();
+                const walletRes = await fetch(`${API_BASE}/api/wallet/balance/${user!.id}`);
+                if (walletRes.ok) {
+                    const walletData = await walletRes.json();
+                    setCredits(Math.round(walletData.balance || 0));
+                } else {
+                    setCredits(0);
+                }
+            } catch {
+                setCredits('--');
+            }
 
         } catch (error) {
             console.error('Error loading dashboard data:', error);
@@ -89,6 +100,7 @@ const DashboardPage: React.FC = () => {
             setLoading(false);
         }
     };
+
 
     if (loading) {
         return (
@@ -155,53 +167,10 @@ const DashboardPage: React.FC = () => {
         >
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 stagger-children">
-                <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6 card-animate hover:shadow-md transition-all duration-300">
-                    <div className="flex items-center">
-                        <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 p-3">
-                            <UserGroupIcon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                        </div>
-                        <div className="ml-4">
-                            <h3 className="text-xs md:text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Agents</h3>
-                            <p className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mt-1">{agentCount}</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6 card-animate hover:shadow-md transition-all duration-300">
-                    <div className="flex items-center">
-                        <div className="rounded-xl bg-green-50 dark:bg-green-900/20 p-3">
-                            <PhoneIcon className="h-6 w-6 text-green-600 dark:text-green-400" />
-                        </div>
-                        <div className="ml-4">
-                            <h3 className="text-xs md:text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Active Calls</h3>
-                            <p className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mt-1">{activeCalls}</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6 card-animate hover:shadow-md transition-all duration-300">
-                    <div className="flex items-center">
-                        <div className="rounded-xl bg-yellow-50 dark:bg-yellow-900/20 p-3">
-                            <SignalIcon className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
-                        </div>
-                        <div className="ml-4">
-                            <h3 className="text-xs md:text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Phone Numbers</h3>
-                            <p className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mt-1">{phoneNumberCount}</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 md:p-6 card-animate hover:shadow-md transition-all duration-300">
-                    <div className="flex items-center">
-                        <div className="rounded-xl bg-purple-50 dark:bg-purple-900/20 p-3">
-                            <CircleStackIcon className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-                        </div>
-                        <div className="ml-4">
-                            <h3 className="text-xs md:text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Credits</h3>
-                            <p className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mt-1">{credits}</p>
-                        </div>
-                    </div>
-                </div>
+                <KPICard title="Total Agents" value={agentCount} color="blue" />
+                <KPICard title="Active Calls" value={activeCalls} color="green" />
+                <KPICard title="Phone Numbers" value={phoneNumberCount} color="purple" />
+                <KPICard title="Total Credits" value={credits} color="gray" />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 stagger-children">

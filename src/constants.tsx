@@ -7,6 +7,7 @@ import {
     CogIcon,
     CodeBracketIcon,
     CircleStackIcon,
+    CreditCardIcon,
     ClipboardIcon,
     PlayIcon as SolidPlayIcon,
     ArrowUpOnSquareIcon,
@@ -27,6 +28,8 @@ import {
     BuildingOfficeIcon,
     UsersIcon,
     PresentationChartBarIcon,
+    LifebuoyIcon,
+    ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
 // FIX: Add missing icon import
 import { PhoneIcon as SolidPhoneIcon, MicrophoneIcon } from '@heroicons/react/24/solid';
@@ -69,23 +72,25 @@ export const SIDEBAR_ITEMS: SidebarItem[] = [
     { id: Page.Settings, icon: CogIcon },
     // { id: Page.API, icon: CodeBracketIcon },
     { id: Page.Credits, icon: CircleStackIcon },
+    { id: Page.Support, icon: LifebuoyIcon },
 ];
 
 export const ADMIN_SIDEBAR_ITEMS: SidebarItem[] = [
     { id: Page.AdminDashboard, icon: ChartBarIcon },
     { id: Page.AdminUsers, icon: UserGroupIcon },
-    { id: Page.AdminPlans, icon: CircleStackIcon },
+    { id: Page.AdminReports, icon: ClipboardDocumentListIcon },
+    { id: Page.AdminCredits, icon: CreditCardIcon },
+    { id: Page.AdminSettings, icon: CogIcon },
+    { id: Page.AdminSupport, icon: LifebuoyIcon },
 ];
 
 export const SUPER_ADMIN_SIDEBAR_ITEMS: SidebarItem[] = [
     { id: Page.SuperAdminDashboard, icon: ChartBarIcon },
     { id: Page.SuperAdminOrganizations, icon: BuildingOfficeIcon },
-    { id: Page.SuperAdminOrgAdmins, icon: UserGroupIcon },
-    { id: Page.SuperAdminUsers, icon: UsersIcon },
-    { id: Page.SuperAdminIndividualUsers, icon: CpuChipIcon },
-    { id: Page.SuperAdminPlans, icon: CircleStackIcon },
-    { id: Page.SuperAdminPricing, icon: AdjustmentsHorizontalIcon },
-    { id: Page.SuperAdminAnalytics, icon: PresentationChartBarIcon },
+    { id: Page.SuperAdminPricing, icon: CreditCardIcon },
+    { id: Page.SuperAdminCredits, icon: CircleStackIcon },
+    { id: Page.SuperAdminSupport, icon: LifebuoyIcon },
+    { id: Page.SuperAdminSettings, icon: CogIcon },
 ];
 
 

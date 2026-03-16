@@ -34,26 +34,31 @@ const AppLayout: React.FC<AppLayoutProps> = ({
     };
 
     const handleStopImpersonating = () => {
-        const original = localStorage.getItem('ziya-original-superadmin');
-        if (original) {
-            localStorage.setItem('ziya-user', original);
+        const originalSup = localStorage.getItem('ziya-original-superadmin');
+        const originalAdmin = localStorage.getItem('ziya-impersonation-admin');
+        if (originalSup) {
+            localStorage.setItem('ziya-user', originalSup);
             localStorage.removeItem('ziya-original-superadmin');
             window.location.href = '/superadmin/dashboard';
+        } else if (originalAdmin) {
+            localStorage.setItem('ziya-user', originalAdmin);
+            localStorage.removeItem('ziya-impersonation-admin');
+            window.location.href = '/admin/dashboard';
         }
     };
 
-    const isImpersonating = !!localStorage.getItem('ziya-original-superadmin');
+    const isImpersonating = !!localStorage.getItem('ziya-original-superadmin') || !!localStorage.getItem('ziya-impersonation-admin');
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-darkbg text-slate-800 dark:text-slate-200 font-sans relative overflow-x-hidden transition-colors duration-300">
-            {isImpersonating && (
+            {/* {isImpersonating && (
                 <div className="bg-red-500 text-white text-center py-2 text-sm font-bold flex justify-center items-center gap-4 z-[9999] relative">
                     You are currently impersonating a user. 
                     <button onClick={handleStopImpersonating} className="bg-white text-red-500 px-3 py-1 rounded text-xs hover:bg-red-50 transition-colors">
                         Return to Super Admin
                     </button>
                 </div>
-            )}
+            )} */}
             
             {/* Sidebar component */}
             <Sidebar

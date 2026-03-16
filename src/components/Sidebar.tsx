@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { SIDEBAR_ITEMS, ADMIN_SIDEBAR_ITEMS, SUPER_ADMIN_SIDEBAR_ITEMS, APP_VERSION } from '../constants';
 import { Page } from '../types';
-import { CreditCardIcon, ArrowLeftOnRectangleIcon } from '@heroicons/react/24/outline';
+import { CreditCardIcon, ArrowLeftOnRectangleIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
 import { getApiBaseUrl } from '../utils/api';
 import CompanySwitcher from './CompanySwitcher';
@@ -20,11 +20,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
     const [credits, setCredits] = useState<number | string>(0);
     const [loadingCredits, setLoadingCredits] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
+    const [impersonatingAdmin, setImpersonatingAdmin] = useState<any>(null);   // user→admin return
+    const [impersonatingSuperAdmin, setImpersonatingSuperAdmin] = useState<any>(null); // admin→superadmin return
 
     // Check if user is admin
     useEffect(() => {
         const adminData = localStorage.getItem('admin');
         setIsAdmin(!!adminData);
+        // Detect impersonation states
+        const savedAdmin = localStorage.getItem('ziya-impersonation-admin');
+        const savedSuperAdmin = localStorage.getItem('ziya-impersonation-superadmin');
+        setImpersonatingAdmin(savedAdmin ? JSON.parse(savedAdmin) : null);
+        setImpersonatingSuperAdmin(savedSuperAdmin ? JSON.parse(savedSuperAdmin) : null);
     }, []);
 
     // Fetch user credits
@@ -79,11 +86,28 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
     const handleLogout = async () => {
         try {
             await signOut();
-            // Redirect to login page
             navigate('/login');
         } catch (error) {
             console.error('Logout error:', error);
         }
+    };
+
+    // Return from user back to impersonating admin panel
+    const handleReturnToAdmin = () => {
+        if (!impersonatingAdmin) return;
+        localStorage.setItem('ziya-user', JSON.stringify(impersonatingAdmin));
+        localStorage.setItem('admin', JSON.stringify(impersonatingAdmin));
+        localStorage.removeItem('ziya-impersonation-admin');
+        window.location.href = '/admin/dashboard';
+    };
+
+    // Return from admin back to super admin panel
+    const handleReturnToSuperAdmin = () => {
+        if (!impersonatingSuperAdmin) return;
+        localStorage.setItem('ziya-user', JSON.stringify(impersonatingSuperAdmin));
+        localStorage.removeItem('admin');
+        localStorage.removeItem('ziya-impersonation-superadmin');
+        window.location.href = '/superadmin/organizations';
     };
 
     const getPagePath = (page: Page): string => {
@@ -104,31 +128,35 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                 return '/credits';
             case Page.Reports:
                 return '/reports';
+            case Page.Support:
+                return '/support';
             case Page.Schedule:
                 return '/schedule';
             case Page.AdminDashboard:
                 return '/admin/dashboard';
             case Page.AdminUsers:
                 return '/admin/users';
-            case Page.AdminPlans:
-                return '/admin/plans';
+            case Page.AdminCredits:
+                return '/admin/credits';
+            case Page.AdminReports:
+                return '/admin/reports';
+            case Page.AdminSettings:
+                return '/admin/settings';
+            case Page.AdminSupport:
+                return '/admin/support';
             // Super Admin routes
             case Page.SuperAdminDashboard:
                 return '/superadmin/dashboard';
             case Page.SuperAdminOrganizations:
                 return '/superadmin/organizations';
-            case Page.SuperAdminOrgAdmins:
-                return '/superadmin/org-admins';
-            case Page.SuperAdminUsers:
-                return '/superadmin/users';
-            case Page.SuperAdminIndividualUsers:
-                return '/superadmin/individual-users';
-            case Page.SuperAdminPlans:
-                return '/superadmin/plans';
             case Page.SuperAdminPricing:
                 return '/superadmin/pricing';
-            case Page.SuperAdminAnalytics:
-                return '/superadmin/analytics';
+            case Page.SuperAdminCredits:
+                return '/superadmin/credits';
+            case Page.SuperAdminSupport:
+                return '/superadmin/support';
+            case Page.SuperAdminSettings:
+                return '/superadmin/settings';
             default:
                 return '/dashboard';
         }
@@ -139,16 +167,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
         // Super admin routes
         if (path.startsWith('/superadmin/dashboard')) return Page.SuperAdminDashboard;
         if (path.startsWith('/superadmin/organizations')) return Page.SuperAdminOrganizations;
-        if (path.startsWith('/superadmin/org-admins')) return Page.SuperAdminOrgAdmins;
-        if (path.startsWith('/superadmin/individual-users')) return Page.SuperAdminIndividualUsers;
-        if (path.startsWith('/superadmin/users')) return Page.SuperAdminUsers;
-        if (path.startsWith('/superadmin/plans')) return Page.SuperAdminPlans;
         if (path.startsWith('/superadmin/pricing')) return Page.SuperAdminPricing;
-        if (path.startsWith('/superadmin/analytics')) return Page.SuperAdminAnalytics;
+        if (path.startsWith('/superadmin/credits')) return Page.SuperAdminCredits;
+        if (path.startsWith('/superadmin/support')) return Page.SuperAdminSupport;
+        if (path.startsWith('/superadmin/settings')) return Page.SuperAdminSettings;
         // Admin routes
         if (path.startsWith('/admin/dashboard')) return Page.AdminDashboard;
         if (path.startsWith('/admin/users')) return Page.AdminUsers;
-        if (path.startsWith('/admin/plans')) return Page.AdminPlans;
+        if (path.startsWith('/admin/credits')) return Page.AdminCredits;
+        if (path.startsWith('/admin/reports')) return Page.AdminReports;
+        if (path.startsWith('/admin/settings')) return Page.AdminSettings;
+        if (path.startsWith('/admin/support')) return Page.AdminSupport;
         // User routes
         if (path === '/dashboard' || path === '/') return Page.Dashboard;
         if (path.startsWith('/campaigns')) return Page.Campaigns;
@@ -159,6 +188,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
         if (path.startsWith('/credits')) return Page.Credits;
         if (path.startsWith('/reports')) return Page.Reports;
         if (path.startsWith('/schedule')) return Page.Schedule;
+        if (path.startsWith('/support')) return Page.Support;
 
         return Page.Dashboard;
     };
@@ -186,16 +216,24 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                 <div className="flex items-center space-x-3 mb-3">
 
                     {/* Logo - Change w-14 h-14 to control logo size */}
-                    <img
-                        src="/assets/ziya-logo.png"
-                        alt="Ziya Logo"
-                        className="w-14 h-10 flex-shrink-0 transition-all duration-300"
-                    />
+                    {user?.organization_logo_url ? (
+                        <img
+                            src={user.organization_logo_url}
+                            alt={user.organization_name || "Organization Logo"}
+                            className="w-14 h-10 object-contain flex-shrink-0 transition-all duration-300 rounded"
+                        />
+                    ) : (
+                        <img
+                            src="/assets/ziya-logo.png"
+                            alt="Ziya Logo"
+                            className="w-14 h-10 flex-shrink-0 transition-all duration-300"
+                        />
+                    )}
 
                     {/* Text - Change text-2xl to control logo text size */}
                     {!isCollapsed && (
                         <h1 className="text-2xl font-bold text-slate-800 dark:text-white truncate">
-                            Ziya Voice
+                            {user?.organization_name || "Ziya Voice"}
                         </h1>
                     )}
                 </div>
@@ -204,11 +242,53 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                 {!isAdminRoute && !isSuperAdminRoute && (
                     <CompanySwitcher isCollapsed={isCollapsed} />
                 )}
+
+                {/* Impersonation Banner: admin→user */}
+                {!isAdminRoute && !isSuperAdminRoute && impersonatingAdmin && (
+                    <button
+                        onClick={handleReturnToAdmin}
+                        className={`mt-2 flex items-center gap-2 w-full px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/30 ${isCollapsed ? 'justify-center' : ''}`}
+                        title="Return to Admin Panel"
+                    >
+                        <ArrowUturnLeftIcon className="h-4 w-4 flex-shrink-0" />
+                        {!isCollapsed && <span>← Return to Admin</span>}
+                    </button>
+                )}
+
+                {/* Impersonation Banner: superadmin→admin */}
+                {isAdminRoute && impersonatingSuperAdmin && (
+                    <button
+                        onClick={handleReturnToSuperAdmin}
+                        className={`mt-2 flex items-center gap-2 w-full px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-indigo-500/30 ${isCollapsed ? 'justify-center' : ''}`}
+                        title="Return to Super Admin"
+                    >
+                        <ArrowUturnLeftIcon className="h-4 w-4 flex-shrink-0" />
+                        {!isCollapsed && <span>← Super Admin</span>}
+                    </button>
+                )}
             </div>
 
             <nav className="flex-1 px-3 py-4 overflow-y-auto custom-scrollbar">
                 <ul className="space-y-1">
-                    {displayItems.map((item, index) => (
+                     {displayItems.map((item, index) => {
+                        const getPageLabel = (page: Page): string => {
+                            switch (page) {
+                                case Page.AdminUsers: return 'Users';
+                                case Page.AdminCredits: return 'Credit Management';
+                                case Page.SuperAdminCredits: return 'Credit Management';
+                                case Page.AdminSupport: return 'Support';
+                                case Page.SuperAdminSupport: return 'Support Center';
+                                case Page.AdminSettings: return 'Settings';
+                                case Page.SuperAdminSettings: return 'General Settings';
+                                case Page.AdminDashboard: return 'Dashboard';
+                                case Page.SuperAdminDashboard: return 'Dashboard';
+                                case Page.SuperAdminOrganizations: return 'Organizations';
+                                case Page.SuperAdminPricing: return 'Pricing Management';
+                                default: return page;
+                            }
+                        };
+                        
+                        return (
                         <React.Fragment key={item.id}>
                             {/* Section Divider - Add after Dashboard and before Settings */}
                             {(index === 1 || index === 5) && (
@@ -250,7 +330,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                                         ml-3 text-sm transition-all duration-300 
                                         ${isCollapsed ? 'opacity-0 w-0 hidden' : 'opacity-100'}
                                     `}>
-                                        {item.id}
+                                        {getPageLabel(item.id)}
                                     </span>
 
                                     {/* Active Glow Indicator (subtle) */}
@@ -260,7 +340,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                                 </a>
                             </li>
                         </React.Fragment>
-                    ))}
+                    )})}
                 </ul>
             </nav>
             <div className="p-3 border-t border-gray-200 dark:border-gray-800">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppLayout from '../components/AppLayout';
+import KPICard from '../components/KPICard';
 import {
     PresentationChartBarIcon,
     ArrowPathIcon,
@@ -66,28 +67,19 @@ const SuperAdminAnalyticsPage: React.FC = () => {
                 )}
 
                 {/* KPI Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     {metricCards.map((card) => (
-                        <div
-                            key={card.label}
-                            className={`bg-gradient-to-br ${card.color} rounded-3xl p-6 text-white shadow-xl ${card.glow} relative overflow-hidden`}
-                        >
-                            <div className="absolute top-0 right-0 -mr-6 -mt-6 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
-                            <div className="relative z-10">
-                                <div className="flex items-center justify-between mb-4 opacity-80">
-                                    <span className="text-[10px] font-black uppercase tracking-widest">{card.label}</span>
-                                    <card.icon className="h-5 w-5" />
-                                </div>
-                                {loading ? (
-                                    <div className="h-8 w-20 bg-white/20 rounded animate-pulse" />
-                                ) : (
-                                    <p className="text-3xl font-black">
-                                        {formatNumber(card.value || 0)}
-                                        {card.suffix || ''}
-                                    </p>
-                                )}
-                            </div>
-                        </div>
+                        <KPICard 
+                            key={card.label} 
+                            title={card.label} 
+                            value={`${formatNumber(card.value || 0)}${card.suffix || ''}`}
+                            color={
+                                card.color.includes('violet') ? 'purple' :
+                                card.color.includes('emerald') ? 'green' :
+                                card.color.includes('blue') ? 'blue' :
+                                card.color.includes('amber') ? 'gray' : 'gray'
+                            }
+                        />
                     ))}
                 </div>
 

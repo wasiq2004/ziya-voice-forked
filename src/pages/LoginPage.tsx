@@ -36,11 +36,8 @@ const LoginPage: React.FC = () => {
         const { error } = await signIn(email, password);
         if (error) throw error;
         setShowSuccess(true);
-        // Redirect to the dashboard or the page they were trying to access
-        const from = location.state?.from?.pathname || '/agents';
-        setTimeout(() => {
-          navigate(from, { replace: true });
-        }, 1000);
+        // AuthContext already handles navigation on signIn, so we just wait for it.
+        return;
       }
     } catch (err: any) {
       setError(err.message || 'Failed to authenticate');
@@ -309,7 +306,7 @@ const LoginPage: React.FC = () => {
               </div>
 
               {/* Submit Button */}
-              <div className="animate-slide-up pt-4" style={{ animationDelay: isSignUp ? '0.6s' : '0.5s' }}>
+              <div className="animate-slide-up pt-2" style={{ animationDelay: isSignUp ? '0.6s' : '0.5s' }}>
                 <button
                   type="submit" disabled={loading}
                   className="group relative w-full flex justify-center items-center py-3.5 px-4 rounded-xl text-white font-bold bg-gradient-to-r from-primary to-cyan-500 hover:from-primary/90 hover:to-cyan-500/90 focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-slate-900 transition-all duration-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:-translate-y-0.5 overflow-hidden"
@@ -325,6 +322,8 @@ const LoginPage: React.FC = () => {
                   )}
                 </button>
               </div>
+
+
             </form>
 
             <div className="relative my-8 animate-slide-up" style={{ animationDelay: isSignUp ? '0.7s' : '0.6s' }}>

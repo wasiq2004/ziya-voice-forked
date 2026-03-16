@@ -57,6 +57,7 @@ class MediaStreamHandler {
             isReady: false,
             audioQueue: [],
             isSpeaking: false,
+            isCancelled: false,   // Fix 1 & 3: tracks whether the current LLM turn was interrupted
             lastUserSpeechTime: null,
             isProcessing: false,
             userId: userId,
@@ -67,6 +68,7 @@ class MediaStreamHandler {
             speechDetectedInChunk: false,
             silenceTimer: null,
             lastSpeechTime: Date.now(),
+            pendingMarkName: null,    // Fix 5: track the mark we're waiting for from Twilio
             usage: {
                 twilio: 0,
                 sarvam_stt: 0,
@@ -391,7 +393,14 @@ class MediaStreamHandler {
                         if (callId) this.endSession(callId);
 
                     } else if (data.event === "mark") {
-                        console.log("📍 Mark:", data.mark?.name);
+                        const markName = data.mark?.name;
+                        console.log("📍 Mark:", markName);
+                        // Fix 5: Use Twilio's mark event to accurately track when audio finishes playing
+                        if (markName === session?.pendingMarkName) {
+                            session.isSpeaking = false;
+                            session.pendingMarkName = null;
+                            console.log(`✅ Audio playback confirmed complete by Twilio mark: ${markName}`);
+                        }
                     }
 
                 } catch (err) {
@@ -419,6 +428,10 @@ class MediaStreamHandler {
         }
     }
     async callLLM(session) {
+        // Fix 6: LLM_TIMEOUT_MS — if Gemini does not complete within this window,
+        // we abort and return a graceful fallback. Prevents indefinite silence on API hangs.
+        const LLM_TIMEOUT_MS = 20000; // 20 seconds
+
         try {
             const modelToUse = session.agentModel || "gemini-2.0-flash";
             const isGemini = modelToUse.includes('gemini');
@@ -426,17 +439,30 @@ class MediaStreamHandler {
 
             console.log(`🧠 Calling ${provider} LLM Stream with model: ${modelToUse}`);
 
-            const stream = await this.llmService.generateContentStream({
+            // Fix 6: Wrap stream acquisition in a timeout promise
+            const streamPromise = this.llmService.generateContentStream({
                 model: modelToUse,
                 contents: session.context,
                 config: { systemInstruction: session.agentPrompt },
             });
+
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error(`LLM_TIMEOUT: ${provider} did not respond within ${LLM_TIMEOUT_MS / 1000}s`)), LLM_TIMEOUT_MS)
+            );
+
+            const stream = await Promise.race([streamPromise, timeoutPromise]);
 
             let fullText = "";
             let currentSentence = "";
             const sentenceBoundaries = /[.!?]+(\s|$)/;
 
             for await (const chunk of stream) {
+                // Fix 1 (also checked here): If the user interrupted mid-stream, stop iterating
+                if (session.isCancelled) {
+                    console.log(`🚫 LLM stream iteration aborted — turn was cancelled`);
+                    break;
+                }
+
                 let content = "";
                 if (isGemini) {
                     content = chunk.text();
@@ -503,6 +529,10 @@ class MediaStreamHandler {
                             }
                         }
 
+                        // Fix 4: Append the model's own tool-call JSON to context BEFORE recursing,
+                        // so Gemini has a proper memory of what it requested in the next turn.
+                        this.appendToContext(session, cleanText, "model");
+
                         this.appendToContext(session, JSON.stringify({
                             tool: parsed.tool,
                             status: "success",
@@ -518,16 +548,31 @@ class MediaStreamHandler {
 
             return fullText;
         } catch (err) {
+            // Fix 6: Handle timeout gracefully with a spoken fallback
+            if (err.message && err.message.startsWith('LLM_TIMEOUT')) {
+                console.error(`⏱️ ${err.message}`);
+                const fallback = "I'm sorry, I'm taking a bit longer to respond. Could you please repeat that?";
+                this.processSentenceTTS(fallback, session);
+                return fallback;
+            }
             console.error("❌ LLM stream error:", err);
             return "I apologize, I'm having trouble processing that right now.";
         }
     }
 
     async processSentenceTTS(text, session) {
+        // Fix 1: If the user interrupted this LLM turn, discard this sentence entirely
+        if (session.isCancelled) {
+            console.log(`🚫 Discarding stale TTS sentence (turn was cancelled): "${text.substring(0, 40)}..."`);
+            return;
+        }
         try {
             const ttsAudio = await this.synthesizeTTS(text, session.agentVoiceId, session);
-            if (ttsAudio) {
+            // Re-check after the async TTS call (user may have interrupted while TTS was generating)
+            if (ttsAudio && !session.isCancelled) {
                 this.sendAudioToTwilio(session, ttsAudio);
+            } else if (session.isCancelled) {
+                console.log(`🚫 Discarding stale TTS audio (turn was cancelled during synthesis): "${text.substring(0, 40)}..."`);
             }
         } catch (err) {
             console.error("❌ Error processing sentence TTS:", err);
@@ -578,18 +623,24 @@ class MediaStreamHandler {
 
             session.isSpeaking = true;
             const chunkSize = 160;
-            let chunksSent = 0;
             let offset = 0;
 
             const sendNextChunk = () => {
-                if (!session.isSpeaking) return;
+                // Stop sending if the turn was cancelled (user interrupted)
+                if (!session.isSpeaking || session.isCancelled) return;
+
                 if (offset >= audioBuffer.length) {
+                    // Fix 5: Send a uniquely named mark so we can listen for Twilio's echo back
+                    // to know when audio has ACTUALLY finished playing in the user's ear
+                    const markName = `audio_end_${Date.now()}`;
+                    session.pendingMarkName = markName;
                     session.ws.send(JSON.stringify({
                         event: "mark",
                         streamSid: session.streamSid,
-                        mark: { name: "audio_complete" },
+                        mark: { name: markName },
                     }));
-                    setTimeout(() => { session.isSpeaking = false; }, chunksSent * 20);
+                    // isSpeaking is now set to false ONLY when Twilio echoes the mark back
+                    // (see the mark event handler in handleConnection)
                     return;
                 }
 
@@ -599,7 +650,6 @@ class MediaStreamHandler {
                     streamSid: session.streamSid,
                     media: { payload: chunkBuffer.toString('base64') },
                 }));
-                chunksSent++;
                 offset += chunkSize;
                 setTimeout(sendNextChunk, 18);
             };
@@ -636,10 +686,12 @@ class MediaStreamHandler {
                     session.silenceTimer = null;
                 }
 
-                // Interruption check: User spoke while agent was talking
-                if (session.isSpeaking) {
-                    console.log(`⚠️ User interruption detected`);
+                // Fix 1 & 3: User spoke while agent was talking — cancel the current LLM turn
+                if (session.isSpeaking || session.isProcessing) {
+                    console.log(`⚠️ User interruption detected — cancelling current LLM turn`);
+                    session.isCancelled = true;   // signals callLLM & processSentenceTTS to stop
                     session.isSpeaking = false;
+                    session.pendingMarkName = null;  // clear pending mark
                     if (session.ws && session.streamSid) {
                         session.ws.send(JSON.stringify({
                             event: "clear",
@@ -666,6 +718,14 @@ class MediaStreamHandler {
     async processBufferedAudio(session) {
         if (session.audioBuffer.length === 0) return;
         session.silenceTimer = null;
+
+        // Fix 2: Guard against parallel execution — if already processing, discard this audio chunk
+        if (session.isProcessing) {
+            console.log(`⚠️ Already processing audio — discarding new chunk to prevent race condition`);
+            session.audioBuffer = [];
+            session.speechDetectedInChunk = false;
+            return;
+        }
 
         if (!session.speechDetectedInChunk) {
             session.audioBuffer = [];
@@ -696,9 +756,20 @@ class MediaStreamHandler {
                 console.log(`📝 Sarvam Transcript: "${transcript}"`);
                 this.appendToContext(session, transcript, "user");
 
+                // Fix 1 & 3: Reset cancellation flag at start of a new fresh LLM turn
+                session.isCancelled = false;
                 session.isProcessing = true;
                 const llmResponse = await this.callLLM(session);
-                this.appendToContext(session, llmResponse, "model");
+
+                // Fix 3: Only commit the response to context if the turn was NOT cancelled
+                // (i.e., user did not interrupt). Prevents the AI from "remembering" things
+                // it said but the user never heard.
+                if (!session.isCancelled && llmResponse) {
+                    this.appendToContext(session, llmResponse, "model");
+                } else if (session.isCancelled) {
+                    console.log(`🚫 LLM response discarded from context (turn was cancelled by user interruption)`);
+                }
+
                 session.isProcessing = false;
             }
         } catch (error) {

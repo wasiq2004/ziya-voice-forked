@@ -4,20 +4,22 @@ const API_BASE_URL = `${getApiBaseUrl()}/api`;
 
 const appendOrgId = (params?: URLSearchParams): string => {
   let queryStr = '';
-  // Try to extract orgId from current user session
-  const userStr = localStorage.getItem('ziya-user');
-  if (userStr) {
-    try {
-      const user = JSON.parse(userStr);
-      if (user.role === 'org_admin' && user.organization_id) {
-        if (params) {
-          params.append('orgId', user.organization_id.toString());
-        } else {
-          queryStr = `?orgId=${user.organization_id}`;
+  // Only add orgId from localStorage if it's not already set in params
+  if (!params?.has('orgId')) {
+    const userStr = localStorage.getItem('ziya-user');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        if (user.role === 'org_admin' && user.organization_id) {
+          if (params) {
+            params.append('orgId', user.organization_id.toString());
+          } else {
+            queryStr = `?orgId=${user.organization_id}`;
+          }
         }
+      } catch (e) {
+        // Ignore parse error
       }
-    } catch (e) {
-      // Ignore parse error
     }
   }
   return params ? `?${params.toString()}` : queryStr;
@@ -27,7 +29,7 @@ export interface Admin {
   id: string;
   email: string;
   name: string;
-  role: 'super_admin' | 'admin' | 'billing';
+  role: 'super_admin' | 'admin' | 'billing' | 'org_admin';
 }
 
 export interface UserListItem {
@@ -121,12 +123,15 @@ export const getDashboardStats = async (): Promise<DashboardStats> => {
 };
 
 // Get all users with pagination
-export const getUsers = async (page: number = 1, limit: number = 50, search: string = '') => {
+export const getUsers = async (page: number = 1, limit: number = 50, search: string = '', orgId?: string | null) => {
   const params = new URLSearchParams({
     page: page.toString(),
     limit: limit.toString(),
     search
   });
+  if (orgId) {
+    params.append('orgId', orgId);
+  }
 
   const response = await fetch(`${API_BASE_URL}/admin/users${appendOrgId(params)}`);
 
@@ -346,7 +351,7 @@ export const updateUserStatus = async (
   adminId: string
 ): Promise<{ success: boolean; message: string }> => {
   const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/status`, {
-    method: 'PATCH',
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status, adminId })
   });
@@ -422,6 +427,50 @@ export const impersonateUser = async (userId: string, adminId: string): Promise<
   return response.json();
 };
 
+
+// Delete a user permanently (admin)
+export const deleteUser = async (userId: string, adminId: string): Promise<{ success: boolean; message: string }> => {
+  const response = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ adminId })
+  });
+  const ct = response.headers.get('content-type');
+  if (!ct?.includes('application/json')) throw new Error('Invalid server response');
+  if (!response.ok) { const e = await response.json(); throw new Error(e.message || 'Failed to delete user'); }
+  return response.json();
+};
+
+// Create a new user under org (admin panel)
+export const createAdminUser = async (email: string, username: string, password: string, organization_id?: string | null): Promise<{ success: boolean; user: any }> => {
+  const response = await fetch(`${API_BASE_URL}/admin/create-user`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, username, password, organization_id })
+  });
+  const ct = response.headers.get('content-type');
+  if (!ct?.includes('application/json')) throw new Error('Invalid server response');
+  if (!response.ok) { const e = await response.json(); throw new Error(e.message || 'Failed to create user'); }
+  return response.json();
+};
+
+// Get org-level wallet summary
+export const getWalletSummary = async (orgId?: string | null): Promise<{ success: boolean; summary: any }> => {
+  const qs = orgId ? `?orgId=${orgId}` : '';
+  const response = await fetch(`${API_BASE_URL}/admin/wallet/summary${qs}`);
+  const ct = response.headers.get('content-type');
+  if (!ct?.includes('application/json')) throw new Error('Invalid server response');
+  if (!response.ok) { const e = await response.json(); throw new Error(e.message || 'Failed to fetch wallet summary'); }
+  return response.json();
+};
+
+// Get org-level wallet transaction log
+export const getWalletTransactions = async (orgId?: string | null, type?: string): Promise<{ success: boolean; transactions: any[] }> => {
+  const params = new URLSearchParams({ limit: '100' });
+  if (orgId) params.append('orgId', orgId);
+  if (type && type !== 'All') params.append('type', type);
+  const response = await fetch(`${API_BASE_URL}/admin/wallet/transactions?${params.toString()}`);
+  const ct = response.headers.get('content-type');
+  if (!ct?.includes('application/json')) throw new Error('Invalid server response');
+  if (!response.ok) { const e = await response.json(); throw new Error(e.message || 'Failed to fetch transactions'); }
+  return response.json();
+};
 // ==================== Plan Management ====================
 
 export interface UserPlan {
@@ -476,7 +525,6 @@ export const updateUserPlan = async (
   }
   return response.json();
 };
-
 // ==================== Plan Management ====================
 
 export interface Plan {
@@ -614,8 +662,96 @@ export const createUser = async (payload: {
   const contentType = response.headers.get('content-type');
   if (!contentType?.includes('application/json')) throw new Error('Non-JSON response from server');
   if (!response.ok) {
-    const e = await response.json();
     throw new Error(e.message || 'Failed to create user');
   }
   return response.json();
 };
+
+/** Create a new support ticket */
+export const createSupportTicket = async (payload: {
+  subject: string;
+  category?: string;
+  priority?: string;
+  message: string;
+  created_by: string;
+  created_by_role: 'user' | 'org_admin' | 'super_admin';
+  target_role: 'org_admin' | 'super_admin';
+  organization_id?: number | null;
+}): Promise<any> => {
+  const response = await fetch(`${API_BASE_URL}/support/tickets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const contentType = response.headers.get('content-type');
+  if (!contentType?.includes('application/json')) throw new Error('Non-JSON response');
+  if (!response.ok) { const e = await response.json(); throw new Error(e.message || 'Failed to create ticket'); }
+  return response.json();
+};
+
+/** List support tickets (scoped by role) */
+export const listSupportTickets = async (params: {
+  created_by?: string;
+  created_by_role?: string;
+  target_role?: string;
+  organization_id?: number | null;
+  page?: number;
+  limit?: number;
+}): Promise<{ tickets: any[]; pagination: any }> => {
+  const q = new URLSearchParams();
+  if (params.created_by) q.set('created_by', params.created_by);
+  if (params.created_by_role) q.set('created_by_role', params.created_by_role);
+  if (params.target_role) q.set('target_role', params.target_role);
+  if (params.organization_id) q.set('organization_id', params.organization_id.toString());
+  if (params.page) q.set('page', params.page.toString());
+  if (params.limit) q.set('limit', params.limit.toString());
+  
+  const response = await fetch(`${API_BASE_URL}/support/tickets?${q}`);
+  const contentType = response.headers.get('content-type');
+  if (!contentType?.includes('application/json')) throw new Error('Non-JSON response');
+  if (!response.ok) { const e = await response.json(); throw new Error(e.message || 'Failed to fetch tickets'); }
+  const data = await response.json();
+  return { tickets: data.tickets, pagination: data.pagination };
+};
+
+/** Get a single ticket with replies */
+export const getSupportTicket = async (ticketId: string): Promise<{ ticket: any; replies: any[] }> => {
+  const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}`);
+  const contentType = response.headers.get('content-type');
+  if (!contentType?.includes('application/json')) throw new Error('Non-JSON response');
+  if (!response.ok) { const e = await response.json(); throw new Error(e.message || 'Failed to fetch ticket'); }
+  return response.json();
+};
+
+/** Reply to a support ticket */
+export const replyToSupportTicket = async (
+  ticketId: string,
+  message: string,
+  user_id: string,
+  user_role: 'user' | 'org_admin' | 'super_admin'
+): Promise<any> => {
+  const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/reply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, user_id, user_role }),
+  });
+  const contentType = response.headers.get('content-type');
+  if (!contentType?.includes('application/json')) throw new Error('Non-JSON response');
+  if (!response.ok) { const e = await response.json(); throw new Error(e.message || 'Failed to reply'); }
+  return response.json();
+};
+
+/** Update ticket status */
+export const updateTicketStatus = async (ticketId: string, status: string): Promise<any> => {
+  const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  const contentType = response.headers.get('content-type');
+  if (!contentType?.includes('application/json')) throw new Error('Non-JSON response');
+  if (!response.ok) { const e = await response.json(); throw new Error(e.message || 'Failed to update status'); }
+  return response.json();
+};
+
+// End of adminApi.ts

@@ -56,10 +56,25 @@ var AuthService = /** @class */ (function () {
   
     AuthService.prototype.authenticateUser = async function (email, password) {
         try {
-            const [rows] = await this.mysqlPool.execute('SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, password_hash, current_company_id, role, organization_id, status, plan_type, plan_valid_until, trial_started_at FROM users WHERE email = ?', [email]);
+            const [rows] = await this.mysqlPool.execute(`
+                SELECT u.id, u.email, u.username, u.full_name, u.profile_image, 
+                       DATE_FORMAT(u.dob, "%Y-%m-%d") as dob, u.gender, u.password_hash, 
+                       u.current_company_id, u.role, u.organization_id, u.status, 
+                       u.plan_type, u.plan_valid_until, u.trial_started_at,
+                       o.name as organization_name, o.logo_url as organization_logo_url
+                FROM users u
+                LEFT JOIN organizations o ON u.organization_id = o.id
+                WHERE u.email = ?    
+            `, [email]);
             
             if (rows.length === 0) {
-                const [adminRows] = await this.mysqlPool.execute('SELECT id, email, name as username, password_hash, role FROM admin_users WHERE email = ?', [email]);
+                const [adminRows] = await this.mysqlPool.execute(
+                    `SELECT au.id, au.email, au.name as username, au.password_hash, au.role, au.organization_id,
+                            o.name as organization_name, o.logo_url as organization_logo_url
+                     FROM admin_users au
+                     LEFT JOIN organizations o ON au.organization_id = o.id
+                     WHERE au.email = ?`,
+                    [email]);
                 
                 if (adminRows.length === 0) {
                     return null;
@@ -128,7 +143,7 @@ var AuthService = /** @class */ (function () {
                     case 2:
                         passwordHash = _a.sent();
                         userId = Math.random().toString(36).substring(2, 15);
-                        return [4 /*yield*/, this.mysqlPool.execute('INSERT INTO users (id, email, username, password_hash) VALUES (?, ?, ?, ?)', [userId, email, username, passwordHash])];
+                        return [4 /*yield*/, this.mysqlPool.execute('INSERT INTO users (id, email, username, password_hash, role, organization_id) VALUES (?, ?, ?, ?, ?, ?)', [userId, email, username, passwordHash, 'user', 5])];
                     case 3:
                         result = (_a.sent())[0];
                         return [2 /*return*/, {

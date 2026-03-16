@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppLayout from '../components/AppLayout';
 import Skeleton from '../components/Skeleton';
+import KPICard from '../components/KPICard';
 import { getSuperAdminStats } from '../utils/superAdminApi';
+import { getAuditLogs } from '../utils/adminApi';
 import {
     BuildingOfficeIcon,
     UsersIcon,
@@ -11,6 +13,8 @@ import {
     ArrowPathIcon,
     ChartBarIcon,
     ArrowTrendingUpIcon,
+    CurrencyDollarIcon,
+    PresentationChartBarIcon,
 } from '@heroicons/react/24/outline';
 
 const SuperAdminDashboardPage: React.FC = () => {
@@ -18,6 +22,8 @@ const SuperAdminDashboardPage: React.FC = () => {
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [recentEvents, setRecentEvents] = useState<any[]>([]);
+    const [eventsLoading, setEventsLoading] = useState(true);
 
     useEffect(() => {
         // Verify super admin access
@@ -26,6 +32,7 @@ const SuperAdminDashboardPage: React.FC = () => {
         const user = JSON.parse(userStr);
         if (user.role !== 'super_admin') { navigate('/login'); return; }
         fetchStats();
+        fetchRecentEvents();
     }, [navigate]);
 
     const fetchStats = async () => {
@@ -40,47 +47,45 @@ const SuperAdminDashboardPage: React.FC = () => {
         }
     };
 
-    const kpiCards = [
-        {
-            label: 'Total Organizations',
-            value: stats?.totalOrganizations ?? 0,
-            icon: BuildingOfficeIcon,
-            gradient: 'from-violet-500 to-purple-700',
-            glow: 'shadow-violet-500/30',
-            link: '/superadmin/organizations',
-        },
-        {
-            label: 'Organization Admins',
-            value: stats?.totalOrgAdmins ?? 0,
-            icon: UserGroupIcon,
-            gradient: 'from-blue-500 to-indigo-700',
-            glow: 'shadow-blue-500/30',
-            link: '/superadmin/org-admins',
-        },
-        {
-            label: 'Total Users',
-            value: stats?.totalUsers ?? 0,
-            icon: UsersIcon,
-            gradient: 'from-emerald-500 to-teal-700',
-            glow: 'shadow-emerald-500/30',
-            link: '/superadmin/users',
-        },
-        {
-            label: 'Total Credits Used',
-            value: stats?.totalCreditsUsed ?? 0,
-            icon: CircleStackIcon,
-            gradient: 'from-amber-500 to-orange-600',
-            glow: 'shadow-amber-500/30',
-            link: '/superadmin/analytics',
-            suffix: ' CR',
-        },
-    ];
+    const fetchRecentEvents = async () => {
+        setEventsLoading(true);
+        try {
+            const logsData = await getAuditLogs(1, 5);
+            const mapped = (logsData.logs || []).map((log: any) => {
+                const type = log.action_type?.toLowerCase() || '';
+                const isCredit = type.includes('credit') || type.includes('billing');
+                const isOrg = type.includes('org') || type.includes('create');
+                const isLogin = type.includes('login') || type.includes('imperson');
 
-    const quickActions = [
-        { label: 'Create Organization', desc: 'Set up a new tenant organization', path: '/superadmin/organizations', icon: BuildingOfficeIcon, color: 'bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800 text-violet-600 dark:text-violet-400' },
-        { label: 'Add Org Admin', desc: 'Assign an admin to an organization', path: '/superadmin/org-admins', icon: UserGroupIcon, color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400' },
-        { label: 'Manage Users', desc: 'View and manage all platform users', path: '/superadmin/users', icon: UsersIcon, color: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400' },
-        { label: 'Platform Analytics', desc: 'Usage metrics and credit analytics', path: '/superadmin/analytics', icon: ChartBarIcon, color: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400' },
+                const diff = Date.now() - new Date(log.created_at).getTime();
+                const mins = Math.floor(diff / 60000);
+                const hours = Math.floor(mins / 60);
+                const timeStr = hours > 24 ? `${Math.floor(hours / 24)}d ago` : hours > 0 ? `${hours}h ago` : mins > 0 ? `${mins}m ago` : 'Just now';
+
+                return {
+                    event: log.action_type?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Admin Action',
+                    target: log.details || log.target_user_email || '—',
+                    time: timeStr,
+                    icon: isCredit ? CircleStackIcon : isOrg ? BuildingOfficeIcon : isLogin ? UsersIcon : ChartBarIcon,
+                    color: isCredit ? 'text-amber-500' : isOrg ? 'text-violet-500' : isLogin ? 'text-blue-500' : 'text-slate-500',
+                    bg: isCredit ? 'bg-amber-500/10' : isOrg ? 'bg-violet-500/10' : isLogin ? 'bg-blue-500/10' : 'bg-slate-500/10',
+                };
+            });
+            setRecentEvents(mapped);
+        } catch (_) {
+            setRecentEvents([]);
+        } finally {
+            setEventsLoading(false);
+        }
+    };
+
+
+    const kpis = [
+        { label: 'Total Users', value: stats?.totalUsers ?? 0, icon: UsersIcon, color: 'blue' as const },
+        { label: 'Total Agents', value: stats?.totalAgents ?? 0, icon: UserGroupIcon, color: 'purple' as const },
+        { label: 'Total Organizations', value: stats?.totalOrganizations ?? 0, icon: BuildingOfficeIcon, color: 'green' as const },
+        { label: 'Credit Usage', value: stats?.totalCreditsUsed ?? 0, icon: CircleStackIcon, color: 'red' as const, suffix: ' CR' },
+        { label: 'Credit Available', value: stats?.totalCreditsAvailable ?? 0, icon: CurrencyDollarIcon, color: 'blue' as const, suffix: ' CR' },
     ];
 
     const userStr = localStorage.getItem('ziya-user');
@@ -108,88 +113,142 @@ const SuperAdminDashboardPage: React.FC = () => {
                     </div>
                 )}
 
-                {/* KPI Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {kpiCards.map((card) => (
-                        <button
-                            key={card.label}
-                            onClick={() => navigate(card.link)}
-                            className={`group bg-gradient-to-br ${card.gradient} rounded-3xl p-6 text-white shadow-xl ${card.glow} relative overflow-hidden hover:scale-[1.02] transition-transform text-left`}
-                        >
-                            <div className="absolute top-0 right-0 -mr-6 -mt-6 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
-                            <div className="relative z-10">
-                                <div className="flex items-center justify-between mb-4 opacity-80">
-                                    <span className="text-[10px] font-black uppercase tracking-widest">{card.label}</span>
-                                    <card.icon className="h-5 w-5" />
-                                </div>
-                                {loading ? (
-                                    <div className="h-8 w-20 bg-white/20 rounded animate-pulse" />
-                                ) : (
-                                    <p className="text-3xl font-black">
-                                        {typeof card.value === 'number' ? card.value.toLocaleString() : card.value}
-                                        {card.suffix || ''}
-                                    </p>
-                                )}
-                                <p className="text-[10px] opacity-60 font-bold mt-1 uppercase tracking-wider">Click to manage</p>
-                            </div>
-                        </button>
+                {/* KPI Snapboxes */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                    {kpis.map((kpi) => (
+                        <KPICard 
+                            key={kpi.label}
+                            title={kpi.label}
+                            value={`${kpi.value.toLocaleString()}${kpi.suffix || ''}`}
+                            color={kpi.color}
+                        />
                     ))}
                 </div>
 
-                {/* Hierarchy Visualization */}
-                <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
-                    <div className="flex items-center gap-3 mb-6">
-                        <ArrowTrendingUpIcon className="w-5 h-5 text-violet-500" />
-                        <h2 className="text-lg font-bold text-slate-800 dark:text-white">Platform Hierarchy</h2>
-                    </div>
-                    <div className="flex flex-col items-center gap-3">
-                        {/* Super Admin */}
-                        <div className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-2xl px-8 py-3 font-black text-sm shadow-lg shadow-violet-500/30 flex items-center gap-2">
-                            <UserGroupIcon className="w-4 h-4" />
-                            Super Admin (You)
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Organization Overview Chart Placeholder */}
+                    <div className="lg:col-span-2 bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm overflow-hidden flex flex-col">
+                        <div className="flex items-center justify-between mb-8">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-primary/10 rounded-xl">
+                                    <PresentationChartBarIcon className="w-5 h-5 text-primary" />
+                                </div>
+                                <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Organization Growth</h3>
+                            </div>
+                            <div className="flex gap-2">
+                                <span className="px-3 py-1 bg-slate-100 dark:bg-slate-900 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider">7 Days</span>
+                                <span className="px-3 py-1 bg-primary text-white rounded-lg text-[10px] font-bold uppercase tracking-wider">30 Days</span>
+                            </div>
                         </div>
-                        <div className="w-px h-6 bg-slate-300 dark:bg-slate-600" />
-                        {/* Organizations */}
-                        <div className="flex items-center gap-8">
-                            {loading ? (
-                                <div className="h-10 w-40 bg-slate-100 dark:bg-slate-700 rounded-2xl animate-pulse" />
-                            ) : (
-                                stats?.orgBreakdown?.slice(0, 3).map((org: any, i: number) => (
-                                    <div key={i} className="flex flex-col items-center gap-2">
-                                        <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 rounded-2xl px-5 py-2 font-bold text-sm flex items-center gap-2">
-                                            <BuildingOfficeIcon className="w-4 h-4" />
-                                            {org.name}
+                        
+                        {/* Mock Chart Area */}
+                        <div className="h-64 flex items-end justify-between gap-1 px-2 pt-4 relative">
+                            {/* Grid Lines */}
+                            <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-8">
+                                {[...Array(5)].map((_, i) => (
+                                    <div key={i} className="w-full h-px bg-slate-100 dark:bg-slate-800/50"></div>
+                                ))}
+                            </div>
+                            {/* Bars */}
+                            {[40, 65, 45, 80, 55, 90, 70, 85, 60, 100, 75, 95].map((val, i) => (
+                                <div key={i} className="flex-1 flex flex-col items-center group h-full justify-end relative z-10 w-full">
+                                    <div 
+                                        className="w-full bg-primary/20 hover:bg-primary transition-all rounded-t-lg relative" 
+                                        style={{ height: `${val}%` }}
+                                    >
+                                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-black px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                                            {val}%
                                         </div>
-                                        <div className="text-[10px] text-slate-400 font-semibold">{org.user_count || 0} users</div>
                                     </div>
-                                ))
-                            )}
-                            {!loading && stats?.totalOrganizations > 3 && (
-                                <div className="text-slate-400 text-sm font-bold">+{stats.totalOrganizations - 3} more</div>
-                            )}
-                            {!loading && (!stats?.orgBreakdown || stats.orgBreakdown.length === 0) && (
-                                <div className="text-slate-400 text-sm italic">No organizations yet. Create one to get started.</div>
+                                    <span className="text-[8px] font-bold text-slate-400 mt-2 uppercase">Jan</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Top Organizations by Usage */}
+                    <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm overflow-hidden">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="p-2 bg-amber-500/10 rounded-xl">
+                                <ArrowTrendingUpIcon className="w-5 h-5 text-amber-500" />
+                            </div>
+                            <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Top Consumption</h3>
+                        </div>
+                        <div className="space-y-4">
+                            {loading ? (
+                                [...Array(5)].map((_, i) => <Skeleton key={i} height={40} className="rounded-xl" />)
+                            ) : stats?.orgBreakdown?.slice(0, 5).map((org: any, i: number) => (
+                                <div key={i} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800/50">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary text-xs font-black">
+                                            {i + 1}
+                                        </div>
+                                        <div className="overflow-hidden">
+                                            <p className="text-xs font-bold text-slate-800 dark:text-white truncate w-24">{org.name}</p>
+                                            <p className="text-[9px] text-slate-400 font-bold uppercase">{org.user_count || 0} Users</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-xs font-black text-primary">{(org.credits_used || 0).toLocaleString()} CR</p>
+                                        <p className="text-[8px] font-bold text-emerald-500 uppercase tracking-tighter">Usage +12%</p>
+                                    </div>
+                                </div>
+                            )) || (
+                                <div className="py-10 text-center text-xs text-slate-400 font-bold uppercase tracking-widest">
+                                    No organization data
+                                </div>
                             )}
                         </div>
                     </div>
                 </div>
 
-                {/* Quick Actions */}
-                <div>
-                    <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-4">Quick Actions</h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {quickActions.map((action) => (
-                            <button
-                                key={action.label}
-                                onClick={() => navigate(action.path)}
-                                className={`flex flex-col items-start p-5 border rounded-2xl transition-all hover:shadow-md group ${action.color}`}
-                            >
-                                <action.icon className="w-6 h-6 mb-3 group-hover:scale-110 transition-transform" />
-                                <p className="font-black text-sm mb-1">{action.label}</p>
-                                <p className="text-xs opacity-70 font-medium text-left">{action.desc}</p>
-                            </button>
-                        ))}
+                {/* Audit Log / Recent Events Placeholder */}
+                <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden mt-8">
+                    <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+                        <div className="flex items-center gap-3">
+                           <div className="p-1.5 bg-slate-200/50 dark:bg-slate-700/50 rounded-lg">
+                               <ChartBarIcon className="w-4 h-4 text-slate-500" />
+                           </div>
+                           <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Global Platform Events</h3>
+                        </div>
+                        <button className="text-xs font-bold text-primary hover:underline underline-offset-4 decoration-primary/30 py-1 px-3 rounded-lg hover:bg-primary/5 transition-all">View All Activity</button>
                     </div>
+                     <div className="divide-y divide-slate-50 dark:divide-slate-800">
+                        {eventsLoading ? (
+                            [...Array(4)].map((_, i) => (
+                                <div key={i} className="p-5 flex items-center gap-4 animate-pulse">
+                                    <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 shrink-0" />
+                                    <div className="space-y-2 flex-1">
+                                        <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded w-1/3" />
+                                        <div className="h-2 bg-slate-50 dark:bg-slate-900 rounded w-1/2" />
+                                    </div>
+                                </div>
+                            ))
+                        ) : recentEvents.length === 0 ? (
+                            <div className="p-8 text-center text-xs font-bold text-slate-400 uppercase tracking-widest">
+                                No recent platform events
+                            </div>
+                        ) : (
+                            recentEvents.map((item, i) => (
+                                <div key={i} className="p-5 flex items-center justify-between hover:bg-slate-50/80 dark:hover:bg-slate-900/40 transition-colors group">
+                                    <div className="flex items-center gap-4">
+                                        <div className={`p-3 rounded-xl ${item.bg} ${item.color} group-hover:scale-105 transition-transform`}>
+                                            <item.icon className="w-5 h-5" />
+                                        </div>
+                                        <div className="space-y-0.5">
+                                            <p className="text-sm font-black text-slate-800 dark:text-white">{item.event}</p>
+                                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide truncate max-w-xs">{item.target}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-full text-[9px] font-black uppercase tracking-widest">
+                                            {item.time}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                     </div>
                 </div>
             </div>
         </AppLayout>

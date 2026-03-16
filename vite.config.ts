@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
       allowedHosts: ["ziyasuite.com", "www.ziyasuite.com"],
       proxy: {
         '/api': {
-          target: JSON.stringify(env.VITE_API_URL),
+          target: JSON.stringify(env.VITE_API_BASE_URL),
           changeOrigin: true,
           secure: false,
         }
