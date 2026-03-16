@@ -10,24 +10,24 @@ import CreditsPage from './pages/CreditsPage';
 import DashboardPage from './pages/DashboardPage';
 import ReportsPage from './pages/ReportsPage';
 import SchedulePage from './pages/SchedulePage';
+import UserSupportPage from './pages/UserSupportPage';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
-import AdminUserDetailPage from './pages/AdminUserDetailPage';
-import AdminAuditLogsPage from './pages/AdminAuditLogsPage';
 import AdminUsersPage from './pages/AdminUsersPage';
-import AdminPlansPage from './pages/AdminPlansPage';
+import AdminCreditsPage from './pages/AdminCreditsPage';
+import AdminReportsPage from './pages/AdminReportsPage';
+import AdminSettingsPage from './pages/AdminSettingsPage';
+import AdminSupportPage from './pages/AdminSupportPage';
 // Super Admin Pages
 import SuperAdminDashboardPage from './pages/SuperAdminDashboardPage';
 import SuperAdminOrganizationsPage from './pages/SuperAdminOrganizationsPage';
-import SuperAdminOrgAdminsPage from './pages/SuperAdminOrgAdminsPage';
-import SuperAdminUsersPage from './pages/SuperAdminUsersPage';
-import SuperAdminIndividualUsersPage from './pages/SuperAdminIndividualUsersPage';
-import SuperAdminPlansPage from './pages/SuperAdminPlansPage';
 import SuperAdminPricingPage from './pages/SuperAdminPricingPage';
-import SuperAdminAnalyticsPage from './pages/SuperAdminAnalyticsPage';
+import SuperAdminCreditsPage from './pages/SuperAdminCreditsPage';
+import SuperAdminSupportPage from './pages/SuperAdminSupportPage';
+import SuperAdminSettingsPage from './pages/SuperAdminSettingsPage';
 
 // ─── Route guards ────────────────────────────────────────────────────────────
 
@@ -43,7 +43,6 @@ const OrgAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     return <>{children}</>;
 };
 
-/** Guard for Super Admin routes (/superadmin/*) — role must be super_admin */
 const SuperAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const userStr = localStorage.getItem('ziya-user');
     if (!userStr) return <Navigate to="/login" replace />;
@@ -65,19 +64,18 @@ const App: React.FC = () => {
                     {/* ── Super Admin Routes (/superadmin/*) ───────── */}
                     <Route path="/superadmin/dashboard" element={<SuperAdminRoute><SuperAdminDashboardPage /></SuperAdminRoute>} />
                     <Route path="/superadmin/organizations" element={<SuperAdminRoute><SuperAdminOrganizationsPage /></SuperAdminRoute>} />
-                    <Route path="/superadmin/org-admins" element={<SuperAdminRoute><SuperAdminOrgAdminsPage /></SuperAdminRoute>} />
-                    <Route path="/superadmin/users" element={<SuperAdminRoute><SuperAdminUsersPage /></SuperAdminRoute>} />
-                    <Route path="/superadmin/individual-users" element={<SuperAdminRoute><SuperAdminIndividualUsersPage /></SuperAdminRoute>} />
-                    <Route path="/superadmin/plans" element={<SuperAdminRoute><SuperAdminPlansPage /></SuperAdminRoute>} />
                     <Route path="/superadmin/pricing" element={<SuperAdminRoute><SuperAdminPricingPage /></SuperAdminRoute>} />
-                    <Route path="/superadmin/analytics" element={<SuperAdminRoute><SuperAdminAnalyticsPage /></SuperAdminRoute>} />
+                    <Route path="/superadmin/credits" element={<SuperAdminRoute><SuperAdminCreditsPage /></SuperAdminRoute>} />
+                    <Route path="/superadmin/support" element={<SuperAdminRoute><SuperAdminSupportPage /></SuperAdminRoute>} />
+                    <Route path="/superadmin/settings" element={<SuperAdminRoute><SuperAdminSettingsPage /></SuperAdminRoute>} />
 
                     {/* ── Org Admin Routes (/admin/*) ───────────────── */}
                     <Route path="/admin/dashboard" element={<OrgAdminRoute><AdminDashboardPage /></OrgAdminRoute>} />
                     <Route path="/admin/users" element={<OrgAdminRoute><AdminUsersPage /></OrgAdminRoute>} />
-                    <Route path="/admin/users/:userId" element={<OrgAdminRoute><AdminUserDetailPage /></OrgAdminRoute>} />
-                    <Route path="/admin/logs" element={<OrgAdminRoute><AdminAuditLogsPage /></OrgAdminRoute>} />
-                    <Route path="/admin/plans" element={<OrgAdminRoute><AdminPlansPage /></OrgAdminRoute>} />
+                    <Route path="/admin/credits" element={<OrgAdminRoute><AdminCreditsPage /></OrgAdminRoute>} />
+                    <Route path="/admin/reports" element={<OrgAdminRoute><AdminReportsPage /></OrgAdminRoute>} />
+                    <Route path="/admin/settings" element={<OrgAdminRoute><AdminSettingsPage /></OrgAdminRoute>} />
+                    <Route path="/admin/support" element={<OrgAdminRoute><AdminSupportPage /></OrgAdminRoute>} />
 
                     {/* ── User Routes (/dashboard, /agents, etc.) ──── */}
                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -91,6 +89,7 @@ const App: React.FC = () => {
                     <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
                     <Route path="/api" element={<ProtectedRoute><ApiPage /></ProtectedRoute>} />
                     <Route path="/credits" element={<ProtectedRoute><CreditsPage /></ProtectedRoute>} />
+                    <Route path="/support" element={<ProtectedRoute><UserSupportPage /></ProtectedRoute>} />
 
                     {/* ── Fallback ──────────────────────────────────── */}
                     <Route path="*" element={<Navigate to="/login" replace />} />

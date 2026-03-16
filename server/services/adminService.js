@@ -10,25 +10,45 @@ class AdminService {
   // Admin Authentication
   async login(email, password) {
     try {
-      const [rows] = await this.mysqlPool.execute(
+      // First: check the legacy admin_users table (super_admin)
+      const [adminRows] = await this.mysqlPool.execute(
         'SELECT * FROM admin_users WHERE email = ?',
         [email]
       );
 
-      if (rows.length === 0) {
+      if (adminRows.length > 0) {
+        const admin = adminRows[0];
+        const isValidPassword = await bcrypt.compare(password, admin.password_hash);
+        if (!isValidPassword) throw new Error('Invalid credentials');
+        delete admin.password_hash;
+        return admin;
+      }
+
+      // Second: check the users table for org_admin role (e.g. Ziya_Admin)
+      const [userRows] = await this.mysqlPool.execute(
+        'SELECT * FROM users WHERE email = ? AND role = ?',
+        [email, 'org_admin']
+      );
+
+      if (userRows.length === 0) {
         throw new Error('Invalid credentials');
       }
 
-      const admin = rows[0];
-      const isValidPassword = await bcrypt.compare(password, admin.password_hash);
+      const orgAdmin = userRows[0];
+      const isValidPassword = await bcrypt.compare(password, orgAdmin.password_hash);
+      if (!isValidPassword) throw new Error('Invalid credentials');
 
-      if (!isValidPassword) {
-        throw new Error('Invalid credentials');
-      }
-
-      // Don't return password hash
-      delete admin.password_hash;
-      return admin;
+      // Return a normalized admin object
+      const result = {
+        id: orgAdmin.id,
+        email: orgAdmin.email,
+        name: orgAdmin.username || orgAdmin.email,
+        username: orgAdmin.username,
+        role: 'org_admin',
+        organization_id: orgAdmin.organization_id,
+        status: orgAdmin.status,
+      };
+      return result;
     } catch (error) {
       console.error('Admin login error:', error);
       throw error;
@@ -53,10 +73,16 @@ class AdminService {
           u.status,
           u.plan_type,
           u.plan_valid_until,
+          COALESCE(uw.balance, 0) as credits_balance,
+          COALESCE(SUM(CASE WHEN wt.transaction_type = 'debit' THEN wt.amount ELSE 0 END), 0) as credits_used,
+          COUNT(DISTINCT ag.id) as agents_count,
           COALESCE(SUM(CASE WHEN sur.service_name = 'elevenlabs' THEN sur.usage_amount ELSE 0 END), 0) as elevenlabs_usage,
           COALESCE(SUM(CASE WHEN sur.service_name = 'gemini' THEN sur.usage_amount ELSE 0 END), 0) as gemini_usage,
           COALESCE(SUM(CASE WHEN sur.service_name = 'deepgram' THEN sur.usage_amount ELSE 0 END), 0) as deepgram_usage
         FROM users u
+        LEFT JOIN user_wallets uw ON uw.user_id = u.id
+        LEFT JOIN wallet_transactions wt ON wt.user_id = u.id
+        LEFT JOIN agents ag ON ag.user_id = u.id
         LEFT JOIN user_service_usage sur ON u.id = sur.user_id
           AND sur.period_start >= DATE_FORMAT(NOW(), '%Y-%m-01')
           AND sur.period_end <= LAST_DAY(NOW())
@@ -71,8 +97,8 @@ class AdminService {
         params.push(orgId);
       }
 
-      // Always only show 'user' roles in the admin page, never other admins
-      whereClauses.push("u.role = 'user'");
+      // Show all regular user roles (both 'user' and 'individual_user'), never admin roles
+      whereClauses.push("u.role IN ('user', 'individual_user')");
 
       if (search && search.trim() !== '') {
         whereClauses.push('(u.email LIKE ? OR u.username LIKE ?)');
@@ -84,7 +110,7 @@ class AdminService {
       }
 
       // Use string interpolation for LIMIT and OFFSET since MySQL has issues with them as prepared statement params
-      query += ` GROUP BY u.id, u.email, u.username, u.created_at, u.role, u.status, u.plan_type, u.plan_valid_until ORDER BY u.created_at DESC LIMIT ${validLimit} OFFSET ${offset}`;
+      query += ` GROUP BY u.id, u.email, u.username, u.created_at, u.role, u.status, u.plan_type, u.plan_valid_until, uw.balance ORDER BY u.created_at DESC LIMIT ${validLimit} OFFSET ${offset}`;
 
       const [users] = await this.mysqlPool.execute(query, params);
 
@@ -238,7 +264,13 @@ class AdminService {
   async getImpersonateUser(userId, adminId) {
     try {
       const [rows] = await this.mysqlPool.execute(
-        'SELECT id, email, username, full_name, profile_image, DATE_FORMAT(dob, "%Y-%m-%d") as dob, gender, current_company_id, role, status FROM users WHERE id = ?',
+        `SELECT u.id, u.email, u.username, u.full_name, u.profile_image,
+                DATE_FORMAT(u.dob, "%Y-%m-%d") as dob, u.gender,
+                u.current_company_id, u.role, u.status, u.organization_id,
+                o.name as organization_name, o.logo_url as organization_logo_url
+         FROM users u
+         LEFT JOIN organizations o ON u.organization_id = o.id
+         WHERE u.id = ?`,
         [userId]
       );
 
@@ -473,8 +505,18 @@ class AdminService {
   async getAuditLogs(page = 1, limit = 50, orgId = null) {
     try {
       const offset = (page - 1) * limit;
-      let userJoin = orgId ? 'JOIN users target_org_filter ON l.target_user_id = target_org_filter.id AND target_org_filter.organization_id = ?' : '';
-      let params = orgId ? [orgId, limit, offset] : [limit, offset];
+
+      let whereClause = '';
+      let params = [];
+
+      if (orgId) {
+        // Must show logs if the admin is in the org, OR if the target user is in the org.
+        whereClause = `
+          WHERE l.admin_id IN (SELECT id FROM users WHERE organization_id = ?) 
+             OR l.target_user_id IN (SELECT id FROM users WHERE organization_id = ?)
+        `;
+        params.push(orgId, orgId);
+      }
 
       const [logs] = await this.mysqlPool.execute(`
         SELECT 
@@ -487,15 +529,15 @@ class AdminService {
         LEFT JOIN admin_users a ON l.admin_id = a.id
         LEFT JOIN users org_a ON l.admin_id = org_a.id
         LEFT JOIN users u ON l.target_user_id = u.id
-        ${userJoin}
+        ${whereClause}
         ORDER BY l.created_at DESC
-        LIMIT ? OFFSET ?
+        LIMIT ${limit} OFFSET ${offset}
       `, params);
 
       const countQuery = orgId
-        ? 'SELECT COUNT(*) as total FROM admin_activity_log l JOIN users tgt ON l.target_user_id = tgt.id WHERE tgt.organization_id = ?'
+        ? `SELECT COUNT(*) as total FROM admin_activity_log l ${whereClause}`
         : 'SELECT COUNT(*) as total FROM admin_activity_log';
-      const countParams = orgId ? [orgId] : [];
+      const countParams = orgId ? [orgId, orgId] : [];
       const [countResult] = await this.mysqlPool.execute(countQuery, countParams);
       const total = countResult[0].total;
 

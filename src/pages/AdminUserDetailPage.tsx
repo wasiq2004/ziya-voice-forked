@@ -240,7 +240,7 @@ const AdminUserDetailPage: React.FC = () => {
         // Store original admin session for return
         localStorage.setItem('ziya-impersonation-admin', JSON.stringify(admin));
         localStorage.setItem('ziya-user', JSON.stringify(result.user));
-        navigate('/agents');
+        window.location.href = '/dashboard';
       }
     } catch (err: any) {
       setError(err.message || 'Failed to start impersonation session');

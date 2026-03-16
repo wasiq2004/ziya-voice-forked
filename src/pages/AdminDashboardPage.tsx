@@ -1,146 +1,40 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getDashboardStats, Admin, DashboardStats } from '../utils/adminApi';
 import AppLayout from '../components/AppLayout';
 import Skeleton from '../components/Skeleton';
 import {
   UsersIcon,
-  BuildingOfficeIcon,
+  UserCircleIcon,
+  CheckBadgeIcon,
+  MegaphoneIcon,
   CurrencyDollarIcon,
   ArrowPathIcon,
-  DocumentTextIcon,
-  ChartBarIcon,
   ArrowTrendingUpIcon,
+  ClockIcon,
+  FireIcon,
+  ChartBarIcon
 } from '@heroicons/react/24/outline';
+import KPICard from '../components/KPICard';
+import { getDashboardStats, getUsers, getAuditLogs } from '../utils/adminApi';
 import { getApiBaseUrl } from '../utils/api';
-
-// Simple bar chart component
-const BarChart: React.FC<{ data: { label: string; value: number; color: string }[] }> = ({ data }) => {
-  const max = Math.max(...data.map(d => d.value), 1);
-  return (
-    <div className="flex items-end gap-3 h-36">
-      {data.map((d, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center gap-2">
-          <span className="text-[10px] font-black text-slate-400 text-center">{d.value.toLocaleString()}</span>
-          <div
-            className={`w-full rounded-t-xl transition-all duration-700 ${d.color}`}
-            style={{ height: `${Math.max((d.value / max) * 100, 4)}%`, minHeight: '4px' }}
-          />
-          <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider text-center leading-tight">{d.label}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-// Line chart placeholder
-const ProfitTrendChart: React.FC = () => {
-  // Placeholder data - real data integration can be done later
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-  const values = [12000, 18500, 14200, 24000, 21500, 31000]; // placeholder values
-  const max = Math.max(...values);
-  const min = Math.min(...values);
-  const range = max - min || 1;
-  const width = 600;
-  const height = 160;
-  const padding = { left: 40, right: 20, top: 20, bottom: 30 };
-  const chartWidth = width - padding.left - padding.right;
-  const chartHeight = height - padding.top - padding.bottom;
-
-  const points = values.map((v, i) => ({
-    x: padding.left + (i / (values.length - 1)) * chartWidth,
-    y: padding.top + chartHeight - ((v - min) / range) * chartHeight,
-  }));
-
-  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-  const areaD = [
-    ...points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`),
-    `L ${points[points.length - 1].x} ${padding.top + chartHeight}`,
-    `L ${padding.left} ${padding.top + chartHeight}`,
-    'Z'
-  ].join(' ');
-
-  return (
-    <div className="w-full overflow-x-auto">
-      <div className="relative" style={{ minWidth: 320 }}>
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ height: '160px' }}>
-          {/* Grid lines */}
-          {[0, 0.25, 0.5, 0.75, 1].map((t, i) => (
-            <line
-              key={i}
-              x1={padding.left}
-              y1={padding.top + chartHeight * (1 - t)}
-              x2={width - padding.right}
-              y2={padding.top + chartHeight * (1 - t)}
-              stroke="currentColor"
-              strokeOpacity={0.08}
-              strokeWidth={1}
-            />
-          ))}
-
-          {/* Area fill */}
-          <path d={areaD} fill="url(#profitGradient)" />
-
-          {/* Line */}
-          <path d={pathD} fill="none" stroke="#1a73e8" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-
-          {/* Data points */}
-          {points.map((p, i) => (
-            <circle key={i} cx={p.x} cy={p.y} r={4} fill="#1a73e8" stroke="white" strokeWidth={2} />
-          ))}
-
-          {/* X-axis labels */}
-          {months.map((m, i) => (
-            <text
-              key={i}
-              x={padding.left + (i / (values.length - 1)) * chartWidth}
-              y={height - 5}
-              textAnchor="middle"
-              fill="currentColor"
-              fontSize={10}
-              fontWeight="bold"
-              opacity={0.5}
-            >
-              {m}
-            </text>
-          ))}
-
-          {/* Y-axis labels */}
-          {[min, (min + max) / 2, max].map((v, i) => (
-            <text
-              key={i}
-              x={padding.left - 5}
-              y={padding.top + chartHeight - (i === 0 ? 0 : i === 1 ? chartHeight / 2 : chartHeight) + 4}
-              textAnchor="end"
-              fill="currentColor"
-              fontSize={9}
-              fontWeight="bold"
-              opacity={0.4}
-            >
-              {(v / 1000).toFixed(0)}k
-            </text>
-          ))}
-
-          <defs>
-            <linearGradient id="profitGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#1a73e8" stopOpacity={0.2} />
-              <stop offset="100%" stopColor="#1a73e8" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-        </svg>
-      </div>
-    </div>
-  );
-};
 
 const AdminDashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const [admin, setAdmin] = useState<Admin | null>(null);
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [totalCompanies, setTotalCompanies] = useState<number>(0);
-  const [totalCreditsUsed, setTotalCreditsUsed] = useState<number>(0);
+  const [admin, setAdmin] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Stats states
+  const [stats, setStats] = useState({
+    totalCustomers: 0,
+    totalAgents: 0,
+    activeAgents: 0,
+    totalCampaigns: 0,
+    creditsRemain: 0,
+  });
+
+  const [recentActivities, setRecentActivities] = useState<any[]>([]);
+  const [activeCampaigns, setActiveCampaigns] = useState<any[]>([]);
 
   useEffect(() => {
     const adminData = localStorage.getItem('ziya-user');
@@ -159,40 +53,111 @@ const AdminDashboardPage: React.FC = () => {
 
   const fetchAll = async () => {
     setLoading(true);
+    setError('');
     try {
-      const [statsData] = await Promise.all([getDashboardStats()]);
-      setStats(statsData);
+      const adminData = localStorage.getItem('ziya-user');
+      const parsed = adminData ? JSON.parse(adminData) : null;
+      const orgId = parsed?.organization_id || null;
+      const adminId = parsed?.id || null;
+      const API_BASE = `${getApiBaseUrl()}/api`;
 
-      // Fetch total companies count
-      try {
-        const apiUrl = getApiBaseUrl();
-        const companiesRes = await fetch(`${apiUrl}/api/admin/stats/companies`);
-        if (companiesRes.ok) {
-          const data = await companiesRes.json();
-          if (data.success) setTotalCompanies(data.totalCompanies || 0);
-        }
-      } catch { /* fallback to 0 */ }
+      // Fetch real dashboard stats
+      const dashStats = await getDashboardStats();
 
-      // Fetch total credits used across all users
+      // Fetch users count (org-scoped)
+      const usersResult = await getUsers(1, 1); // just need total count
+      const totalCustomers = usersResult.pagination?.total || dashStats.totalUsers || 0;
+
+      // Fetch real campaigns for active campaign pulse
+      let campaignList: any[] = [];
       try {
-        const apiUrl = getApiBaseUrl();
-        const creditsRes = await fetch(`${apiUrl}/api/admin/stats/credits`);
-        if (creditsRes.ok) {
-          const data = await creditsRes.json();
-          if (data.success) setTotalCreditsUsed(data.totalCreditsUsed || 0);
+        const campRes = await fetch(`${API_BASE}/campaigns/org?orgId=${orgId || ''}&limit=10`);
+        if (campRes.ok) {
+          const campData = await campRes.json();
+          campaignList = (campData.campaigns || campData.data || []);
         }
-      } catch { /* fallback to 0 */ }
+      } catch (_) { /* ignore if org campaigns endpoint absent */ }
+
+      // Map active (running) campaigns to display format
+      const activeCampsFormatted = campaignList
+        .filter((c: any) => c.status === 'running')
+        .slice(0, 5)
+        .map((c: any) => {
+          const progress = c.total_contacts > 0
+            ? Math.round(((c.completed_calls || 0) / c.total_contacts) * 100)
+            : 0;
+          return {
+            id: c.id?.slice(0, 8) || 'N/A',
+            name: c.name,
+            user: c.username || c.user_email || '—',
+            progress,
+            status: 'Running',
+            leads: c.total_contacts || 0,
+            connected: c.completed_calls || 0,
+          };
+        });
+
+      setActiveCampaigns(activeCampsFormatted);
+
+      // Fetch recent audit logs for activity feed
+      try {
+        const logsData = await getAuditLogs(1, 6);
+        const activities = (logsData.logs || []).map((log: any, i: number) => {
+          const type =
+            log.action_type?.toLowerCase().includes('create') ? 'agent' :
+            log.action_type?.toLowerCase().includes('signup') ? 'signup' :
+            log.action_type?.toLowerCase().includes('campaign') ? 'campaign' :
+            log.action_type?.toLowerCase().includes('credit') || log.action_type?.toLowerCase().includes('billing') ? 'billing' :
+            'agent';
+          const diff = Date.now() - new Date(log.created_at).getTime();
+          const mins = Math.floor(diff / 60000);
+          const hours = Math.floor(mins / 60);
+          const timeStr = hours > 0 ? `${hours}h ago` : mins > 0 ? `${mins}m ago` : 'Just now';
+          return {
+            id: log.id || i,
+            type,
+            user: log.admin_email || log.target_user_email || '—',
+            time: timeStr,
+            desc: log.details || log.action_type || 'Admin action',
+          };
+        });
+        setRecentActivities(activities);
+      } catch (_) {
+        setRecentActivities([]);
+      }
+
+      // Fetch org wallet balance for org admin credits
+      let orgCredits = 0;
+      if (adminId) {
+        try {
+          const walletRes = await fetch(`${API_BASE}/wallet/balance/${adminId}`);
+          if (walletRes.ok) {
+            const walletData = await walletRes.json();
+            orgCredits = walletData.balance || 0;
+          }
+        } catch (_) { /* ignore */ }
+      }
+
+      setStats({
+        totalCustomers,
+        totalAgents: dashStats.serviceUsage?.reduce((acc: number, s: any) => acc + (s.user_count || 0), 0) || 0,
+        activeAgents: dashStats.activeUsers || 0,
+        totalCampaigns: campaignList.length,
+        creditsRemain: orgCredits,
+      });
 
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
   };
 
-  const formatNumber = (n: number) => new Intl.NumberFormat('en-US').format(n);
-  const formatCredits = (n: number) =>
-    new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n) + ' CR';
+
+  const formatNumber = (n: number | string) => {
+    if (typeof n === 'string') return n;
+    return new Intl.NumberFormat('en-US').format(n);
+  };
 
   if (!admin) return null;
 
@@ -203,24 +168,15 @@ const AdminDashboardPage: React.FC = () => {
         { label: 'Dashboard' }
       ]}
       pageTitle="Admin Dashboard"
-      pageDescription={`Platform-wide analytics and overview. Welcome back, ${admin.name || admin.email}`}
+      pageDescription={`Welcome back to your comprehensive Organization Dashboard, ${admin.name || admin.email}`}
       primaryAction={
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => navigate('/admin/logs')}
-            className="flex items-center px-4 py-2 bg-slate-800 dark:bg-slate-100 hover:bg-slate-900 dark:hover:bg-white text-white dark:text-slate-900 rounded-xl transition-all font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/20"
-          >
-            <DocumentTextIcon className="w-4 h-4 mr-2" />
-            System Logs
-          </button>
-          <button
-            onClick={fetchAll}
-            className="flex items-center px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl transition-all font-bold text-sm shadow-sm"
-          >
-            <ArrowPathIcon className="w-4 h-4 mr-2" />
-            Refresh
-          </button>
-        </div>
+        <button
+          onClick={fetchAll}
+          className="flex items-center px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl transition-all font-bold text-sm shadow-sm"
+        >
+          <ArrowPathIcon className="w-4 h-4 mr-2" />
+          Refresh Data
+        </button>
       }
     >
       <div className="space-y-8 animate-in fade-in duration-500">
@@ -230,10 +186,10 @@ const AdminDashboardPage: React.FC = () => {
           </div>
         )}
 
-        {/* Platform KPI Cards */}
-        {loading && !stats ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[...Array(4)].map((_, i) => (
+        {/* Quick Snapboxes */}
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {[...Array(5)].map((_, i) => (
               <div key={i} className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 p-6">
                 <Skeleton width={100} height={12} variant="text" className="mb-4" />
                 <Skeleton width={60} height={32} variant="text" />
@@ -241,153 +197,149 @@ const AdminDashboardPage: React.FC = () => {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Total Credits Used */}
-            <div className="bg-gradient-to-br from-primary to-blue-600 rounded-3xl p-6 text-white shadow-xl shadow-primary/20 relative overflow-hidden">
-              <div className="absolute top-0 right-0 -mr-6 -mt-6 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <KPICard title="Total Customers" value={formatNumber(stats.totalCustomers)} color="purple" />
+            <KPICard title="Total Agents" value={formatNumber(stats.totalAgents)} color="blue" />
+            <KPICard title="Active Live Agents" value={formatNumber(stats.activeAgents)} color="green" />
+            <KPICard title="Total Campaigns" value={formatNumber(stats.totalCampaigns)} color="gray" />
+            
+            {/* Credits Remain - Custom styling for emphasis */}
+            <div className="bg-gradient-to-br from-primary to-blue-600 rounded-[1.5rem] p-5 text-white shadow-lg shadow-primary/20 relative overflow-hidden transition-all hover:scale-[1.02] flex flex-col justify-between">
+              <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-white/10 rounded-full blur-xl" />
+              <div className="relative z-10 flex items-center justify-between mb-2 opacity-80">
+                <span className="text-[10px] font-black uppercase tracking-widest">Org Credits</span>
+                <CurrencyDollarIcon className="h-4 w-4" />
+              </div>
               <div className="relative z-10">
-                <div className="flex items-center justify-between mb-4 opacity-80">
-                  <span className="text-[10px] font-black uppercase tracking-widest">Total Credits Used</span>
-                  <CurrencyDollarIcon className="h-5 w-5" />
-                </div>
-                <p className="text-3xl font-black">{formatCredits(totalCreditsUsed || (stats?.monthlyRevenue || 0))}</p>
-                <p className="text-[10px] opacity-60 font-bold mt-1 uppercase tracking-wider">All time platform usage</p>
-              </div>
-            </div>
-
-            {/* Total Users */}
-            <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:shadow-md transition-all">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Users</span>
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                  <UsersIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                <p className="text-3xl font-black tracking-tight">{formatNumber(stats.creditsRemain)}</p>
+                <div className="text-[10px] font-bold mt-1 bg-white/20 w-fit px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                   <FireIcon className="w-3 h-3 text-yellow-300" />
+                   Burning ~150/day
                 </div>
               </div>
-              <p className="text-3xl font-black text-slate-900 dark:text-white">
-                {loading ? '—' : formatNumber(stats?.totalUsers || 0)}
-              </p>
-              <p className="text-xs text-slate-400 font-bold mt-1">Registered accounts</p>
-            </div>
-
-            {/* Total Companies */}
-            <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:shadow-md transition-all">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Companies</span>
-                <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
-                  <BuildingOfficeIcon className="h-5 w-5 text-violet-600 dark:text-violet-400" />
-                </div>
-              </div>
-              <p className="text-3xl font-black text-slate-900 dark:text-white">
-                {loading ? '—' : formatNumber(totalCompanies)}
-              </p>
-              <p className="text-xs text-slate-400 font-bold mt-1">Created organisations</p>
-            </div>
-
-            {/* Active This Month */}
-            <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:shadow-md transition-all">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active This Month</span>
-                <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                  <ArrowTrendingUpIcon className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                </div>
-              </div>
-              <p className="text-3xl font-black text-slate-900 dark:text-white">
-                {loading ? '—' : formatNumber(stats?.activeUsers || 0)}
-              </p>
-              <p className="text-xs text-slate-400 font-bold mt-1">Users with activity</p>
             </div>
           </div>
         )}
 
-        {/* Service Usage Breakdown */}
-        {stats && stats.serviceUsage && stats.serviceUsage.length > 0 && (
-          <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
-              <ChartBarIcon className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-bold text-slate-800 dark:text-white">Service Usage This Month</h2>
-            </div>
-            <div className="p-6">
-              <BarChart
-                data={stats.serviceUsage.map(s => ({
-                  label: s.service_name,
-                  value: s.total_usage,
-                  color: s.service_name === 'elevenlabs'
-                    ? 'bg-primary'
-                    : s.service_name === 'gemini'
-                      ? 'bg-violet-500'
-                      : 'bg-emerald-500',
-                }))}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Profit Trend Graph (Placeholder) */}
-        <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 dark:border-slate-800">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <ArrowTrendingUpIcon className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-bold text-slate-800 dark:text-white">Platform Profit Trend</h2>
-              </div>
-              <span className="text-[10px] font-black text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full uppercase tracking-widest">
-                Placeholder Data
-              </span>
-            </div>
-          </div>
-          <div className="p-6">
-            <ProfitTrendChart />
-            <p className="text-xs text-slate-400 font-bold mt-4 text-center">
-              * Revenue data integration coming soon. Connect to your billing service to populate real data.
-            </p>
-          </div>
-        </div>
-
-        {/* Service Details Cards */}
-        {stats && stats.serviceUsage && stats.serviceUsage.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {stats.serviceUsage.map((service) => (
-              <div key={service.service_name} className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:shadow-md transition-all">
-                <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">
-                  {service.service_name}
-                </h3>
-                <div className="flex justify-between items-end">
-                  <div>
-                    <p className="text-2xl font-black text-slate-900 dark:text-white">{formatNumber(service.total_usage)}</p>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1">Total Usage</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg font-bold text-primary">{formatNumber(service.user_count)}</p>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Active Users</p>
-                  </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Live Campaign Performance (Spans 2 columns) */}
+            <div className="lg:col-span-2 space-y-6">
+                <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm h-full flex flex-col">
+                    <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-indigo-500/10 rounded-xl">
+                                <MegaphoneIcon className="w-5 h-5 text-indigo-500" />
+                            </div>
+                            <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Live Campaign Pulse</h3>
+                        </div>
+                        <span className="text-[10px] font-black text-indigo-500 uppercase bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1 rounded-full flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                            {activeCampaigns.length} Active
+                        </span>
+                    </div>
+                    <div className="p-6 flex-1 overflow-x-auto">
+                        <table className="w-full text-left border-collapse min-w-[600px]">
+                            <thead>
+                                <tr className="border-b border-slate-100 dark:border-slate-800">
+                                    <th className="pb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Campaign</th>
+                                    <th className="pb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Owner</th>
+                                    <th className="pb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Progress</th>
+                                    <th className="pb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 text-right">Leads</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
+                                {loading && [...Array(3)].map((_,i) => (
+                                    <tr key={i} className="animate-pulse">
+                                        <td className="py-4 px-2"><div className="h-4 bg-slate-100 dark:bg-slate-800 rounded w-24"></div></td>
+                                        <td className="py-4 px-2"><div className="h-4 bg-slate-100 dark:bg-slate-800 rounded w-20"></div></td>
+                                        <td className="py-4 px-2"><div className="h-4 bg-slate-100 dark:bg-slate-800 rounded w-full"></div></td>
+                                        <td className="py-4 px-2 flex justify-end"><div className="h-4 bg-slate-100 dark:bg-slate-800 rounded w-12"></div></td>
+                                    </tr>
+                                ))}
+                                {!loading && activeCampaigns.map(camp => (
+                                    <tr key={camp.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors">
+                                        <td className="py-4 px-2">
+                                            <p className="font-bold text-sm text-slate-800 dark:text-white">{camp.name}</p>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase font-mono">{camp.id}</span>
+                                        </td>
+                                        <td className="py-4 px-2">
+                                            <span className="text-xs font-medium text-slate-500">@{camp.user}</span>
+                                        </td>
+                                        <td className="py-4 px-2">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-32 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                                    <div 
+                                                        className={`h-full rounded-full ${camp.progress > 80 ? 'bg-emerald-500' : 'bg-primary'}`} 
+                                                        style={{ width: `${camp.progress}%` }}
+                                                    ></div>
+                                                </div>
+                                                <span className="text-xs font-bold text-slate-600 dark:text-slate-300">{camp.progress}%</span>
+                                            </div>
+                                        </td>
+                                        <td className="py-4 px-2 text-right">
+                                            <p className="font-bold text-sm text-slate-800 dark:text-white">{formatNumber(camp.connected)} <span className="text-xs text-slate-400 font-medium">/ {formatNumber(camp.leads)}</span></p>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {!loading && activeCampaigns.length === 0 && (
+                            <div className="p-8 text-center text-slate-400 font-bold text-xs uppercase tracking-widest">
+                                No live campaigns currently running.
+                            </div>
+                        )}
+                    </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+            </div>
 
-        {/* Quick Navigation */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <button
-            onClick={() => navigate('/admin/users')}
-            className="flex items-center justify-between p-6 bg-primary/5 dark:bg-primary/10 hover:bg-primary/10 dark:hover:bg-primary/15 border border-primary/20 rounded-3xl transition-all group"
-          >
-            <div className="text-left">
-              <p className="text-sm font-black text-slate-900 dark:text-white">Manage Users</p>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">View, block, credit, impersonate users</p>
+            {/* Recent Activity Timeline (Spans 1 column) */}
+            <div className="lg:col-span-1 space-y-6">
+                 <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm h-full flex flex-col">
+                    <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3 shrink-0">
+                        <div className="p-2 bg-emerald-500/10 rounded-xl">
+                            <ChartBarIcon className="w-5 h-5 text-emerald-500" />
+                        </div>
+                        <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Action Log</h3>
+                    </div>
+                    <div className="p-6 flex-1 overflow-y-auto">
+                        {loading ? (
+                            <div className="space-y-6">
+                                {[...Array(4)].map((_, i) => (
+                                    <div key={i} className="flex gap-4 animate-pulse">
+                                        <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 shrink-0"></div>
+                                        <div className="space-y-2 w-full">
+                                            <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded w-3/4"></div>
+                                            <div className="h-2 bg-slate-50 dark:bg-slate-900 rounded w-1/2"></div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="space-y-6 relative before:absolute before:inset-0 before:ml-[15px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 dark:before:via-slate-700 before:to-transparent">
+                                {recentActivities.map((act, index) => (
+                                    <div key={act.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                                        <div className="flex items-center justify-center w-8 h-8 rounded-full border-4 border-white dark:border-slate-900 bg-slate-200 dark:bg-slate-700 text-slate-500 shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm z-10">
+                                            {act.type === 'signup' && <UserCircleIcon className="w-4 h-4 text-purple-500" />}
+                                            {act.type === 'agent' && <CheckBadgeIcon className="w-4 h-4 text-blue-500" />}
+                                            {act.type === 'campaign' && <MegaphoneIcon className="w-4 h-4 text-amber-500" />}
+                                            {act.type === 'billing' && <CurrencyDollarIcon className="w-4 h-4 text-emerald-500" />}
+                                        </div>
+                                        <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] px-4 py-3 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm transition-transform hover:-translate-y-1">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="font-bold text-xs text-slate-800 dark:text-white truncate pr-2">{act.desc}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center mt-2">
+                                                 <p className="text-[10px] text-slate-500 font-medium truncate max-w-[100px]">{act.user}</p>
+                                                 <time className="text-[9px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1"><ClockIcon className="w-3 h-3"/> {act.time}</time>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                 </div>
             </div>
-            <UsersIcon className="h-8 w-8 text-primary group-hover:scale-110 transition-transform" />
-          </button>
-          <button
-            onClick={() => navigate('/admin/logs')}
-            className="flex items-center justify-between p-6 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl transition-all group"
-          >
-            <div className="text-left">
-              <p className="text-sm font-black text-slate-900 dark:text-white">System Audit Logs</p>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">Track all administrative actions</p>
-            </div>
-            <DocumentTextIcon className="h-8 w-8 text-slate-400 group-hover:scale-110 transition-transform" />
-          </button>
         </div>
       </div>
     </AppLayout>

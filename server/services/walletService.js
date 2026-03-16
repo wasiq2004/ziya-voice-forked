@@ -79,6 +79,28 @@ class WalletService {
       const wallet = await this.getOrCreateWallet(userId);
       // Convert INR to Credits (1 INR = 1 Credit)
       const creditsToAdd = inrToCredits(parseFloat(amountInr));
+
+      // Check if admin is an org_admin
+      let isOrgAdmin = false;
+      if (adminId) {
+        const [userRows] = await this.mysqlPool.execute(
+          'SELECT role FROM users WHERE id = ?',
+          [adminId]
+        );
+        if (userRows.length > 0 && userRows[0].role === 'org_admin') {
+          isOrgAdmin = true;
+        }
+      }
+
+      // If org_admin, deduct from their wallet first
+      if (isOrgAdmin) {
+         try {
+           await this.deductCredits(adminId, creditsToAdd, 'credit_transfer', `Transfer to user ${userId}`);
+         } catch (e) {
+           throw new Error('Insufficient organization credits: ' + e.message);
+         }
+      }
+
       const newBalance = parseFloat(wallet.balance) + creditsToAdd;
 
       // Update wallet balance
@@ -87,6 +109,17 @@ class WalletService {
         [newBalance, userId]
       );
 
+      // Validate adminId against admin_users FK constraint
+      // SuperAdmin IDs are in the users table, NOT admin_users — check before inserting
+      let validAdminId = null;
+      if (adminId) {
+        const [adminRows] = await this.mysqlPool.execute(
+          'SELECT id FROM admin_users WHERE id = ? LIMIT 1',
+          [adminId]
+        );
+        validAdminId = adminRows.length > 0 ? adminId : null;
+      }
+
       // Record transaction
       const transactionId = uuidv4();
       const txDescription = description || `Added ${creditsToAdd.toFixed(2)} Credits (₹${amountInr})`;
@@ -94,7 +127,7 @@ class WalletService {
         `INSERT INTO wallet_transactions 
         (id, user_id, transaction_type, amount, balance_after, service_type, description, created_by) 
         VALUES (?, ?, 'credit', ?, ?, 'admin_adjustment', ?, ?)`,
-        [transactionId, userId, creditsToAdd, newBalance, txDescription, adminId]
+        [transactionId, userId, creditsToAdd, newBalance, txDescription, validAdminId]
       );
 
       return {

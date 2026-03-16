@@ -25,17 +25,17 @@ const KPICard: React.FC<KPICardProps> = ({ title, value, percentage, color }) =>
     };
 
     return (
-        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all duration-300">
-            <div className="flex items-center justify-between mb-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{title}</p>
-                <div className={`w-2 h-2 rounded-full ${dotClasses[color]}`}></div>
+        <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-[1.5rem] p-3 shadow-sm hover:shadow-md transition-all duration-300">
+            <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{title}</p>
+                <div className={`w-1.5 h-1.5 rounded-full ${dotClasses[color]}`}></div>
             </div>
             <div className="flex items-baseline space-x-2">
-                <h3 className="text-3xl font-black text-slate-900 dark:text-white leading-none tracking-tight">
+                <h3 className="text-xl font-black text-slate-900 dark:text-white leading-none tracking-tight">
                     {value}
                 </h3>
                 {percentage && (
-                    <span className={`text-[10px] font-bold ${color === 'red' ? 'text-red-500' : 'text-green-500'}`}>
+                    <span className={`text-[9px] font-bold ${color === 'red' ? 'text-red-500' : 'text-green-500'}`}>
                         {percentage}
                     </span>
                 )}

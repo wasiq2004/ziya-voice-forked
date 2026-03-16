@@ -23,6 +23,9 @@ const AdminLoginPage: React.FC = () => {
 
     try {
       const admin = await adminLogin(email, password);
+      // Store in 'ziya-user' key — this is what all admin pages read from
+      localStorage.setItem('ziya-user', JSON.stringify(admin));
+      // Also keep 'admin' for backward-compat sidebar check
       localStorage.setItem('admin', JSON.stringify(admin));
       navigate('/admin/dashboard');
     } catch (err: any) {

@@ -15,9 +15,11 @@ class OrganizationService {
       SELECT
         o.*,
         COUNT(DISTINCT CASE WHEN u.role = 'org_admin' THEN u.id END) AS admin_count,
-        COUNT(DISTINCT CASE WHEN u.role = 'user' THEN u.id END) AS user_count
+        COUNT(DISTINCT CASE WHEN u.role IN ('user', 'individual_user') THEN u.id END) AS user_count,
+        COALESCE(SUM(CASE WHEN u.role = 'org_admin' THEN w.balance ELSE 0 END), 0) AS credit_balance
       FROM organizations o
       LEFT JOIN users u ON u.organization_id = o.id
+      LEFT JOIN user_wallets w ON w.user_id = u.id
       GROUP BY o.id
       ORDER BY o.created_at DESC
     `);
