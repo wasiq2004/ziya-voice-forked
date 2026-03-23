@@ -1,3 +1,6 @@
+// Load environment configuration (must be first)
+const config = require('./config/envConfig.js');
+
 ﻿const dotenv = require('dotenv');
 const express = require('express');
 const cors = require('cors');
@@ -8,22 +11,6 @@ const expressWs = require('express-ws');
 const { v4: uuidv4 } = require('uuid');
 const twilio = require('twilio');
 const fs = require('fs');
-const rootEnvLocal = path.resolve(__dirname, '../.env.local');
-const rootEnv = path.resolve(__dirname, '../.env');
-const serverEnv = path.resolve(__dirname, '.env');
-
-if (fs.existsSync(rootEnvLocal)) {
-  console.log(`Loading env from: ${rootEnvLocal}`);
-  dotenv.config({ path: rootEnvLocal });
-} else if (fs.existsSync(rootEnv)) {
-  console.log(`Loading env from: ${rootEnv}`);
-  dotenv.config({ path: rootEnv });
-} else if (fs.existsSync(serverEnv)) {
-  console.log(`Loading env from: ${serverEnv}`);
-  dotenv.config({ path: serverEnv });
-} else {
-  console.warn('âš ï¸ No .env file found!');
-}
 // Import services (STATIC classes)
 const { ApiKeyService } = require('./services/apiKeyService.js');
 const { ExternalApiService } = require('./services/externalApiService.js');
@@ -273,6 +260,32 @@ console.log('âœ… Document API routes mounted at /api/documents');
 const companyRoutes = require('./routes/companyRoutes.js')(companyService);
 app.use('/api/companies', companyRoutes);
 console.log('âœ… Company API routes mounted at /api/companies');
+
+// ==================== NEW API ARCHITECTURE ====================
+// Mount Health Check Routes (V1)
+const healthRoutes = require('./routes/healthRoutes.js');
+app.use('/api/health', healthRoutes);
+console.log('âœ… Health check routes mounted at /api/health');
+
+// Mount V1 Routes (Versioned API)
+const { initializeV1Routes } = require('./routes/v1');
+const v1Routes = initializeV1Routes({
+  authService,
+  mysqlPool,
+  walletService,
+  campaignService,
+  adminService,
+  organizationService,
+  companyService
+});
+app.use('/api/v1', v1Routes);
+console.log('âœ… V1 API routes mounted at /api/v1');
+
+// Mount V2 Routes (Scaffold/Future)
+const { router: v2Router } = require('./routes/v2');
+app.use('/api/v2', v2Router);
+console.log('âœ… V2 API scaffold mounted at /api/v2 (ready for future features)');
+// =========================================================
 
 // Trigger initial voice sync
 voiceSyncService.syncAllProviders()
@@ -539,272 +552,9 @@ app.get('/api/admin/wallet/all-balances', async (req, res) => {
 });
 // -----------------------------------------------
 
-// ==================== SUPPORT TICKETS ENDPOINTS ====================
-
-// POST /api/support/tickets — Create a new ticket
-app.post('/api/support/tickets', async (req, res) => {
-  try {
-    const { subject, category, priority, message, created_by, created_by_role, target_role, organization_id } = req.body;
-    
-    if (!subject || !category || !message || !created_by || !created_by_role || !target_role) {
-      return res.status(400).json({ success: false, message: 'Missing required fields' });
-    }
-    
-    const ticketId = require('crypto').randomBytes(8).toString('hex');
-    
-    await mysqlPool.execute(
-      `INSERT INTO support_tickets 
-       (id, subject, category, priority, message, status, created_by, created_by_role, target_role, organization_id) 
-       VALUES (?, ?, ?, ?, ?, 'Open', ?, ?, ?, ?)`,
-      [ticketId, subject, category, priority || 'Medium', message, created_by, created_by_role, target_role, organization_id || null]
-    );
-    
-    const [rows] = await mysqlPool.execute('SELECT * FROM support_tickets WHERE id = ?', [ticketId]);
-    res.json({ success: true, ticket: rows[0] });
-  } catch (error) {
-    console.error('Error creating support ticket:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// GET /api/support/tickets — List tickets based on filters (role/organization)
-app.get('/api/support/tickets', async (req, res) => {
-  try {
-    const { created_by, created_by_role, target_role, organization_id, limit = 100 } = req.query;
-    
-    let query = `
-      SELECT t.*, u.email as creator_email, u.username as creator_name
-      FROM support_tickets t
-      LEFT JOIN users u ON t.created_by = u.id
-      WHERE 1=1
-    `;
-    const params = [];
-    
-    if (created_by) {
-      query += ` AND t.created_by = ?`;
-      params.push(created_by);
-    }
-    if (created_by_role) {
-      query += ` AND t.created_by_role = ?`;
-      params.push(created_by_role);
-    }
-    if (target_role) {
-      query += ` AND t.target_role = ?`;
-      params.push(target_role);
-    }
-    if (organization_id) {
-      query += ` AND t.organization_id = ?`;
-      params.push(organization_id);
-    }
-    
-    query += ` ORDER BY t.created_at DESC LIMIT ${parseInt(limit)}`;
-    
-    const [tickets] = await mysqlPool.execute(query, params);
-    
-    // Fetch replies for each ticket
-    for (let ticket of tickets) {
-      const [replies] = await mysqlPool.execute(
-        `SELECT r.*, u.email as user_email, u.username as user_name 
-         FROM support_ticket_replies r
-         LEFT JOIN users u ON r.reply_by = u.id
-         WHERE r.ticket_id = ? 
-         ORDER BY r.created_at ASC`,
-        [ticket.id]
-      );
-      ticket.replies = replies;
-    }
-    
-    res.json({ success: true, tickets });
-  } catch (error) {
-    console.error('Error listing support tickets:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// POST /api/support/tickets/:ticketId/reply — Reply to a ticket
-app.post('/api/support/tickets/:ticketId/reply', async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    const { message, user_id, user_role } = req.body;
-    
-    if (!message || !user_id || !user_role) {
-      return res.status(400).json({ success: false, message: 'Message, user_id, and user_role are required' });
-    }
-    
-    const replyId = require('crypto').randomBytes(8).toString('hex');
-    
-    await mysqlPool.execute(
-      `INSERT INTO support_ticket_replies 
-       (id, ticket_id, message, user_id, user_role) 
-       VALUES (?, ?, ?, ?, ?)`,
-      [replyId, ticketId, message, user_id, user_role]
-    );
-    
-    // Auto-update ticket status to 'In Progress' if it was 'Open'
-    await mysqlPool.execute(
-      `UPDATE support_tickets SET status = 'In Progress', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'Open'`,
-      [ticketId]
-    );
-    
-    res.json({ success: true, message: 'Reply submitted' });
-  } catch (error) {
-    console.error('Error replying to ticket:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// PATCH /api/support/tickets/:ticketId/status — Update ticket status
-app.patch('/api/support/tickets/:ticketId/status', async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    const { status } = req.body;
-    
-    if (!status) {
-      return res.status(400).json({ success: false, message: 'Status is required' });
-    }
-    
-    await mysqlPool.execute(
-      `UPDATE support_tickets SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-      [status, ticketId]
-    );
-    
-    res.json({ success: true, message: 'Ticket status updated' });
-  } catch (error) {
-    console.error('Error updating ticket status:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// ==================== END SUPPORT TICKETS ENDPOINTS ====================
-
-// ==================== SUPPORT TICKETS ENDPOINTS ====================
-
-// POST /api/support/tickets — Create a new ticket
-app.post('/api/support/tickets', async (req, res) => {
-  try {
-    const { subject, category, priority, message, created_by, created_by_role, target_role, organization_id } = req.body;
-    
-    if (!subject || !category || !message || !created_by || !created_by_role || !target_role) {
-      return res.status(400).json({ success: false, message: 'Missing required fields' });
-    }
-    
-    const ticketId = require('crypto').randomBytes(8).toString('hex');
-    
-    await mysqlPool.execute(
-      `INSERT INTO support_tickets 
-       (id, subject, category, priority, message, status, created_by, created_by_role, target_role, organization_id) 
-       VALUES (?, ?, ?, ?, ?, 'Open', ?, ?, ?, ?)`,
-      [ticketId, subject, category, priority || 'Medium', message, created_by, created_by_role, target_role, organization_id || null]
-    );
-    
-    const [rows] = await mysqlPool.execute('SELECT * FROM support_tickets WHERE id = ?', [ticketId]);
-    res.json({ success: true, ticket: rows[0] });
-  } catch (error) {
-    console.error('Error creating support ticket:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// GET /api/support/tickets — List tickets based on filters
-app.get('/api/support/tickets', async (req, res) => {
-  try {
-    const { created_by, created_by_role, target_role, organization_id, limit = 100 } = req.query;
-    
-    let query = `
-      SELECT t.*, u.email as creator_email, u.username as creator_name
-      FROM support_tickets t
-      LEFT JOIN users u ON t.created_by = u.id
-      WHERE 1=1
-    `;
-    const params = [];
-    
-    if (created_by) {
-      query += ` AND t.created_by = ?`; params.push(created_by);
-    }
-    if (created_by_role) {
-      query += ` AND t.created_by_role = ?`; params.push(created_by_role);
-    }
-    if (target_role) {
-      query += ` AND t.target_role = ?`; params.push(target_role);
-    }
-    if (organization_id) {
-      query += ` AND t.organization_id = ?`; params.push(organization_id);
-    }
-    
-    query += ` ORDER BY t.created_at DESC LIMIT ${parseInt(limit)}`;
-    
-    const [tickets] = await mysqlPool.execute(query, params);
-    
-    // Fetch replies for each ticket
-    for (let ticket of tickets) {
-      const [replies] = await mysqlPool.execute(
-        `SELECT r.*, u.email as user_email, u.username as user_name 
-         FROM support_ticket_replies r
-         LEFT JOIN users u ON r.reply_by = u.id
-         WHERE r.ticket_id = ? 
-         ORDER BY r.created_at ASC`,
-        [ticket.id]
-      );
-      ticket.replies = replies;
-    }
-    
-    res.json({ success: true, tickets });
-  } catch (error) {
-    console.error('Error listing support tickets:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// POST /api/support/tickets/:ticketId/reply — Reply to a ticket
-app.post('/api/support/tickets/:ticketId/reply', async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    const { message, user_id, user_role } = req.body;
-    
-    if (!message || !user_id || !user_role) {
-      return res.status(400).json({ success: false, message: 'Message, user_id, and user_role are required' });
-    }
-    
-    const replyId = require('crypto').randomBytes(8).toString('hex');
-    
-    await mysqlPool.execute(
-      `INSERT INTO support_ticket_replies 
-       (id, ticket_id, message, user_id, user_role) 
-       VALUES (?, ?, ?, ?, ?)`,
-      [replyId, ticketId, message, user_id, user_role]
-    );
-    
-    await mysqlPool.execute(
-      `UPDATE support_tickets SET status = 'In Progress', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'Open'`,
-      [ticketId]
-    );
-    
-    res.json({ success: true, message: 'Reply submitted' });
-  } catch (error) {
-    console.error('Error replying to ticket:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// PATCH /api/support/tickets/:ticketId/status — Update ticket status
-app.patch('/api/support/tickets/:ticketId/status', async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    const { status } = req.body;
-    
-    if (!status) { return res.status(400).json({ success: false, message: 'Status is required' }); }
-    
-    await mysqlPool.execute(
-      `UPDATE support_tickets SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-      [status, ticketId]
-    );
-    
-    res.json({ success: true, message: 'Ticket status updated' });
-  } catch (error) {
-    console.error('Error updating ticket status:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
+// NOTE: Support ticket endpoints defined at line ~2729 (Implementation #2)
+// Uses crypto.randomBytes() for ID generation, compatible with V1 routes
+// Features: Full role-based filtering, pagination, single ticket get, stats endpoint
 
 // ==================== ADMIN USER MANAGEMENT ENDPOINTS ====================
 
@@ -982,6 +732,74 @@ app.get('/api/admin/users/:userId/resources', async (req, res) => {
     res.json({ success: true, ...result });
   } catch (error) {
     console.error('Error fetching user resources:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/admin/users/:userId/companies - user companies list
+app.get('/api/admin/users/:userId/companies', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const [companies] = await mysqlPool.execute(
+      'SELECT id, name FROM companies WHERE user_id = ? ORDER BY created_at DESC',
+      [userId]
+    );
+    res.json({ success: true, companies });
+  } catch (error) {
+    console.error('Error fetching user companies:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/admin/users/:userId/login-as-company - admin login as user with specific company
+app.post('/api/admin/users/:userId/login-as-company', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { companyId, adminId } = req.body;
+    
+    if (!companyId) {
+      return res.status(400).json({ success: false, message: 'Company ID is required' });
+    }
+    
+    // Verify the company belongs to the user
+    const [companies] = await mysqlPool.execute(
+      'SELECT id FROM companies WHERE id = ? AND user_id = ?',
+      [companyId, userId]
+    );
+    
+    if (companies.length === 0) {
+      return res.status(403).json({ success: false, message: 'Company not found or unauthorized' });
+    }
+    
+    // Fetch user details
+    const [users] = await mysqlPool.execute(
+      'SELECT id, email, username, password_hash, role, status, organization_id FROM users WHERE id = ?',
+      [userId]
+    );
+    
+    if (users.length === 0) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    const user = users[0];
+    const returnUser = {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      role: user.role,
+      status: user.status,
+      organization_id: user.organization_id,
+      current_company_id: companyId
+    };
+    
+    // Log admin activity
+    if (adminId) {
+      adminService.logActivity(adminId, 'user_company_login', userId, `Logged in as ${user.email} in company ${companyId}`, null);
+    }
+    
+    res.json({ success: true, user: returnUser });
+  } catch (error) {
+    console.error('Error logging in as company:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -2765,7 +2583,7 @@ app.post('/api/support/tickets', async (req, res) => {
     if (!subject || !message || !created_by || !created_by_role || !target_role) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
-    const ticketId = uuidv4();
+    const ticketId = require('crypto').randomBytes(8).toString('hex');
     await mysqlPool.execute(
       `INSERT INTO support_tickets (id, subject, category, priority, message, created_by, created_by_role, target_role, organization_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -2875,7 +2693,7 @@ app.post('/api/support/tickets/:id/reply', async (req, res) => {
     if (!message || !reply_by || !reply_by_role) {
       return res.status(400).json({ success: false, message: 'Missing reply fields' });
     }
-    const replyId = uuidv4();
+    const replyId = require('crypto').randomBytes(8).toString('hex');
     await mysqlPool.execute(
       'INSERT INTO support_ticket_replies (id, ticket_id, reply_by, reply_by_role, message) VALUES (?, ?, ?, ?, ?)',
       [replyId, id, reply_by, reply_by_role, message]

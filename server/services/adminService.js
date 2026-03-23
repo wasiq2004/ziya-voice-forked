@@ -76,6 +76,7 @@ class AdminService {
           COALESCE(uw.balance, 0) as credits_balance,
           COALESCE(SUM(CASE WHEN wt.transaction_type = 'debit' THEN wt.amount ELSE 0 END), 0) as credits_used,
           COUNT(DISTINCT ag.id) as agents_count,
+          COUNT(DISTINCT c.id) as companies_count,
           COALESCE(SUM(CASE WHEN sur.service_name = 'elevenlabs' THEN sur.usage_amount ELSE 0 END), 0) as elevenlabs_usage,
           COALESCE(SUM(CASE WHEN sur.service_name = 'gemini' THEN sur.usage_amount ELSE 0 END), 0) as gemini_usage,
           COALESCE(SUM(CASE WHEN sur.service_name = 'deepgram' THEN sur.usage_amount ELSE 0 END), 0) as deepgram_usage
@@ -83,6 +84,7 @@ class AdminService {
         LEFT JOIN user_wallets uw ON uw.user_id = u.id
         LEFT JOIN wallet_transactions wt ON wt.user_id = u.id
         LEFT JOIN agents ag ON ag.user_id = u.id
+        LEFT JOIN companies c ON c.user_id = u.id
         LEFT JOIN user_service_usage sur ON u.id = sur.user_id
           AND sur.period_start >= DATE_FORMAT(NOW(), '%Y-%m-01')
           AND sur.period_end <= LAST_DAY(NOW())

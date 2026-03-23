@@ -4,17 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-/**
- * Sarvam TTS Service
- * Provides text-to-speech functionality using Sarvam.ai API
- */
 
-/**
- * Convert 16-bit linear PCM to µ-law (G.711)
- * Copied from tts_controller.js for consistency
- * @param {Buffer} pcmBuffer - 16-bit PCM buffer
- * @returns {Buffer} - 8-bit µ-law buffer
- */
 function pcmToMuLaw(pcmBuffer) {
     const muLawBuffer = Buffer.alloc(pcmBuffer.length / 2);
 

@@ -1,10 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const { usdToCredits, HIDDEN_PROFIT_PERCENTAGE } = require('../config/creditConfig');
 
-/**
- * Cost Calculator Service
- * Calculates costs for various services based on usage
- */
 class CostCalculator {
     constructor(mysqlPool, walletService) {
         this.mysqlPool = mysqlPool;

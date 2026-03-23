@@ -8,7 +8,16 @@
     "build": "vite build",
     "start": "node server/server.js",
     "server": "node server/server.js",
-    "dev:full": "concurrently \"npm run server\" \"npm run dev\""
+    "dev:full": "concurrently \"npm run server\" \"npm run dev\"",
+    "dev:local": "cross-env APP_ENV=local npm run dev:full",
+    "dev:stage": "cross-env APP_ENV=stage npm run dev:full",
+    "dev:production": "cross-env APP_ENV=production npm run dev:full",
+    "start:local": "cross-env APP_ENV=local npm run start",
+    "start:stage": "cross-env APP_ENV=stage npm run start",
+    "start:production": "cross-env APP_ENV=production npm run start",
+    "server:local": "cross-env APP_ENV=local npm run server",
+    "server:stage": "cross-env APP_ENV=stage npm run server",
+    "server:production": "cross-env APP_ENV=production npm run server"
   },
   "dependencies": {
     "@deepgram/sdk": "^4.11.2",
@@ -56,6 +65,7 @@
     "autoprefixer": "^10.4.22",
     "baseline-browser-mapping": "^2.9.19",
     "concurrently": "^8.2.2",
+    "cross-env": "^10.1.0",
     "jsdom": "^27.1.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.17",
