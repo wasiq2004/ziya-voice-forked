@@ -1,11 +1,6 @@
 const nodeFetch = require("node-fetch");
 const { v4: uuidv4 } = require("uuid");
 
-/**
- * Voice Sync Service
- * Fetches and normalizes voice lists from multiple TTS providers
- * Stores voices in database with provider-specific metadata
- */
 class VoiceSyncService {
     constructor(pool) {
         this.pool = pool;
@@ -16,10 +11,6 @@ class VoiceSyncService {
         };
     }
 
-    /**
-     * Sync voices from all providers
-     * @returns {Promise<{success: boolean, synced: number, errors: string[]}>}
-     */
     async syncAllProviders() {
         console.log('[VoiceSync] Starting sync for all providers...');
 

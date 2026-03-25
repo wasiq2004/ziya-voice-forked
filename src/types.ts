@@ -36,6 +36,7 @@ export interface Organization {
     updated_at: string;
     admin_count?: number;
     user_count?: number;
+    credit_balance?: number;
 }
 
 export interface OrgAdmin {

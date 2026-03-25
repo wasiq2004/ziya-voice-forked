@@ -319,14 +319,12 @@ class TwilioService {
 
       const client = this.getClientForUser(twilioNumber.twilioAccountSid, twilioNumber.twilioAuthToken);
 
-      // ✅ Ensure appUrl has protocol (add https:// if missing)
       let appUrl = params.appUrl;
       if (!appUrl.startsWith('http://') && !appUrl.startsWith('https://')) {
-        appUrl = `https://${appUrl}`;
-        console.log(`⚠️ Added https:// protocol to APP_URL: ${appUrl}`);
+        appUrl = `https://${process.env.APP_URL}`;
+        console.log(`Added https:// protocol to APP_URL: ${appUrl}`);
       }
 
-      // ✅ FIXED: Use correct webhook URLs that match server.js endpoints
       const voiceUrl = `${appUrl}/api/twilio/voice?userId=${params.userId}&agentId=${params.agentId}&callId=${params.callId}`;
       const statusCallback = `${appUrl}/api/twilio/callback?userId=${params.userId}&callId=${params.callId}`;
 

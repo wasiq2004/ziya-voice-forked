@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getUsers, Admin, impersonateUser, addCredits, deleteUser, createAdminUser, updateUserStatus } from '../utils/adminApi';
+import { getUsers, Admin, impersonateUser, addCredits, deleteUser, createAdminUser, updateUserStatus, getUserCompanies, loginAsUserCompany, Company } from '../utils/adminApi';
 import AppLayout from '../components/AppLayout';
 import Skeleton from '../components/Skeleton';
 import {
@@ -40,6 +40,11 @@ const AdminUsersPage: React.FC = () => {
   const [createForm, setCreateForm] = useState({ email: '', username: '', password: '' });
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState('');
+
+  // Companies modal
+  const [companiesModal, setCompaniesModal] = useState<{ userId: string; email: string } | null>(null);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [companiesLoading, setCompaniesLoading] = useState(false);
 
   useEffect(() => {
     const adminData = localStorage.getItem('ziya-user');
@@ -157,6 +162,35 @@ const AdminUsersPage: React.FC = () => {
     }
   };
 
+  const handleShowCompanies = async (user: any) => {
+    try {
+      setCompaniesLoading(true);
+      setCompaniesModal({ userId: user.id, email: user.email });
+      const userCompanies = await getUserCompanies(user.id);
+      setCompanies(userCompanies);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch companies');
+      setCompaniesModal(null);
+    } finally {
+      setCompaniesLoading(false);
+    }
+  };
+
+  const handleLoginToCompany = async (companyId: string) => {
+    if (!companiesModal) return;
+    try {
+      const result = await loginAsUserCompany(companiesModal.userId, companyId, admin?.id || '');
+      if (result.success) {
+        localStorage.setItem('ziya-impersonation-admin', JSON.stringify(admin));
+        localStorage.setItem('ziya-user', JSON.stringify(result.user));
+        showSuccess(`Logged in as ${result.user.email}. Redirecting...`);
+        setTimeout(() => { window.location.href = '/dashboard'; }, 1000);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to login to company');
+    }
+  };
+
   const formatCredits = (n: number) =>
     new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n || 0) + ' CR';
   const formatDate = (d: string) =>
@@ -234,6 +268,7 @@ const AdminUsersPage: React.FC = () => {
                 <tr className="bg-slate-50/50 dark:bg-slate-900/50">
                   <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Name / Email</th>
                   <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Agents</th>
+                  <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Companies</th>
                   <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Credits Left</th>
                   <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Credits Used</th>
                   <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Plan</th>
@@ -248,6 +283,7 @@ const AdminUsersPage: React.FC = () => {
                     <tr key={i}>
                       <td className="px-5 py-4"><Skeleton width={160} height={14} /></td>
                       <td className="px-5 py-4 text-center"><Skeleton width={40} height={14} className="mx-auto" /></td>
+                      <td className="px-5 py-4 text-center"><Skeleton width={40} height={14} className="mx-auto" /></td>
                       <td className="px-5 py-4 text-center"><Skeleton width={80} height={14} className="mx-auto" /></td>
                       <td className="px-5 py-4 text-center"><Skeleton width={80} height={14} className="mx-auto" /></td>
                       <td className="px-5 py-4 text-center"><Skeleton width={60} height={20} className="mx-auto" /></td>
@@ -258,7 +294,7 @@ const AdminUsersPage: React.FC = () => {
                   ))
                 ) : users.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-16 text-center text-slate-400 font-bold">
+                    <td colSpan={9} className="px-6 py-16 text-center text-slate-400 font-bold">
                       No customers found{search ? ` for "${search}"` : ''}
                     </td>
                   </tr>
@@ -283,6 +319,16 @@ const AdminUsersPage: React.FC = () => {
                       {/* Agents Count */}
                       <td className="px-5 py-4 whitespace-nowrap text-center text-sm font-bold text-slate-600 dark:text-slate-300">
                         {user.agents_count || 0}
+                      </td>
+
+                      {/* Companies Count */}
+                      <td className="px-5 py-4 whitespace-nowrap text-center">
+                        <button
+                          onClick={() => handleShowCompanies(user)}
+                          className="px-3 py-1.5 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 rounded-lg font-bold text-sm transition-colors"
+                        >
+                          {user.companies_count || 0} {(user.companies_count || 0) === 1 ? 'Company' : 'Companies'}
+                        </button>
                       </td>
 
                       {/* Credits Left */}
@@ -350,6 +396,15 @@ const AdminUsersPage: React.FC = () => {
                                     <ArrowPathIcon className="w-4 h-4 text-indigo-500" />
                                     <span>Login as User</span>
                                   </button>
+                                  {(user.companies_count || 0) > 0 && (
+                                    <button
+                                      onClick={() => { handleShowCompanies(user); setActiveDropdown(null); }}
+                                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                                    >
+                                      <EyeIcon className="w-4 h-4 text-blue-500" />
+                                      <span>Login to Company</span>
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() => { setEditModal({ userId: user.id, email: user.email }); setActiveDropdown(null); }}
                                     className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
@@ -480,6 +535,44 @@ const AdminUsersPage: React.FC = () => {
                 {createLoading ? 'Creating...' : 'Add Customer'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* User Companies Modal */}
+      {companiesModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-8 relative">
+            <button onClick={() => setCompaniesModal(null)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl transition-all">
+              <XMarkIcon className="w-5 h-5" />
+            </button>
+            <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">Select Company</h3>
+            <p className="text-sm text-slate-500 mb-6 font-medium">Login as <strong className="text-slate-800 dark:text-slate-200">{companiesModal.email}</strong></p>
+            
+            {companiesLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} width="100%" height={40} className="rounded-lg" />
+                ))}
+              </div>
+            ) : companies.length === 0 ? (
+              <p className="text-center text-slate-400 py-8">No companies found for this user</p>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {companies.map((company) => (
+                  <button
+                    key={company.id}
+                    onClick={() => handleLoginToCompany(company.id)}
+                    className="w-full p-3 text-left bg-slate-50 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 rounded-lg transition-all font-bold text-slate-900 dark:text-white text-sm"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span>{company.name}</span>
+                      <span className="text-[10px] text-slate-400">ID: {company.id.substring(0, 8)}...</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

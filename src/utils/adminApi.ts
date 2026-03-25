@@ -754,4 +754,48 @@ export const updateTicketStatus = async (ticketId: string, status: string): Prom
   return response.json();
 };
 
+// ==================== Company Management ====================
+
+export interface Company {
+  id: string;
+  name: string;
+}
+
+/**
+ * Get all companies for a user
+ */
+export const getUserCompanies = async (userId: string): Promise<Company[]> => {
+  const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/companies`);
+  const contentType = response.headers.get('content-type');
+  if (!contentType?.includes('application/json')) {
+    throw new Error('Received non-JSON response from server');
+  }
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Failed to fetch user companies');
+  }
+  const data = await response.json();
+  return data.companies || [];
+};
+
+/**
+ * Login as a user with a specific company
+ */
+export const loginAsUserCompany = async (userId: string, companyId: string, adminId: string): Promise<{ success: boolean; user: any }> => {
+  const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/login-as-company`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ companyId, adminId })
+  });
+  const contentType = response.headers.get('content-type');
+  if (!contentType?.includes('application/json')) {
+    throw new Error('Received non-JSON response from server');
+  }
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Failed to login to company');
+  }
+  return response.json();
+};
+
 // End of adminApi.ts
