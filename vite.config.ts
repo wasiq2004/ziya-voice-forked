@@ -12,7 +12,7 @@ export default defineConfig(({ command, mode }) => {
       host: true,
       proxy: {
         '/api': {
-          target: env.VITE_API_BASE_URL || 'http://localhost:5000',
+          target: env.VITE_API_BASE_URL,
           changeOrigin: true,
           secure: false,
         }
@@ -26,7 +26,7 @@ export default defineConfig(({ command, mode }) => {
     },
     define: {
       'import.meta.env.VITE_API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL),
-      'import.meta.env.VITE_API_PATH': JSON.stringify(env.VITE_API_PATH || '/api'),
+      'import.meta.env.VITE_API_PATH': JSON.stringify(env.VITE_API_PATH),
       'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       'import.meta.env.VITE_ELEVEN_LABS_API_KEY': JSON.stringify(env.ELEVEN_LABS_API_KEY),
       'import.meta.env.VITE_DEEPGRAM_API_KEY': JSON.stringify(env.DEEPGRAM_API_KEY),

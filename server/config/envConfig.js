@@ -103,11 +103,11 @@ const config = {
   
   // Server Configuration
   PORT: parseInt(getEnv('PORT', '5000'), 10),
-  BACKEND_BASE_URL: getEnv('BACKEND_BASE_URL', 'http://localhost:5000'),
+  BACKEND_BASE_URL: getEnv('BACKEND_BASE_URL',),
   API_PATH: getEnv('API_PATH', '/api'),
   // Constructed URLs from base + path
-  APP_URL: `${getEnv('BACKEND_BASE_URL', 'http://localhost:5000')}${getEnv('API_PATH', '/api')}`,
-  BASE_URL: `${getEnv('BACKEND_BASE_URL', 'http://localhost:5000')}${getEnv('API_PATH', '/api')}`,
+  APP_URL: `${getEnv('BACKEND_BASE_URL')}${getEnv('API_PATH', '/api')}`,
+  BASE_URL: `${getEnv('BACKEND_BASE_URL')}${getEnv('API_PATH', '/api')}`,
   FRONTEND_URL: getEnv('FRONTEND_URL'),
   
   // Database Configuration
@@ -120,14 +120,14 @@ const config = {
   },
 
   // Session Security
-  SESSION_SECRET: getEnv('SESSION_SECRET', 'default-dev-secret-change-in-production'),
+  SESSION_SECRET: getEnv('SESSION_SECRET'),
 
   // API Keys - STT (Speech to Text)
   DEEPGRAM_API_KEY: getEnv('DEEPGRAM_API_KEY', ''),
   
   // Vite Frontend Configuration  
   VITE: {
-    PORT: parseInt(getEnv('VITE_PORT', '3000'), 10),
+    PORT: parseInt(getEnv('VITE_PORT'), 10),
     API_BASE_URL: getEnv('VITE_API_BASE_URL'),
     DEEPGRAM_API_KEY: getEnv('VITE_DEEPGRAM_API_KEY', ''),
     GEMINI_API_KEY: getEnv('VITE_GEMINI_API_KEY', ''),
@@ -139,7 +139,7 @@ const config = {
     CLIENT_ID: getEnv('GOOGLE_CLIENT_ID', ''),
     CLIENT_SECRET: getEnv('GOOGLE_CLIENT_SECRET', ''),
     // Use provided callback URL or construct from base + path + callback endpoint
-    CALLBACK_URL: getEnv('GOOGLE_CALLBACK_URL') || `${getEnv('BACKEND_BASE_URL', 'http://localhost:5000')}${getEnv('API_PATH', '/api')}/auth/google/callback`,
+    CALLBACK_URL: getEnv('GOOGLE_CALLBACK_URL') || `${getEnv('BACKEND_BASE_URL')}${getEnv('API_PATH', '/api')}/auth/google/callback`,
     SERVICE_ACCOUNT_EMAIL: getEnv('GOOGLE_SERVICE_ACCOUNT_EMAIL', ''),
     PRIVATE_KEY: getEnv('GOOGLE_PRIVATE_KEY', '')
   },
