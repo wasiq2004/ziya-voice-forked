@@ -1,7 +1,7 @@
 import { getAuthToken } from '../utils/auth';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
-const API_BASE_URL = `${getApiBaseUrl()}/api`;
+const API_BASE_URL = `${getApiBaseUrl()}${getApiPath()}`;
 
 interface Document {
   id: string;

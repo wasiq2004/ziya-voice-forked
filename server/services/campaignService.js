@@ -1,6 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const twilio = require('twilio');
-const { getBackendUrl } = require('../config/backendUrl');
+const { buildBackendUrl } = require('../config/backendUrl');
 const { decrypt } = require('../utils/encryption.js');
 const crypto = require('crypto');
 const axios = require('axios');
@@ -335,7 +335,7 @@ class CampaignService {
             const userTwilioClient = twilio(accountSid, authToken);
 
             // Create TwiML URL with campaign parameters
-            const twimlUrl = `${getBackendUrl()}/api/twilio/voice?` +
+            const twimlUrl = `${buildBackendUrl('/twilio/voice')}?` +
                 `agentId=${campaign.agent_id}&` +
                 `userId=${campaign.user_id}&` +
                 `campaignId=${campaignId}&` +
@@ -346,11 +346,11 @@ class CampaignService {
                 from: fromNumber,
                 to: contact.phone_number,
                 url: twimlUrl,
-                statusCallback: `${getBackendUrl()}/api/twilio/status?callId=${contact.id}`,
+                statusCallback: `${buildBackendUrl('/twilio/status')}?callId=${contact.id}`,
                 statusCallbackEvent: ['completed'],
                 statusCallbackMethod: 'POST',
                 record: true,  // Enable recording for campaign calls
-                recordingStatusCallback: `${getBackendUrl()}/api/twilio/recording-status?contactId=${contact.id}`,
+                recordingStatusCallback: `${buildBackendUrl('/twilio/recording-status')}?contactId=${contact.id}`,
                 recordingStatusCallbackEvent: ['completed'],
                 recordingStatusCallbackMethod: 'POST'
             });

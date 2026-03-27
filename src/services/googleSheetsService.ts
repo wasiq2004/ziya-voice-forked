@@ -1,5 +1,5 @@
 import { Tool, ToolParameter, ToolType, PreActionPhraseMode } from '../types';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
 export class GoogleSheetsService {
   private spreadsheetId: string;
@@ -33,7 +33,7 @@ export class GoogleSheetsService {
   async appendDataToSheet(data: Record<string, any>, sheetName?: string): Promise<boolean> {
     try {
       // Call the backend API to append data to Google Sheets
-      const response = await fetch(`${getApiBaseUrl()}/api/tools/google-sheets/append`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/tools/google-sheets/append`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import * as api from '../utils/api';
+// Ensure getApiPath is available
+const { getApiPath } = api;
 import { twilioNumberService } from '../services/twilioNumberService';
 import AppLayout from '../components/AppLayout';
 import {
@@ -77,7 +79,7 @@ const TwilioSettingsPage: React.FC = () => {
     if (!user?.id) return;
     try {
       setLoading(true);
-      const response = await fetch(`${api.getApiBaseUrl()}/api/twilio/config?userId=${user.id}`);
+      const response = await fetch(`${api.getApiBaseUrl()}${getApiPath()}/twilio/config?userId=${user.id}`);
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
@@ -96,7 +98,7 @@ const TwilioSettingsPage: React.FC = () => {
   const loadTwilioAccounts = async () => {
     if (!user?.id) return;
     try {
-      const response = await fetch(`${api.getApiBaseUrl()}/api/twilio/accounts?userId=${user.id}`);
+      const response = await fetch(`${api.getApiBaseUrl()}${getApiPath()}/twilio/accounts?userId=${user.id}`);
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
@@ -126,7 +128,7 @@ const TwilioSettingsPage: React.FC = () => {
 
     setSaving(true);
     try {
-      const response = await fetch(`${api.getApiBaseUrl()}/api/twilio/config`, {
+      const response = await fetch(`${api.getApiBaseUrl()}${getApiPath()}/twilio/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -170,7 +172,7 @@ const TwilioSettingsPage: React.FC = () => {
     setSaving(true);
     try {
       // First validate the credentials
-      const validateResponse = await fetch(`${api.getApiBaseUrl()}/api/validate-twilio-credentials`, {
+      const validateResponse = await fetch(`${api.getApiBaseUrl()}${getApiPath()}/validate-twilio-credentials`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -185,7 +187,7 @@ const TwilioSettingsPage: React.FC = () => {
       }
 
       // Save the account
-      const response = await fetch(`${api.getApiBaseUrl()}/api/twilio/accounts`, {
+      const response = await fetch(`${api.getApiBaseUrl()}${getApiPath()}/twilio/accounts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -224,7 +226,7 @@ const TwilioSettingsPage: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`${api.getApiBaseUrl()}/api/twilio/accounts/${accountId}?userId=${user.id}`, {
+      const response = await fetch(`${api.getApiBaseUrl()}${getApiPath()}/twilio/accounts/${accountId}?userId=${user.id}`, {
         method: 'DELETE',
       });
 
@@ -246,7 +248,7 @@ const TwilioSettingsPage: React.FC = () => {
 
   const handleTestAccount = async (account: TwilioAccount) => {
     try {
-      const response = await fetch(`${api.getApiBaseUrl()}/api/validate-twilio-credentials`, {
+      const response = await fetch(`${api.getApiBaseUrl()}${getApiPath()}/validate-twilio-credentials`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

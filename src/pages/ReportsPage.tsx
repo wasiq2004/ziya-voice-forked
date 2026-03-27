@@ -19,7 +19,7 @@ import {
 import Skeleton from '../components/Skeleton';
 import KPICard from '../components/KPICard';
 import { useAuth } from '../contexts/AuthContext';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
 // Custom FunnelIcon component
 const FunnelIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -72,7 +72,7 @@ const ReportsPage: React.FC = () => {
             if (!user?.id) return;
             try {
                 setIsLoading(true);
-                const response = await fetch(`${getApiBaseUrl()}/api/reports?userId=${user.id}`);
+                const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/reports?userId=${user.id}`);
                 const data = await response.json();
 
                 if (data.success) {

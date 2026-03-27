@@ -9,7 +9,7 @@ import {
     CloudArrowUpIcon,
     CheckCircleIcon,
 } from '@heroicons/react/24/outline';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
 const AdminSettingsPage: React.FC = () => {
     const navigate = useNavigate();
@@ -76,7 +76,7 @@ const AdminSettingsPage: React.FC = () => {
         setSaving(true);
         try {
             const API = getApiBaseUrl();
-            const res = await fetch(`${API}/api/admin/profile/update`, {
+            const res = await fetch(`${API}${getApiPath()}/admin/profile/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -105,7 +105,7 @@ const AdminSettingsPage: React.FC = () => {
         setSaving(true);
         try {
             const API = getApiBaseUrl();
-            const res = await fetch(`${API}/api/admin/branding/update`, {
+            const res = await fetch(`${API}${getApiPath()}/admin/branding/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

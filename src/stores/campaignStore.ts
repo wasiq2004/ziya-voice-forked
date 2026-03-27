@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Campaign, CampaignRecord } from '../types';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
 interface CampaignState {
   campaigns: Campaign[];
@@ -28,7 +28,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   fetchCampaigns: async (userId: string) => {
     set({ loading: true, error: null });
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/campaigns?userId=${userId}`);
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns?userId=${userId}`);
       const result = await response.json();
 
       if (result.success) {
@@ -44,7 +44,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   fetchCampaign: async (id: string, userId: string) => {
     set({ loading: true, error: null });
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}?userId=${userId}`);
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}?userId=${userId}`);
       const result = await response.json();
 
       if (result.success) {
@@ -64,7 +64,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   createCampaign: async (userId: string, name: string) => {
     set({ loading: true, error: null });
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/campaigns`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, name })
@@ -91,7 +91,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   setCallerPhone: async (id: string, userId: string, callerPhone: string) => {
     set({ loading: true, error: null });
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/set-caller-phone`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/set-caller-phone`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, callerPhone })
@@ -121,7 +121,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   importRecords: async (id: string, userId: string, csvData: { phone: string }[]) => {
     set({ loading: true, error: null });
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/import`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, csvData })
@@ -144,7 +144,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   addRecord: async (id: string, userId: string, phone: string) => {
     set({ loading: true, error: null });
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/records`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/records`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, phone })
@@ -171,7 +171,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   startCampaign: async (id: string, userId: string) => {
     set({ loading: true, error: null });
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/start`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId })
@@ -201,7 +201,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   stopCampaign: async (id: string, userId: string) => {
     set({ loading: true, error: null });
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/stop`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/stop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId })

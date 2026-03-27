@@ -28,7 +28,7 @@ import { PlusIcon, ArrowUpTrayIcon, DocumentTextIcon, XMarkIcon, StopIcon, Penci
 import Modal from '../components/Modal';
 import { GoogleGenAI, Chat, Modality, LiveServerMessage, type Blob } from '@google/genai';
 import { LLMService } from '../services/llmService';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 import { DocumentService } from '../services/documentService';
 import { ToolExecutionService } from '../services/toolExecutionService';
 import { useAuth } from '../contexts/AuthContext';
@@ -404,7 +404,7 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
                 // Use the correct API base URL
                 const apiBaseUrl = getApiBaseUrl();
                 // Fetch all voices from all providers
-                const url = `${apiBaseUrl}/api/voices?provider=all`;
+                const url = `${apiBaseUrl}${getApiPath()}/voices?provider=all`;
 
                 console.log('🔍 Fetching voices from:', url);
 
@@ -525,7 +525,7 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
                 } catch (error) {
                     console.error('Error resuming speech recognition:', error);
                     // If we can't resume due to invalid state, try to reinitialize
-                    if (error.name === 'InvalidStateError') {
+                    if (error instanceof Error && error.name === 'InvalidStateError') {
                         try {
                             if (speechRecognitionRef.current) {
                                 try {
@@ -671,7 +671,7 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
 
             // Generate preview audio
             const apiBaseUrl = getApiBaseUrl();
-            const response = await fetch(`${apiBaseUrl}/api/voices/${voiceId}/preview`, {
+            const response = await fetch(`${apiBaseUrl}${getApiPath()}/voices/${voiceId}/preview`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1196,16 +1196,19 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
 
                 try {
                     const documentService = new DocumentService();
-                    const docContents = await Promise.all(
-                        editedAgent.settings.knowledgeDocIds.map(async (docId) => {
-                            if (knowledgeCacheRef.current.has(docId)) {
-                                return knowledgeCacheRef.current.get(docId)!;
-                            }
-                            const content = await documentService.getDocumentContent(docId);
-                            knowledgeCacheRef.current.set(docId, content);
-                            return content;
-                        })
-                    );
+                    let docContents: string[] = [];
+                    if (editedAgent.settings.knowledgeDocIds && editedAgent.settings.knowledgeDocIds.length > 0) {
+                        docContents = await Promise.all(
+                            editedAgent.settings.knowledgeDocIds.map(async (docId) => {
+                                if (knowledgeCacheRef.current.has(docId)) {
+                                    return knowledgeCacheRef.current.get(docId)!;
+                                }
+                                const content = await documentService.getDocumentContent(docId);
+                                knowledgeCacheRef.current.set(docId, content);
+                                return content;
+                            })
+                        );
+                    }
                     knowledgeBaseContent = docContents.filter(content => content).join('\n\n');
                 } catch (error) {
                     console.error('Error fetching knowledge base documents:', error);

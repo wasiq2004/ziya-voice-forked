@@ -12,7 +12,7 @@ import {
     MoonIcon
 } from '@heroicons/react/24/outline';
 import { useTheme } from '../contexts/ThemeContext';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
 interface TopNavbarProps {
     breadcrumbs: BreadcrumbItem[];
@@ -57,7 +57,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
     const fetchNotifications = async () => {
         if (!user) return;
         try {
-            const res = await fetch(`${getApiBaseUrl()}/api/notifications/failures?userId=${user.id}`);
+            const res = await fetch(`${getApiBaseUrl()}${getApiPath()}/notifications/failures?userId=${user.id}`);
             const data = await res.json();
             if (data.success && data.notifications) {
                 // filter out deleted ones

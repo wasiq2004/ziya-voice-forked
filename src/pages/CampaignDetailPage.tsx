@@ -12,7 +12,7 @@ import KPICard from '../components/KPICard';
 import LeadsTable from '../components/LeadsTable';
 import AddLeadModal from '../components/AddLeadModal';
 import ImportLeadsModal from '../components/ImportLeadsModal';
-import { fetchCampaign, startCampaign, stopCampaign, deleteRecord, addRecord, getApiBaseUrl, importCSV, updateCampaign } from '../utils/api';
+import { fetchCampaign, startCampaign, stopCampaign, deleteRecord, addRecord, getApiBaseUrl, getApiPath, importCSV, updateCampaign } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 
 const CampaignDetailPage: React.FC = () => {
@@ -54,8 +54,8 @@ const CampaignDetailPage: React.FC = () => {
         // Parallel fetch: campaign + agents + phone numbers
         const [campaignRes, agentsRes, phoneRes] = await Promise.all([
           fetchCampaign(id, user.id),
-          fetch(`${apiUrl}/api/agents?userId=${user.id}`),
-          fetch(`${apiUrl}/api/phone-numbers?userId=${user.id}`),
+          fetch(`${apiUrl}${getApiPath()}/agents?userId=${user.id}`),
+          fetch(`${apiUrl}${getApiPath()}/phone-numbers?userId=${user.id}`),
         ]);
 
         // Campaign
@@ -231,7 +231,7 @@ const CampaignDetailPage: React.FC = () => {
 
   const handleExport = () => {
     if (!id || !user?.id) return;
-    window.location.href = `${getApiBaseUrl()}/api/campaigns/${id}/export?userId=${user.id}`;
+    window.location.href = `${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/export?userId=${user.id}`;
   };
 
   if (loading) {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import AppLayout from '../components/AppLayout';
 import { useAuth } from '../contexts/AuthContext';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 import {
   BanknotesIcon,
   CreditCardIcon,
@@ -69,28 +69,28 @@ const CreditsPage: React.FC = () => {
       const apiUrl = getApiBaseUrl();
 
       // Fetch balance
-      const balanceRes = await fetch(`${apiUrl}/api/wallet/balance/${user.id}`);
+      const balanceRes = await fetch(`${apiUrl}${getApiPath()}/wallet/balance/${user.id}`);
       const balanceData = await balanceRes.json();
       if (balanceData.success) {
         setBalance(balanceData.balance);
       }
 
       // Fetch transactions
-      const txRes = await fetch(`${apiUrl}/api/wallet/transactions/${user.id}?limit=50`);
+      const txRes = await fetch(`${apiUrl}${getApiPath()}/wallet/transactions/${user.id}?limit=50`);
       const txData = await txRes.json();
       if (txData.success) {
         setTransactions(txData.transactions);
       }
 
       // Fetch usage stats
-      const statsRes = await fetch(`${apiUrl}/api/wallet/usage-stats/${user.id}`);
+      const statsRes = await fetch(`${apiUrl}${getApiPath()}/wallet/usage-stats/${user.id}`);
       const statsData = await statsRes.json();
       if (statsData.success) {
         setUsageStats(statsData.stats);
       }
 
       // Fetch pricing
-      const pricingRes = await fetch(`${apiUrl}/api/wallet/pricing`);
+      const pricingRes = await fetch(`${apiUrl}${getApiPath()}/wallet/pricing`);
       const pricingData = await pricingRes.json();
       if (pricingData.success) {
         setPricing(pricingData.pricing);

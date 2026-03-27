@@ -3,8 +3,8 @@
  * Change this URL to update the backend URL everywhere in the application
  */
 
-export const getAuthHeaders = (extraHeaders = {}) => {
-  const headers = { ...extraHeaders };
+export const getAuthHeaders = (extraHeaders: Record<string, any> = {}) => {
+  const headers: Record<string, any> = { ...extraHeaders };
   const selectedCompany = localStorage.getItem('x-company-id');
   if (selectedCompany) {
     headers['x-company-id'] = selectedCompany;
@@ -27,8 +27,12 @@ export const getApiBaseUrl = () => {
   return (import.meta as any).env?.VITE_API_BASE_URL;
 };
 
+export const getApiPath = () => {
+  return (import.meta as any).env?.VITE_API_PATH;
+};
+
 export const fetchCampaigns = async (userId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns?userId=${userId}${getAuthParams()}`);
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns?userId=${userId}${getAuthParams()}`);
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
   }
@@ -41,7 +45,7 @@ export const fetchCampaigns = async (userId: string) => {
 };
 
 export const fetchScheduledCalls = async (userId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/scheduled-calls?userId=${userId}${getAuthParams()}`);
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/scheduled-calls?userId=${userId}${getAuthParams()}`);
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
   }
@@ -53,7 +57,7 @@ export const fetchScheduledCalls = async (userId: string) => {
 };
 
 export const rescheduleCall = async (contactId: string, newTime: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/scheduled-calls/reschedule`, {
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/scheduled-calls/reschedule`, {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ contactId, newTime })
@@ -66,7 +70,7 @@ export const rescheduleCall = async (contactId: string, newTime: string) => {
 };
 
 export const deleteScheduledCall = async (contactId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/scheduled-calls/${contactId}`, {
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/scheduled-calls/${contactId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -77,7 +81,7 @@ export const deleteScheduledCall = async (contactId: string) => {
 };
 
 export const createCampaign = async (userId: string, name: string, agentId?: string, concurrentCalls?: number, retryAttempts?: number) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns`, {
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns`, {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId, name, agentId, concurrentCalls, retryAttempts })
@@ -94,7 +98,7 @@ export const createCampaign = async (userId: string, name: string, agentId?: str
 };
 
 export const fetchCampaign = async (id: string, userId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}?userId=${userId}${getAuthParams()}`);
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}?userId=${userId}${getAuthParams()}`);
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
   }
@@ -107,7 +111,7 @@ export const fetchCampaign = async (id: string, userId: string) => {
 };
 
 export const updateCampaign = async (id: string, userId: string, data: any) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}`, {
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}`, {
     method: 'PUT',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId, ...data })
@@ -120,7 +124,7 @@ export const updateCampaign = async (id: string, userId: string, data: any) => {
 };
 
 export const setCallerPhone = async (id: string, userId: string, callerPhone: string, agentId?: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/set-caller-phone`, {
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/set-caller-phone`, {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId, callerPhone, agentId })
@@ -138,7 +142,7 @@ export const setCallerPhone = async (id: string, userId: string, callerPhone: st
 
 // Import CSV content (raw string)
 export const importCSV = async (id: string, userId: string, csvContent: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/import-csv`, {
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/import-csv`, {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId, csvContent }),
@@ -151,7 +155,7 @@ export const importCSV = async (id: string, userId: string, csvContent: string) 
 };
 
 export const importRecords = async (id: string, userId: string, csvData: any[]) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/import`, {
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/import`, {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId, csvData })
@@ -168,7 +172,7 @@ export const importRecords = async (id: string, userId: string, csvData: any[]) 
 };
 
 export const addRecord = async (id: string, userId: string, phone: string, name?: string, email?: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/records`, {
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/records`, {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId, phone, name, email })
@@ -185,7 +189,7 @@ export const addRecord = async (id: string, userId: string, phone: string, name?
 };
 
 export const deleteRecord = async (campaignId: string, recordId: string, userId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${campaignId}/records/${recordId}`, {
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${campaignId}/records/${recordId}`, {
     method: 'DELETE',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId })
@@ -202,7 +206,7 @@ export const deleteRecord = async (campaignId: string, recordId: string, userId:
 };
 
 export const startCampaign = async (id: string, userId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/start`, {
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/start`, {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId })
@@ -228,7 +232,7 @@ export const startCampaign = async (id: string, userId: string) => {
 };
 
 export const stopCampaign = async (id: string, userId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/stop`, {
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/stop`, {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId })
@@ -245,7 +249,7 @@ export const stopCampaign = async (id: string, userId: string) => {
 };
 
 export const fetchRecords = async (id: string, page: number = 1, limit: number = 20) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/records?page=${page}&limit=${limit}`);
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/records?page=${page}&limit=${limit}`);
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
   }
@@ -258,7 +262,7 @@ export const fetchRecords = async (id: string, page: number = 1, limit: number =
 };
 
 export const deleteCampaign = async (id: string, userId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}?userId=${userId}${getAuthParams()}`, {
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}?userId=${userId}${getAuthParams()}`, {
     method: 'DELETE',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' })
   });
@@ -274,7 +278,7 @@ export const deleteCampaign = async (id: string, userId: string) => {
 };
 
 export const updateConcurrentCalls = async (id: string, userId: string, concurrentCalls: number) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/campaigns/${id}/concurrent-calls`, {
+  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/concurrent-calls`, {
     method: 'PUT',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ userId, concurrentCalls })

@@ -115,12 +115,12 @@ export const AVAILABLE_VOICES: { [key: string]: { id: string, name: string }[] }
     ],
 };
 
-import { getApiBaseUrl } from './utils/api';
+import { getApiBaseUrl, getApiPath } from './utils/api';
 
 // Function to fetch voices dynamically
 export const fetchAvailableVoices = async (): Promise<{ [key: string]: { id: string, name: string }[] }> => {
     try {
-        const apiBaseUrl = `${getApiBaseUrl()}/api`;
+        const apiBaseUrl = `${getApiBaseUrl()}${getApiPath()}`;
         const response = await fetch(`${apiBaseUrl}/voices/elevenlabs`);
         const result = await response.json();
 

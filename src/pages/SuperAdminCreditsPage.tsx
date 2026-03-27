@@ -12,7 +12,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { listOrganizations } from '../utils/superAdminApi';
 import { Organization } from '../types';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
 const SuperAdminCreditsPage: React.FC = () => {
     const navigate = useNavigate();
@@ -43,7 +43,7 @@ const SuperAdminCreditsPage: React.FC = () => {
             const orgs = await listOrganizations();
             setOrganizations(orgs);
             // Fetch org admin wallet balances
-            const API = `${getApiBaseUrl()}/api`;
+            const API = `${getApiBaseUrl()}${getApiPath()}`;
             const balRes = await fetch(`${API}/superadmin/credits/org-balances`);
             if (balRes.ok) {
                 const balData = await balRes.json();
@@ -64,7 +64,7 @@ const SuperAdminCreditsPage: React.FC = () => {
     const fetchLogs = async () => {
         setLogsLoading(true);
         try {
-            const API = `${getApiBaseUrl()}/api`;
+            const API = `${getApiBaseUrl()}${getApiPath()}`;
             const res = await fetch(`${API}/superadmin/credits/logs?limit=50`);
             if (res.ok) {
                 const data = await res.json();
@@ -83,7 +83,7 @@ const SuperAdminCreditsPage: React.FC = () => {
         setSaving(true);
         setErrorMsg('');
         try {
-            const API = `${getApiBaseUrl()}/api`;
+            const API = `${getApiBaseUrl()}${getApiPath()}`;
             // Find org admin for this org
             const balRes = await fetch(`${API}/superadmin/credits/org-balances`);
             const balData = await balRes.json();

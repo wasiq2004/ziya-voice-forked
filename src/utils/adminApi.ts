@@ -1,6 +1,6 @@
-import { getApiBaseUrl } from './api';
+import { getApiBaseUrl, getApiPath } from './api';
 
-const API_BASE_URL = `${getApiBaseUrl()}/api`;
+const API_BASE_URL = `${getApiBaseUrl()}${getApiPath()}`;
 
 const appendOrgId = (params?: URLSearchParams): string => {
   let queryStr = '';

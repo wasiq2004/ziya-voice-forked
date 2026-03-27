@@ -1,14 +1,14 @@
 import { PhoneNumber, PhoneProvider } from '../types';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
 // API-based phone number service
-const API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL = `${getApiBaseUrl()}${getApiPath()}`;
 
 export const phoneNumberService = {
   // Get all phone numbers for the current user
   async getPhoneNumbers(userId: string): Promise<any[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/phone-numbers?userId=${userId}`);
+      const response = await fetch(`${API_BASE_URL}/phone-numbers?userId=${userId}`);
       const result = await response.json();
 
       if (!result.success) {
@@ -25,7 +25,7 @@ export const phoneNumberService = {
   // Get a specific phone number by ID
   async getPhoneNumberById(userId: string, id: string): Promise<any | null> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/phone-numbers/${id}?userId=${userId}`);
+      const response = await fetch(`${API_BASE_URL}/phone-numbers/${id}?userId=${userId}`);
       const result = await response.json();
 
       if (!result.success) {
@@ -45,7 +45,7 @@ export const phoneNumberService = {
   // Create a new phone number
   async createPhoneNumber(userId: string, phoneNumber: any): Promise<any> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/phone-numbers`, {
+      const response = await fetch(`${API_BASE_URL}/phone-numbers`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -71,7 +71,7 @@ export const phoneNumberService = {
     try {
       console.log('Updating phone number with:', { userId, id, phoneNumber });
       // Send the update fields directly, not wrapped in phoneNumber object
-      const response = await fetch(`${API_BASE_URL}/api/phone-numbers/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/phone-numbers/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -96,7 +96,7 @@ export const phoneNumberService = {
   // Delete a phone number
   async deletePhoneNumber(userId: string, id: string): Promise<void> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/phone-numbers/${id}?userId=${userId}`, {
+      const response = await fetch(`${API_BASE_URL}/phone-numbers/${id}?userId=${userId}`, {
         method: 'DELETE',
       });
 
@@ -119,7 +119,7 @@ export const phoneNumberService = {
   }): Promise<PhoneNumber> {
     try {
       // Make an API call to the backend to actually create the phone number in the database
-      const response = await fetch(`${API_BASE_URL}/api/phone-numbers/import`, {
+      const response = await fetch(`${API_BASE_URL}/phone-numbers/import`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

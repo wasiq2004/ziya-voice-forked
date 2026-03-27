@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
 export interface TwilioConfig {
   id: string;
@@ -45,7 +45,7 @@ export const twilioBasicService = {
     apiKeySecret?: string
   ): Promise<void> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/twilio/config`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/twilio/config`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -78,7 +78,7 @@ export const twilioBasicService = {
   // Get Twilio Configuration
   async getConfig(userId: string): Promise<TwilioConfig | null> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/twilio/config/${userId}`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/twilio/config/${userId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -107,7 +107,7 @@ export const twilioBasicService = {
   // Connect/Import Twilio Number
   async connectNumber(userId: string, number: string): Promise<TwilioPhoneNumber> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/twilio/connect-number`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/twilio/connect-number`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -138,7 +138,7 @@ export const twilioBasicService = {
   // Get User's Phone Numbers
   async getPhoneNumbers(userId: string): Promise<TwilioPhoneNumber[]> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/twilio/phone-numbers/${userId}`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/twilio/phone-numbers/${userId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -200,7 +200,7 @@ export const twilioBasicService = {
     }
 
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/twilio/make-call`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/twilio/make-call`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -255,7 +255,7 @@ export const twilioBasicService = {
   // Get Call History
   async getCalls(userId: string, limit: number = 50): Promise<TwilioCall[]> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/twilio/calls/${userId}?limit=${limit}`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/twilio/calls/${userId}?limit=${limit}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

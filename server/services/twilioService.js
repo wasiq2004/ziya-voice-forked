@@ -2,6 +2,7 @@ const twilio = require('twilio');
 const database = require('../config/database.js');
 const { v4: uuidv4 } = require('uuid');
 const { encrypt, decrypt } = require('../utils/encryption.js');
+const { buildBackendUrl, ensureHttpProtocol } = require('../config/backendUrl.js');
 
 class TwilioService {
   constructor() { }
@@ -321,12 +322,12 @@ class TwilioService {
 
       let appUrl = params.appUrl;
       if (!appUrl.startsWith('http://') && !appUrl.startsWith('https://')) {
-        appUrl = `https://${process.env.APP_URL}`;
-        console.log(`Added https:// protocol to APP_URL: ${appUrl}`);
+        appUrl = ensureHttpProtocol(appUrl);
+        console.log(`Added https:// protocol to backend URL: ${appUrl}`);
       }
 
-      const voiceUrl = `${appUrl}/api/twilio/voice?userId=${params.userId}&agentId=${params.agentId}&callId=${params.callId}`;
-      const statusCallback = `${appUrl}/api/twilio/callback?userId=${params.userId}&callId=${params.callId}`;
+      const voiceUrl = `${buildBackendUrl('/twilio/voice', appUrl)}?userId=${params.userId}&agentId=${params.agentId}&callId=${params.callId}`;
+      const statusCallback = `${buildBackendUrl('/twilio/callback', appUrl)}?userId=${params.userId}&callId=${params.callId}`;
 
       console.log('🔗 Creating Twilio call with webhooks:');
       console.log('   Voice URL:', voiceUrl);

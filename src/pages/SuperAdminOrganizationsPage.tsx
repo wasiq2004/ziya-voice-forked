@@ -19,9 +19,9 @@ import {
 } from '@heroicons/react/24/outline';
 import { listOrganizations, createOrganization, updateOrganization, disableOrganization, deleteOrganization, listOrgAdmins, deleteOrgAdmin } from '../utils/superAdminApi';
 import { Organization, OrgAdmin } from '../types';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
-const API_BASE_URL = `${getApiBaseUrl()}/api`;
+const API_BASE_URL = `${getApiBaseUrl()}${getApiPath()}`;
 
 const SuperAdminOrganizationsPage: React.FC = () => {
     const navigate = useNavigate();

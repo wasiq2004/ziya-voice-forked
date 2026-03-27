@@ -38,6 +38,7 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TwilioBasicService = void 0;
 var twilio_1 = require("twilio");
+var backendUrl_js_1 = require("../config/backendUrl.js");
 var database_js_1 = require("../config/database.js");
 var uuid_1 = require("uuid");
 var TwilioBasicService = /** @class */ (function () {
@@ -196,9 +197,9 @@ var TwilioBasicService = /** @class */ (function () {
                             sms: ((_b = twilioNumber.capabilities) === null || _b === void 0 ? void 0 : _b.sms) || false,
                             mms: ((_c = twilioNumber.capabilities) === null || _c === void 0 ? void 0 : _c.mms) || false
                         };
-                        appUrl = config.appUrl.endsWith('/') ? config.appUrl.slice(0, -1) : config.appUrl;
-                        voiceWebhookUrl = "".concat(appUrl, "/api/twilio/voice?userId=").concat(userId);
-                        statusWebhookUrl = "".concat(appUrl, "/api/twilio/callback?userId=").concat(userId);
+                        appUrl = (0, backendUrl_js_1.normalizeBackendUrl)(config.appUrl);
+                        voiceWebhookUrl = "".concat((0, backendUrl_js_1.buildBackendUrl)('/twilio/voice', appUrl), "?userId=").concat(userId);
+                        statusWebhookUrl = "".concat((0, backendUrl_js_1.buildBackendUrl)('/twilio/callback', appUrl), "?userId=").concat(userId);
                         return [4 /*yield*/, database_js_1.default.execute('SELECT id FROM phone_numbers WHERE user_id = ? AND number = ?', [userId, number])];
                     case 4:
                         existing = (_d.sent())[0];
@@ -303,9 +304,9 @@ var TwilioBasicService = /** @class */ (function () {
                             throw new Error("Phone number ".concat(from, " is not connected. Please connect it first."));
                         }
                         phoneNumber = phoneRows[0];
-                        appUrl = config.appUrl.endsWith('/') ? config.appUrl.slice(0, -1) : config.appUrl;
-                        defaultVoiceUrl = "".concat(appUrl, "/api/twilio/voice?userId=").concat(userId);
-                        defaultStatusCallbackUrl = "".concat(appUrl, "/api/twilio/callback?userId=").concat(userId);
+                        appUrl = (0, backendUrl_js_1.normalizeBackendUrl)(config.appUrl);
+                        defaultVoiceUrl = "".concat((0, backendUrl_js_1.buildBackendUrl)('/twilio/voice', appUrl), "?userId=").concat(userId);
+                        defaultStatusCallbackUrl = "".concat((0, backendUrl_js_1.buildBackendUrl)('/twilio/callback', appUrl), "?userId=").concat(userId);
                         return [4 /*yield*/, client.calls.create({
                             from: from,
                             to: to,

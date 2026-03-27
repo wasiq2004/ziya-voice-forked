@@ -55,7 +55,8 @@ function validateRequiredEnv() {
   const required = [
     'NODE_ENV',
     'PORT',
-    'APP_URL',
+    'BACKEND_BASE_URL',
+    'API_PATH',
     'MYSQL_HOST',
     'MYSQL_PORT',
     'MYSQL_USER',
@@ -102,17 +103,20 @@ const config = {
   
   // Server Configuration
   PORT: parseInt(getEnv('PORT', '5000'), 10),
-  APP_URL: getEnv('APP_URL', 'http://localhost:5000'),
-  BASE_URL: getEnv('BASE_URL', 'http://localhost:5000'),
-  FRONTEND_URL: getEnv('FRONTEND_URL', 'http://localhost:3000'),
+  BACKEND_BASE_URL: getEnv('BACKEND_BASE_URL', 'http://localhost:5000'),
+  API_PATH: getEnv('API_PATH', '/api'),
+  // Constructed URLs from base + path
+  APP_URL: `${getEnv('BACKEND_BASE_URL', 'http://localhost:5000')}${getEnv('API_PATH', '/api')}`,
+  BASE_URL: `${getEnv('BACKEND_BASE_URL', 'http://localhost:5000')}${getEnv('API_PATH', '/api')}`,
+  FRONTEND_URL: getEnv('FRONTEND_URL'),
   
   // Database Configuration
   DATABASE: {
-    host: getEnv('MYSQL_HOST', 'localhost'),
-    port: parseInt(getEnv('MYSQL_PORT', '3306'), 10),
+    host: getEnv('MYSQL_HOST'),
+    port: parseInt(getEnv('MYSQL_PORT'), 10),
     user: getEnv('MYSQL_USER', 'root'),
     password: getEnv('MYSQL_PASSWORD', ''),
-    database: getEnv('MYSQL_DATABASE', 'ziya_voice_agent')
+    database: getEnv('MYSQL_DATABASE')
   },
 
   // Session Security
@@ -124,7 +128,7 @@ const config = {
   // Vite Frontend Configuration  
   VITE: {
     PORT: parseInt(getEnv('VITE_PORT', '3000'), 10),
-    API_BASE_URL: getEnv('VITE_API_BASE_URL', 'http://localhost:5000'),
+    API_BASE_URL: getEnv('VITE_API_BASE_URL'),
     DEEPGRAM_API_KEY: getEnv('VITE_DEEPGRAM_API_KEY', ''),
     GEMINI_API_KEY: getEnv('VITE_GEMINI_API_KEY', ''),
     ELEVEN_LABS_API_KEY: getEnv('VITE_ELEVEN_LABS_API_KEY', '')
@@ -134,7 +138,8 @@ const config = {
   GOOGLE: {
     CLIENT_ID: getEnv('GOOGLE_CLIENT_ID', ''),
     CLIENT_SECRET: getEnv('GOOGLE_CLIENT_SECRET', ''),
-    CALLBACK_URL: getEnv('GOOGLE_CALLBACK_URL', 'http://localhost:5000/api/auth/google/callback'),
+    // Use provided callback URL or construct from base + path + callback endpoint
+    CALLBACK_URL: getEnv('GOOGLE_CALLBACK_URL') || `${getEnv('BACKEND_BASE_URL', 'http://localhost:5000')}${getEnv('API_PATH', '/api')}/auth/google/callback`,
     SERVICE_ACCOUNT_EMAIL: getEnv('GOOGLE_SERVICE_ACCOUNT_EMAIL', ''),
     PRIVATE_KEY: getEnv('GOOGLE_PRIVATE_KEY', '')
   },
@@ -142,11 +147,9 @@ const config = {
   // TTS Configuration
   TTS_PROVIDER: getEnv('TTS_PROVIDER', 'elevenlabs'),
   ELEVEN_LABS_API_KEY: getEnv('ELEVEN_LABS_API_KEY', ''),
-  ELEVENLABS_API_KEY: getEnv('ELEVENLABS_API_KEY', ''),
   
   // Additional API Keys
   GEMINI_API_KEY: getEnv('GEMINI_API_KEY', ''),
-  GOOGLE_GEMINI_API_KEY: getEnv('GOOGLE_GEMINI_API_KEY', ''),
   SARVAM_API_KEY: getEnv('SARVAM_API_KEY', ''),
 
   // Utility Functions

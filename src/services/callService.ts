@@ -33,9 +33,9 @@ export interface CallHistoryResponse {
     };
 }
 
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
-const API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL = `${getApiBaseUrl()}${getApiPath()}`;
 
 export class CallService {
     /**
@@ -55,7 +55,7 @@ export class CallService {
             });
 
             const response = await fetch(
-                `${API_BASE_URL}/api/calls/${userId}?${params}`,
+                `${API_BASE_URL}/calls/${userId}?${params}`,
                 {
                     method: 'GET',
                     headers: {

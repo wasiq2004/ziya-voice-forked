@@ -10,7 +10,7 @@ import { twilioNumberService } from '../services/twilioNumberService';
 import { twilioBasicService } from '../services/twilioBasicService';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlanAccess } from '../utils/usePlanAccess';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 import UpgradePlanModal from '../components/UpgradePlanModal';
 import {
     PlusIcon,
@@ -273,7 +273,7 @@ const ConnectTwilioNumberModal: React.FC<{
             }
 
             // Validate credentials by making an API call to the backend
-            const response = await fetch(`${getApiBaseUrl()}/api/validate-twilio-credentials`, {
+            const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/validate-twilio-credentials`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -569,7 +569,7 @@ const PhoneNoPage: React.FC = () => {
     const loadUserTwilioAccounts = async () => {
         if (!user) return;
         try {
-            const response = await fetch(`${getApiBaseUrl()}/api/twilio/accounts?userId=${user.id}`);
+            const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/twilio/accounts?userId=${user.id}`);
             if (response.ok) {
                 const data = await response.json();
                 if (data.success) {

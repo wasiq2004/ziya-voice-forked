@@ -15,7 +15,7 @@ import {
     ArrowPathIcon,
     ClockIcon
 } from '@heroicons/react/24/outline';
-import { fetchCampaigns } from '../utils/api';
+import { fetchCampaigns, getApiPath } from '../utils/api';
 import KPICard from '../components/KPICard';
 import Skeleton from '../components/Skeleton';
 
@@ -83,7 +83,7 @@ const DashboardPage: React.FC = () => {
             // Fetch real wallet balance
             try {
                 const API_BASE = (await import('../utils/api')).getApiBaseUrl();
-                const walletRes = await fetch(`${API_BASE}/api/wallet/balance/${user!.id}`);
+                const walletRes = await fetch(`${API_BASE}${getApiPath()}/wallet/balance/${user!.id}`);
                 if (walletRes.ok) {
                     const walletData = await walletRes.json();
                     setCredits(Math.round(walletData.balance || 0));

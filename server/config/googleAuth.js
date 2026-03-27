@@ -1,6 +1,7 @@
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const { v4: uuidv4 } = require('uuid');
+const { buildBackendUrl } = require('./backendUrl.js');
 
 /**
  * Google OAuth Configuration
@@ -12,7 +13,7 @@ function configureGoogleAuth(mysqlPool) {
     passport.use(new GoogleStrategy({
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: process.env.GOOGLE_CALLBACK_URL || '/api/auth/google/callback'
+        callbackURL: process.env.GOOGLE_CALLBACK_URL || buildBackendUrl('/auth/google/callback')
     },
         async (accessToken, refreshToken, profile, done) => {
             try {
