@@ -172,7 +172,7 @@ const CampaignDetailPage: React.FC = () => {
         }
       }
     } catch (error: any) {
-      alert(error.message || 'Operation failed');
+      alert('Operation failed. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -221,11 +221,11 @@ const CampaignDetailPage: React.FC = () => {
           setLeads(mapRecords(refreshResponse.data.records || []));
         }
       } else {
-        alert('Import failed: ' + (response.error || 'Unknown error'));
+        alert('Import failed. Please try again.');
       }
     } catch (error: any) {
       console.error('Error importing leads:', error);
-      alert('Failed to import leads: ' + error.message);
+      alert('Failed to import leads. Please try again.');
     }
   };
 

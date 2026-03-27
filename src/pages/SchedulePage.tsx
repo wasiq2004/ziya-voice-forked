@@ -116,7 +116,7 @@ const SchedulePage: React.FC = () => {
             await loadData();
         } catch (error: any) {
             console.error('Reschedule failed:', error);
-            alert("Failed to reschedule: " + error.message);
+            alert("Failed to reschedule. Please try again.");
         } finally {
             setIsRescheduling(false);
         }
@@ -131,7 +131,7 @@ const SchedulePage: React.FC = () => {
             await loadData();
         } catch (error: any) {
             console.error('Delete failed:', error);
-            alert("Failed to delete meeting: " + error.message);
+            alert("Failed to delete meeting. Please try again.");
         }
     };
 

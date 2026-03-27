@@ -710,7 +710,7 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
             }
         } catch (error) {
             console.error('Error playing voice preview:', error);
-            alert('Failed to play voice preview: ' + (error instanceof Error ? error.message : 'Unknown error'));
+            alert('Failed to play voice preview. Please try again.');
             playingVoiceRef.current = null;
         }
     };

@@ -84,16 +84,7 @@ const CallInitiator: React.FC<CallInitiatorProps> = ({
       setToNumber('');
     } catch (error: any) {
       console.error('Error starting call:', error);
-      // Provide more specific error messages to the user
-      let userMessage = error.message;
-      if (userMessage.includes('Twilio configuration error')) {
-        userMessage = 'Twilio configuration error. Please check your Twilio credentials in the settings.';
-      } else if (userMessage.includes('Connection error')) {
-        userMessage = 'Connection error. Please check your internet connection and try again.';
-      } else if (userMessage.includes('Validation error')) {
-        userMessage = 'Validation error. Please check that all fields are correctly filled.';
-      }
-      setCallStatus('Failed to initiate call: ' + userMessage);
+      setCallStatus('Failed to initiate call. Please check your settings and try again.');
     } finally {
       setIsCalling(false);
     }
