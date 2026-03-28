@@ -16,7 +16,7 @@ import {
 } from '@heroicons/react/24/outline';
 import KPICard from '../components/KPICard';
 import { getDashboardStats, getUsers, getAuditLogs } from '../utils/adminApi';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
 const AdminDashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -59,7 +59,7 @@ const AdminDashboardPage: React.FC = () => {
       const parsed = adminData ? JSON.parse(adminData) : null;
       const orgId = parsed?.organization_id || null;
       const adminId = parsed?.id || null;
-      const API_BASE = `${getApiBaseUrl()}/api`;
+      const API_BASE = `${getApiBaseUrl()}${getApiPath()}`;
 
       // Fetch real dashboard stats
       const dashStats = await getDashboardStats();

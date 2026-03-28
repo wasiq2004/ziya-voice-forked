@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getUserDetails, setServiceLimit, updateBillingStatus, Admin, updateUserStatus, resetUserPassword, getUserResources, impersonateUser } from '../utils/adminApi';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 import AppLayout from '../components/AppLayout';
 import KPICard from '../components/KPICard';
 import Skeleton from '../components/Skeleton';
@@ -207,7 +207,7 @@ const AdminUserDetailPage: React.FC = () => {
   const handleAddCredits = async () => {
     try {
       const apiUrl = getApiBaseUrl();
-      const response = await fetch(`${apiUrl}/api/admin/wallet/add-credits`, {
+      const response = await fetch(`${apiUrl}${getApiPath()}/admin/wallet/add-credits`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

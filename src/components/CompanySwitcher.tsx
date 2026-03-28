@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 import { ChevronUpDownIcon, PlusIcon, BuildingOfficeIcon, CheckIcon } from '@heroicons/react/24/outline';
 
 interface Company {
@@ -24,7 +24,7 @@ const CompanySwitcher: React.FC<{ isCollapsed: boolean }> = ({ isCollapsed }) =>
 
     const fetchCompanies = async () => {
         try {
-            const response = await fetch(`${getApiBaseUrl()}/api/companies/${user?.id}`);
+            const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/companies/${user?.id}`);
             if (!response.ok) return;
             const contentType = response.headers.get('content-type');
             if (!contentType || !contentType.includes('application/json')) return;
@@ -43,7 +43,7 @@ const CompanySwitcher: React.FC<{ isCollapsed: boolean }> = ({ isCollapsed }) =>
 
         setIsLoading(true);
         try {
-            const response = await fetch(`${getApiBaseUrl()}/api/companies/create`, {
+            const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/companies/create`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId: user?.id, name: newCompanyName.trim() }),
@@ -77,7 +77,7 @@ const CompanySwitcher: React.FC<{ isCollapsed: boolean }> = ({ isCollapsed }) =>
 
         setIsLoading(true);
         try {
-            const response = await fetch(`${getApiBaseUrl()}/api/companies/switch`, {
+            const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/companies/switch`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId: user?.id, companyId }),

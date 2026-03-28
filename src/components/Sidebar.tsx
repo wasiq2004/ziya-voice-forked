@@ -4,7 +4,7 @@ import { SIDEBAR_ITEMS, ADMIN_SIDEBAR_ITEMS, SUPER_ADMIN_SIDEBAR_ITEMS, APP_VERS
 import { Page } from '../types';
 import { CreditCardIcon, ArrowLeftOnRectangleIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 import CompanySwitcher from './CompanySwitcher';
 
 
@@ -42,7 +42,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
             setLoadingCredits(true);
             try {
                 const apiUrl = getApiBaseUrl();
-                const response = await fetch(`${apiUrl}/api/wallet/balance/${user.id}`);
+                const response = await fetch(`${apiUrl}${getApiPath()}/wallet/balance/${user.id}`);
                 const data = await response.json();
 
                 if (data.success) {
@@ -69,7 +69,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
         const handleWalletUpdate = async () => {
             try {
                 const apiUrl = getApiBaseUrl();
-                const response = await fetch(`${apiUrl}/api/wallet/balance/${user.id}`);
+                const response = await fetch(`${apiUrl}${getApiPath()}/wallet/balance/${user.id}`);
                 const data = await response.json();
                 if (data.success) {
                     setCredits(data.balance || 0);

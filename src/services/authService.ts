@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
 export interface User {
   id: string;
@@ -34,7 +34,7 @@ export const authService = {
   // Authenticate user with email and password
   async authenticateUser(email: string, password: string): Promise<User | null> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/auth/login`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -58,7 +58,7 @@ export const authService = {
   // Register a new user
   async registerUser(email: string, username: string, password: string): Promise<User | null> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/auth/register`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -82,7 +82,7 @@ export const authService = {
   // Sign in with Google
   async signInWithGoogle(): Promise<User | null> {
     // This will be handled by redirecting to the Google OAuth endpoint
-    window.location.href = `${getApiBaseUrl()}/api/auth/google`;
+    window.location.href = `${getApiBaseUrl()}${getApiPath()}/auth/google`;
     return null;
   },
 
@@ -107,7 +107,7 @@ export const authService = {
   // Sign out user
   async signOut(): Promise<void> {
     try {
-      await fetch(`${getApiBaseUrl()}/api/auth/logout`, {
+      await fetch(`${getApiBaseUrl()}${getApiPath()}/auth/logout`, {
         method: 'POST',
       });
     } catch (error: any) {
@@ -119,7 +119,7 @@ export const authService = {
   // Get user by ID
   async getUserById(id: string): Promise<User | null> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/users/${id}`);
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/users/${id}`);
 
       const result = await response.json();
 
@@ -137,7 +137,7 @@ export const authService = {
   // Get user profile
   async getUserProfile(userId: string): Promise<User | null> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/users/profile/${userId}`);
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/users/profile/${userId}`);
 
       const result = await response.json();
 
@@ -155,7 +155,7 @@ export const authService = {
   // Update user profile
   async updateUserProfile(userId: string, data: Partial<User>): Promise<User | null> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/users/profile/${userId}`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/users/profile/${userId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

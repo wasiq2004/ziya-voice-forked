@@ -3,11 +3,6 @@
  * Restricts endpoints to specific user roles
  */
 
-/**
- * Check if user has required role(s)
- * @param {string|string[]} requiredRoles - Role or array of roles
- * @returns {Function} Express middleware
- */
 const requireRole = (requiredRoles) => {
   return (req, res, next) => {
     try {

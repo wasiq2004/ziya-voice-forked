@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
 export interface TwilioNumber {
   id: string;
@@ -31,7 +31,7 @@ export const twilioNumberService = {
     authToken: string
   ): Promise<{ id: string; verificationCode: string }> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/add-twilio-number`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/add-twilio-number`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -75,7 +75,7 @@ export const twilioNumberService = {
     region: string
   ): Promise<{ id: string; verificationCode: string }> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/twilio/add-account-number`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/twilio/add-account-number`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -113,7 +113,7 @@ export const twilioNumberService = {
   // Verify Twilio number with OTP
   async verifyTwilioNumber(userId: string, phoneNumber: string, otp: string): Promise<boolean> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/verify-twilio-otp`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/verify-twilio-otp`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -145,7 +145,7 @@ export const twilioNumberService = {
   // Get all verified Twilio numbers for a user
   async getVerifiedNumbers(userId: string): Promise<TwilioNumber[]> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/twilio-numbers/${userId}`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/twilio-numbers/${userId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -217,7 +217,7 @@ export const twilioNumberService = {
     authToken: string
   ): Promise<Array<{ phoneNumber: string; friendlyName: string; capabilities: any; sid: string }>> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/fetch-twilio-numbers`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/fetch-twilio-numbers`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -251,7 +251,7 @@ export const twilioNumberService = {
     accountSid: string
   ): Promise<TwilioAccountNumber[]> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/twilio/fetch-account-numbers`, {
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/twilio/fetch-account-numbers`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

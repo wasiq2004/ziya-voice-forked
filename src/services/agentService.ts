@@ -1,15 +1,15 @@
 import { VoiceAgent } from '../types';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
 // API-based agent service
-const API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL = `${getApiBaseUrl()}${getApiPath()}`;
 
 export const agentService = {
   // Get all agents for the current user
   async getAgents(userId: string): Promise<any[]> {
     try {
       console.log('Fetching agents for user:', userId);
-      const response = await fetch(`${API_BASE_URL}/api/agents?userId=${userId}`);
+      const response = await fetch(`${API_BASE_URL}/agents?userId=${userId}`);
       console.log('Agents response status:', response.status);
 
       // Check if the response is OK
@@ -41,7 +41,7 @@ export const agentService = {
   // Get a specific agent by ID
   async getAgentById(userId: string, id: string): Promise<any | null> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/agents/${id}?userId=${userId}`);
+      const response = await fetch(`${API_BASE_URL}/agents/${id}?userId=${userId}`);
 
       // Check if the response is OK
       if (!response.ok) {
@@ -83,7 +83,7 @@ export const agentService = {
       const requestBody = { userId, agent };
       console.log('Sending request body:', JSON.stringify(requestBody));
 
-      const response = await fetch(`${API_BASE_URL}/api/agents`, {
+      const response = await fetch(`${API_BASE_URL}/agents`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -137,7 +137,7 @@ export const agentService = {
       const requestBody = { userId, ...agent };
       console.log('Sending request body:', JSON.stringify(requestBody));
 
-      const response = await fetch(`${API_BASE_URL}/api/agents/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/agents/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -176,7 +176,7 @@ export const agentService = {
     } catch (error) {
       console.error('Error updating agent:', error);
       console.error('Error type:', typeof error);
-      console.error('Error keys:', Object.keys(error));
+      console.error('Error keys:', error instanceof Object ? Object.keys(error) : 'N/A');
       throw new Error('Failed to update agent: ' + (error as Error).message);
     }
   },
@@ -184,7 +184,7 @@ export const agentService = {
   // Delete an agent
   async deleteAgent(userId: string, id: string): Promise<void> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/agents/${id}?userId=${userId}`, {
+      const response = await fetch(`${API_BASE_URL}/agents/${id}?userId=${userId}`, {
         method: 'DELETE',
       });
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
 interface CreateCampaignModalProps {
     isOpen: boolean;
@@ -23,7 +23,7 @@ const CreateCampaignModal: React.FC<CreateCampaignModalProps> = ({ isOpen, onClo
             const fetchAgents = async () => {
                 setLoadingAgents(true);
                 try {
-                    const response = await fetch(`${getApiBaseUrl()}/api/agents?userId=${user.id}`);
+                    const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/agents?userId=${user.id}`);
                     const data = await response.json();
                     if (data.success && data.agents.length > 0) {
                         setAgents(data.agents);

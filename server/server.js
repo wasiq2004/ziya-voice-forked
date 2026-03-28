@@ -35,7 +35,7 @@ const { router: voiceRouter, initVoiceSync } = require('./routes/voiceRoutes.js'
 const passport = require('passport');
 const session = require('express-session');
 const { configureGoogleAuth } = require('./config/googleAuth.js');
-const { getBackendUrl } = require('./config/backendUrl.js');
+const { getBackendUrl, normalizeBackendUrl, ensureHttpProtocol, buildBackendWsUrl } = require('./config/backendUrl.js');
 
 // Initialize wallet and cost services
 const walletService = new WalletService(mysqlPool);
@@ -60,7 +60,7 @@ console.log('âœ… WebSocket with skipUTF8Validation enabled');
 
 // ADD THIS BLOCK HERE:
 console.log('=== ENVIRONMENT CHECK ===');
-console.log('APP_URL:', process.env.APP_URL || 'NOT SET');
+console.log('APP_URL:', config.APP_URL);
 console.log('NODE_ENV:', process.env.NODE_ENV || 'NOT SET');
 console.log('PORT:', PORT);
 console.log('========================');
@@ -83,7 +83,7 @@ const agentService = new AgentService(mysqlPool);
 // Initialize Voice Sync Service
 const voiceSyncService = new VoiceSyncService(mysqlPool);
 const voiceWsHandler = new VoiceWebSocketHandler(voiceSyncService);
-console.log('âœ… Voice Sync Service initialized');
+console.log(' Voice Sync Service initialized');
 
 console.log('âœ… WebSocket support enabled on HTTP server');
 
@@ -111,7 +111,7 @@ if (deepgramApiKey) {
     app.ws('/voice-stream-deepgram', (ws, req) => {
       deepgramBrowserHandler.handleConnection(ws, req);
     });
-    console.log('âœ… Deepgram Browser Handler initialized at /voice-stream-deepgram');
+    console.log('Deepgram Browser Handler initialized at /voice-stream-deepgram');
   } catch (error) {
     console.error('Failed to initialize DeepgramBrowserHandler:', error.message);
   }
@@ -139,9 +139,9 @@ if (sarvamApiKey) {
       browserVoiceHandler.handleConnection(ws, req);
     });
     console.log('âœ… Browser Voice Handler initialized at /browser-voice-stream');
-    console.log('   - Sarvam STT: âœ…');
-    console.log('   - Gemini LLM: ' + (geminiApiKey ? 'âœ…' : 'âŒ'));
-    console.log('   - ElevenLabs TTS: ' + (elevenLabsApiKey ? 'âœ…' : 'âŒ'));
+    console.log('   - Sarvam STT:');
+    console.log('   - Gemini LLM: ' + (geminiApiKey ? '' : ''));
+    console.log('   - ElevenLabs TTS: ' + (elevenLabsApiKey ? '' : ''));
   } catch (error) {
     console.error('Failed to initialize BrowserVoiceHandler:', error.message);
   }
@@ -229,7 +229,7 @@ app.get('/api/auth/google/callback',
     console.log('âœ… Google OAuth successful for:', user.email);
 
     // Redirect to frontend with user data
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5000';
+    const frontendUrl = process.env.FRONTEND_URL;
     res.redirect(`${frontendUrl}/login?user=${encodeURIComponent(JSON.stringify(user))}`);
   }
 );
@@ -279,12 +279,12 @@ const v1Routes = initializeV1Routes({
   companyService
 });
 app.use('/api/v1', v1Routes);
-console.log('âœ… V1 API routes mounted at /api/v1');
+console.log('V1 API routes mounted at /api/v1');
 
 // Mount V2 Routes (Scaffold/Future)
 const { router: v2Router } = require('./routes/v2');
 app.use('/api/v2', v2Router);
-console.log('âœ… V2 API scaffold mounted at /api/v2 (ready for future features)');
+console.log('V2 API scaffold mounted at /api/v2 (ready for future features)');
 // =========================================================
 
 // Trigger initial voice sync
@@ -912,11 +912,11 @@ app.get('/api/voice-config-check', (req, res) => {
           : 'NOT SET'
       },
       appUrl: {
-        configured: !!process.env.APP_URL,
-        value: process.env.APP_URL || 'NOT SET',
-        isPublic: process.env.APP_URL &&
-          !process.env.APP_URL.includes('localhost') &&
-          !process.env.APP_URL.includes('127.0.0.1')
+        configured: !!config.APP_URL,
+        value: config.APP_URL,
+        isPublic: config.APP_URL &&
+          !config.APP_URL.includes('localhost') &&
+          !config.APP_URL.includes('127.0.0.1')
       },
       mediaStreamHandler: {
         initialized: !!mediaStreamHandler,
@@ -977,13 +977,15 @@ app.get('/api/voice-config-check', (req, res) => {
 
   // Test WebSocket connection path
   app.get('/api/test-websocket-path', (req, res) => {
-    const appUrl = process.env.APP_URL || 'NOT SET';
-    const wsUrl = appUrl.replace('https://', 'wss://').replace('http://', 'ws://');
+    const appUrl = config.APP_URL;
+    const websocketUrl = !appUrl
+      ? 'NOT SET'
+      : buildBackendWsUrl('/call', appUrl);
 
     res.json({
       timestamp: new Date().toISOString(),
       appUrl: appUrl,
-      websocketUrl: `${wsUrl}/api/call`,
+      websocketUrl,
       expectedFormat: 'wss://your-domain.railway.app/api/call?callId=xxx&agentId=xxx&contactId=xxx',
       registeredEndpoints: {
         '/api/call': 'WebSocket handler for Twilio media streams âœ…',
@@ -2490,7 +2492,7 @@ app.post('/api/admin/branding/update', async (req, res) => {
           ('notify_wallet_empty', '0')`
       );
     }
-    console.log('âœ… Platform settings table ready');
+    console.log('Platform settings table ready');
   } catch (err) {
     console.warn('âš ï¸ Could not create platform_settings table:', err.message);
   }
@@ -2570,7 +2572,7 @@ app.post('/api/superadmin/settings', async (req, res) => {
         FOREIGN KEY (ticket_id) REFERENCES support_tickets(id) ON DELETE CASCADE
       )
     `);
-    console.log('âœ… Support ticket tables ready');
+    console.log(' Support ticket tables ready');
   } catch (err) {
     console.warn('âš ï¸ Could not create support_tickets table:', err.message);
   }
@@ -3752,7 +3754,7 @@ async function processCampaignCalls(campaignId, userId, campaign, records) {
 
       const callId = uuidv4();
       const appUrl = getBackendUrl();
-      const cleanAppUrl = appUrl.replace(/\/$/, '');
+      const cleanAppUrl = normalizeBackendUrl(appUrl);
 
       const call = await twilioService.createCall({
         userId: userId,
@@ -4391,7 +4393,7 @@ app.post('/call/start', async (req, res) => {
 
     // Prepare Twilio call
     const appUrl = getBackendUrl();
-    const cleanAppUrl = appUrl.replace(/\/$/, '');
+    const cleanAppUrl = normalizeBackendUrl(appUrl);
 
     const call = await twilioService.createCall({
       userId,
@@ -4506,7 +4508,7 @@ app.post('/api/twilio/make-call', async (req, res) => {
       });
     }
 
-    const cleanAppUrl = appUrl.replace(/\/$/, '');
+    const cleanAppUrl = normalizeBackendUrl(appUrl);
     console.log('Using APP_URL for Twilio webhooks:', cleanAppUrl);
 
     // Get or create phone_numbers entry for the from number
@@ -4716,14 +4718,11 @@ app.post('/api/twilio/voice', async (req, res) => {
     }
 
     // Ensure appUrl has protocol
-    if (!appUrl.startsWith('http://') && !appUrl.startsWith('https://')) {
-      appUrl = `https://${appUrl}`;
-    }
+    appUrl = ensureHttpProtocol(appUrl);
 
     // Convert to WebSocket protocol
-    const wsUrl = appUrl.replace('https://', 'wss://').replace('http://', 'ws://');
     const actualCallId = callId || CallSid;
-    const streamUrl = `${wsUrl}/api/call?callId=${actualCallId}&agentId=${agentId}&contactId=${CallSid}`;
+    const streamUrl = `${buildBackendWsUrl('/call', appUrl)}?callId=${actualCallId}&agentId=${agentId}&contactId=${CallSid}`;
 
     console.log('ðŸ”— WebSocket Stream URL:', streamUrl);
 
@@ -4998,6 +4997,7 @@ app.get('/api/reports', async (req, res) => {
           IFNULL(cc.intent, 'Pending') as result,
           cc.completed_at,
           cc.schedule_time,
+          cc.call_duration,
           cl.recording_url
       FROM campaign_contacts cc
       JOIN campaigns c ON cc.campaign_id = c.id
@@ -5339,7 +5339,7 @@ if (process.env.SARVAM_API_KEY && process.env.GEMINI_API_KEY) {
     mysqlPool,
     process.env.SARVAM_API_KEY
   );
-  console.log("âœ… MediaStreamHandler initialized with Sarvam STT + Gemini + OpenAI + Cost Tracking");
+  console.log(" MediaStreamHandler initialized with Sarvam STT + Gemini + OpenAI + Cost Tracking");
 } else {
   console.warn("âš ï¸ Voice call feature disabled â€” missing SARVAM_API_KEY or GEMINI_API_KEY");
 }
@@ -6020,7 +6020,7 @@ async function processCampaignCalls(campaignId, userId, campaign, records) {
       // Make the call
       const callId = uuidv4();
       const appUrl = getBackendUrl();
-      const cleanAppUrl = appUrl.replace(/\/$/, '');
+      const cleanAppUrl = normalizeBackendUrl(appUrl);
 
       const call = await twilioService.createCall({
         userId: userId,
@@ -6550,7 +6550,7 @@ app.use((req, res, next) => {
 
   // Start server and bind to 0.0.0.0 for Railway
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`ðŸš€ Server listening on port ${PORT}`);
-    console.log(`ðŸŒ Frontend URL: ${FRONTEND_URL}`);
-    console.log(`ðŸ”§ Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Server listening on port ${PORT}`);
+    console.log(`Frontend URL: ${FRONTEND_URL}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   });

@@ -1,7 +1,7 @@
-import { getApiBaseUrl } from './api';
+import { getApiBaseUrl, getApiPath } from './api';
 import { Organization, OrgAdmin } from '../types';
 
-const API_BASE_URL = `${getApiBaseUrl()}/api`;
+const API_BASE_URL = `${getApiBaseUrl()}${getApiPath()}`;
 
 // ==================== Super Admin API ====================
 

@@ -61,7 +61,7 @@ const SuperAdminSettingsPage: React.FC = () => {
         setSettingsLoading(true);
         try {
             const API = getApiBaseUrl();
-            const res = await fetch(`${API}/api/superadmin/settings`);
+            const res = await fetch(`${API}${getApiPath()}/superadmin/settings`);
             if (!res.ok) throw new Error('Failed to load settings');
             const data = await res.json();
             const s = data.settings || {};
@@ -93,7 +93,7 @@ const SuperAdminSettingsPage: React.FC = () => {
         setError('');
         try {
             const API = getApiBaseUrl();
-            const res = await fetch(`${API}/api/superadmin/settings`, {
+            const res = await fetch(`${API}${getApiPath()}/superadmin/settings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ settings: payload }),

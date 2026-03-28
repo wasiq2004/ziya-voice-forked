@@ -21,6 +21,7 @@ import AdminCreditsPage from './pages/AdminCreditsPage';
 import AdminReportsPage from './pages/AdminReportsPage';
 import AdminSettingsPage from './pages/AdminSettingsPage';
 import AdminSupportPage from './pages/AdminSupportPage';
+
 // Super Admin Pages
 import SuperAdminDashboardPage from './pages/SuperAdminDashboardPage';
 import SuperAdminOrganizationsPage from './pages/SuperAdminOrganizationsPage';
@@ -29,7 +30,6 @@ import SuperAdminCreditsPage from './pages/SuperAdminCreditsPage';
 import SuperAdminSupportPage from './pages/SuperAdminSupportPage';
 import SuperAdminSettingsPage from './pages/SuperAdminSettingsPage';
 
-// ─── Route guards ────────────────────────────────────────────────────────────
 
 /** Guard for Org Admin routes (/admin/*) — checks role = org_admin in ziya-user */
 const OrgAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {

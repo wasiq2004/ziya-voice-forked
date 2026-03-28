@@ -10,7 +10,7 @@ import { twilioNumberService } from '../services/twilioNumberService';
 import { twilioBasicService } from '../services/twilioBasicService';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlanAccess } from '../utils/usePlanAccess';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 import UpgradePlanModal from '../components/UpgradePlanModal';
 import {
     PlusIcon,
@@ -92,8 +92,7 @@ const ImportPhoneNumberModal: React.FC<{
             alert('Phone number imported successfully!');
         } catch (error) {
             console.error('Error importing phone number:', error);
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            setError(errorMessage);
+            setError('Something went wrong. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -273,7 +272,7 @@ const ConnectTwilioNumberModal: React.FC<{
             }
 
             // Validate credentials by making an API call to the backend
-            const response = await fetch(`${getApiBaseUrl()}/api/validate-twilio-credentials`, {
+            const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/validate-twilio-credentials`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -311,14 +310,14 @@ const ConnectTwilioNumberModal: React.FC<{
                 }
             } catch (fetchError: any) {
                 console.error('Error fetching numbers:', fetchError);
-                setError('Failed to fetch phone numbers: ' + fetchError.message);
+                setError('Failed to fetch phone numbers. Please try again.');
                 setSuccess('');
             } finally {
                 setFetchingNumbers(false);
             }
         } catch (error: any) {
             console.error('Error validating credentials:', error);
-            setError(error.message || 'Failed to validate credentials');
+            setError('Failed to validate credentials. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -359,7 +358,7 @@ const ConnectTwilioNumberModal: React.FC<{
             }, 1500);
         } catch (error: any) {
             console.error('Error connecting Twilio number:', error);
-            setError(error.message || 'Failed to connect Twilio number');
+            setError('Failed to connect Twilio number. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -569,7 +568,7 @@ const PhoneNoPage: React.FC = () => {
     const loadUserTwilioAccounts = async () => {
         if (!user) return;
         try {
-            const response = await fetch(`${getApiBaseUrl()}/api/twilio/accounts?userId=${user.id}`);
+            const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/twilio/accounts?userId=${user.id}`);
             if (response.ok) {
                 const data = await response.json();
                 if (data.success) {
@@ -757,18 +756,7 @@ const PhoneNoPage: React.FC = () => {
             loadCallHistory();
         } catch (error: any) {
             console.error('Error making call:', error);
-            // Provide more specific error messages to the user
-            let userMessage = error.message;
-            if (userMessage.includes('Twilio configuration error')) {
-                userMessage = 'Twilio configuration error. Please check your Twilio credentials in the settings.';
-            } else if (userMessage.includes('Connection error')) {
-                userMessage = 'Connection error. Please check your internet connection and try again.';
-            } else if (userMessage.includes('Validation error')) {
-                userMessage = 'Validation error. Please check that all fields are correctly filled.';
-            }
-
-            // Show a more detailed error message to the user
-            alert(`Failed to make call: ${userMessage}
+            alert(`Failed to make call. Something went wrong.
 
 Please check that:
 1. The 'from' number is a verified Twilio number in your account
@@ -829,7 +817,7 @@ Please check that:
             setEditingPhoneNumber(null);
         } catch (error) {
             console.error('Error updating phone number:', error);
-            alert('Failed to update phone number: ' + (error as Error).message);
+            alert('Failed to update phone number. Please try again.');
         }
     };
 
