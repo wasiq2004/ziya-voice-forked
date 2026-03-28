@@ -5,15 +5,17 @@
   "type": "commonjs",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "start": "node server/server.js",
+    "build": "vite build --mode production",
+    "start": "cross-env APP_ENV=production concurrently \"npm run api:production\" \"npm run ui:production\"",
     "server": "node server/server.js",
     "start:local": "cross-env APP_ENV=local concurrently \"npm run api:local\" \"npm run ui:local\"",
     "start:stage": "cross-env APP_ENV=stage concurrently \"npm run api:stage\" \"npm run ui:stage\"",
     "ui:local": "cross-env APP_ENV=local vite",
-    "ui:stage": "cross-env APP_ENV=stage vite",
+    "ui:stage": "cross-env APP_ENV=stage vite --mode stage",
+    "ui:production": "cross-env APP_ENV=production vite --mode production",
     "api:local": "cross-env APP_ENV=local node server/server.js",
-    "api:stage": "cross-env APP_ENV=stage node server/server.js"
+    "api:stage": "cross-env APP_ENV=stage node server/server.js",
+    "api:production": "cross-env APP_ENV=production node server/server.js"
   },
   "dependencies": {
     "@deepgram/sdk": "^4.11.2",

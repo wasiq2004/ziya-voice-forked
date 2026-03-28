@@ -46,7 +46,7 @@ const passportInstance = configureGoogleAuth(mysqlPool);
 
 // Init server
 const app = express();
-const PORT = Number(process.env.PORT) || 5000;
+const PORT = Number(process.env.PORT);
 const server = require('http').createServer(app);
 const expressWsInstance = expressWs(app, server, {
   wsOptions: {
@@ -56,7 +56,7 @@ const expressWsInstance = expressWs(app, server, {
     skipUTF8Validation: true  // â† THIS IS THE CRITICAL FIX
   }
 });
-console.log('âœ… WebSocket with skipUTF8Validation enabled');
+console.log(' WebSocket with skipUTF8Validation enabled');
 
 // ADD THIS BLOCK HERE:
 console.log('=== ENVIRONMENT CHECK ===');
