@@ -4997,6 +4997,7 @@ app.get('/api/reports', async (req, res) => {
           IFNULL(cc.intent, 'Pending') as result,
           cc.completed_at,
           cc.schedule_time,
+          cc.call_duration,
           cl.recording_url
       FROM campaign_contacts cc
       JOIN campaigns c ON cc.campaign_id = c.id

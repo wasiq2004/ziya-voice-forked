@@ -2,12 +2,7 @@ import { Tool, ToolType } from '../types';
 import { GoogleSheetsService } from './googleSheetsService';
 
 export class ToolExecutionService {
-  /**
-   * Execute a tool based on its type
-   * @param tool The tool to execute
-   * @param collectedData The data collected from the user
-   * @returns Promise<boolean> indicating success
-   */
+
   async executeTool(tool: Tool, collectedData: Record<string, any>): Promise<boolean> {
     try {
       switch (tool.type) {
@@ -30,13 +25,6 @@ export class ToolExecutionService {
       return false;
     }
   }
-
-  /**
-   * Execute a Google Sheets tool
-   * @param tool The Google Sheets tool to execute
-   * @param collectedData The data collected from the user
-   * @returns Promise<boolean> indicating success
-   */
   private async executeGoogleSheetsTool(tool: Tool, collectedData: Record<string, any>): Promise<boolean> {
     try {
       // Extract spreadsheet ID from the Google Sheets URL stored in webhookUrl
@@ -59,12 +47,6 @@ export class ToolExecutionService {
     }
   }
 
-  /**
-   * Execute a webhook tool
-   * @param tool The webhook tool to execute
-   * @param collectedData The data collected from the user
-   * @returns Promise<boolean> indicating success
-   */
   private async executeWebhookTool(tool: Tool, collectedData: Record<string, any>): Promise<boolean> {
     try {
       if (!tool.webhookUrl) {

@@ -23,13 +23,6 @@ export class DocumentService {
     };
   }
 
-  /**
-   * Upload a document
-   * @param userId The ID of the user
-   * @param file The file to upload
-   * @param agentId Optional agent ID to associate with the document
-   * @returns The uploaded document
-   */
   async uploadDocument(userId: string, file: File, agentId?: string): Promise<Document> {
     try {
       // Validate inputs
@@ -112,13 +105,6 @@ export class DocumentService {
       throw new Error('An unexpected error occurred while uploading the document.');
     }
   }
-
-  /**
-   * Get documents for a user
-   * @param userId The ID of the user
-   * @param agentId Optional agent ID to filter documents
-   * @returns List of documents
-   */
   async getDocuments(userId: string, agentId?: string): Promise<Document[]> {
     try {
       // Validate inputs
@@ -174,11 +160,6 @@ export class DocumentService {
     }
   }
 
-  /**
-   * Get document content by ID
-   * @param documentId The ID of the document
-   * @returns The document content
-   */
   async getDocumentContent(documentId: string): Promise<string> {
     try {
       const response = await fetch(`${API_BASE_URL}/documents/content/${documentId}`, {
@@ -219,10 +200,6 @@ export class DocumentService {
     }
   }
 
-  /**
-   * Delete a document
-   * @param documentId The ID of the document to delete
-   */
   async deleteDocument(documentId: string): Promise<void> {
     try {
       const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, {

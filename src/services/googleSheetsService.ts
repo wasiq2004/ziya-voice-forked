@@ -8,11 +8,6 @@ export class GoogleSheetsService {
     this.spreadsheetId = spreadsheetId;
   }
 
-  /**
-   * Extract spreadsheet ID from Google Sheets URL
-   * @param url The Google Sheets URL
-   * @returns The spreadsheet ID
-   */
   static extractSpreadsheetIdFromUrl(url: string): string {
     // Match patterns like:
     // https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
@@ -23,13 +18,6 @@ export class GoogleSheetsService {
     }
     return match[1];
   }
-
-  /**
-   * Append data to Google Sheets by calling the backend API
-   * @param data The data to append
-   * @param sheetName The sheet name to append to (optional)
-   * @returns Promise<boolean> indicating success
-   */
   async appendDataToSheet(data: Record<string, any>, sheetName?: string): Promise<boolean> {
     try {
       // Call the backend API to append data to Google Sheets
@@ -58,13 +46,6 @@ export class GoogleSheetsService {
     }
   }
 
-  /**
-   * Create a tool that integrates with Google Sheets
-   * @param toolName The name of the tool
-   * @param parameters The parameters for the tool
-   * @param sheetUrl The Google Sheets URL
-   * @returns Tool object
-   */
   createSheetsTool(toolName: string, parameters: ToolParameter[], sheetUrl: string): Tool {
     return {
       id: `sheets-${Date.now()}`,
@@ -80,13 +61,6 @@ export class GoogleSheetsService {
       headers: [] // Not used for Google Sheets
     };
   }
-
-  /**
-   * Execute a tool that saves data to Google Sheets
-   * @param tool The tool to execute
-   * @param collectedData The data collected from the user
-   * @returns Promise<boolean> indicating success
-   */
   async executeSheetsTool(tool: Tool, collectedData: Record<string, any>): Promise<boolean> {
     try {
       // Validate that we have all required parameters

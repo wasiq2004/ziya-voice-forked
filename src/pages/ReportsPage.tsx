@@ -41,6 +41,7 @@ interface ReportData {
     result: string;
     firstCallTime: string;
     followUpTime: string;
+    call_duration?: number;
     recordingUrl: string | null;
 }
 
@@ -91,6 +92,7 @@ const ReportsPage: React.FC = () => {
                             result: row.result || 'Pending',
                             firstCallTime: dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
                             followUpTime: row.schedule_time ? new Date(row.schedule_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'None',
+                            call_duration: row.call_duration || 0,
                             recordingUrl: row.recording_url || null
                         };
                     });
@@ -102,11 +104,23 @@ const ReportsPage: React.FC = () => {
                     const failed = total - completed;
                     const interested = formattedData.filter((r: any) => ['interested', 'positive', 'success'].includes(r.result.toLowerCase())).length;
 
+                    // Calculate average duration from call_duration field
+                    let avgDuration = '0s';
+                    if (completed > 0) {
+                        const totalDuration = formattedData
+                            .filter((r: any) => ['completed', 'success', 'successful'].includes(r.status.toLowerCase()))
+                            .reduce((sum: number, r: any) => sum + (r.call_duration || 0), 0);
+                        const avgSeconds = Math.round(totalDuration / completed);
+                        const minutes = Math.floor(avgSeconds / 60);
+                        const seconds = avgSeconds % 60;
+                        avgDuration = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+                    }
+
                     setStats({
                         totalCalls: total,
                         completedCalls: completed,
                         failedCalls: failed,
-                        avgDuration: '2m 14s', // Mocking avg duration for now
+                        avgDuration: avgDuration,
                         interestedLeads: interested
                     });
                 }

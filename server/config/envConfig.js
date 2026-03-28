@@ -1,23 +1,3 @@
-/**
- * =============================================================================
- * Environment Configuration Loader
- * =============================================================================
- * 
- * This module centralizes environment variable loading for different deployment
- * environments: local (development), staging, and production.
- * 
- * Usage:
- *   const config = require('./config/envConfig');
- *   console.log(config.APP_URL);
- * 
- * Environment Detection:
- *   - APP_ENV=local (default, development)
- *   - APP_ENV=stage (staging)
- *   - APP_ENV=production (production)
- * 
- * =============================================================================
- */
-
 const path = require('path');
 const fs = require('fs');
 

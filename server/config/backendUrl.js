@@ -9,7 +9,6 @@ const normalizeBackendUrl = (url) => {
     if (!url) {
         return url;
     }
-
     return url.replace(/\/+$/, '');
 };
 
@@ -17,11 +16,9 @@ const ensureHttpProtocol = (url) => {
     if (!url) {
         return url;
     }
-
     if (url.startsWith('http://') || url.startsWith('https://')) {
         return url;
     }
-
     return `https://${url}`;
 };
 
@@ -47,13 +44,10 @@ const buildBackendWsUrl = (path = '') => {
     if (!httpUrl) {
         return httpUrl;
     }
-
     const wsUrl = httpUrl.replace(/^https:\/\//, 'wss://').replace(/^http:\/\//, 'ws://');
-
     if (!path) {
         return wsUrl;
     }
-
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     return `${wsUrl}${normalizedPath}`;
 };
