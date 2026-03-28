@@ -10,6 +10,7 @@ export default defineConfig(({ command, mode }) => {
     server: {
       port: 3000,
       host: true,
+      allowedHosts: ['ziyasuite.com'],
       proxy: {
         '/api': {
           target: env.VITE_API_BASE_URL,
