@@ -28,6 +28,8 @@ const CampaignDetailPage: React.FC = () => {
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Helper: map raw DB records to lead objects
@@ -154,25 +156,39 @@ const CampaignDetailPage: React.FC = () => {
     if (!id || !user?.id || !campaign) return;
     try {
       setIsProcessing(true);
+      setErrorMessage(null);
+      setSuccessMessage(null);
+      
       const isRunning = campaign.status === 'running';
+      const actionLabel = isRunning ? 'stopped' : 'started';
 
-      // Optimistic Update
-      setCampaign({ ...campaign, status: isRunning ? 'stopped' : 'running' });
+      try {
+        const response = isRunning
+          ? await stopCampaign(id, user.id)
+          : await startCampaign(id, user.id);
 
-      const response = isRunning
-        ? await stopCampaign(id, user.id)
-        : await startCampaign(id, user.id);
-
-      if (response.success) {
-        // Refresh data
-        const refreshResponse = await fetchCampaign(id, user.id);
-        if (refreshResponse.success && refreshResponse.data) {
-          setCampaign(refreshResponse.data.campaign);
-          setLeads(mapRecords(refreshResponse.data.records || []));
+        if (response.success) {
+          setSuccessMessage(`Campaign ${actionLabel} successfully!`);
+          
+          // Refresh data immediately
+          const refreshResponse = await fetchCampaign(id, user.id);
+          if (refreshResponse.success && refreshResponse.data) {
+            setCampaign(refreshResponse.data.campaign);
+            setLeads(mapRecords(refreshResponse.data.records || []));
+          }
+          
+          // Clear success message after 3 seconds
+          setTimeout(() => setSuccessMessage(null), 3000);
+        } else {
+          const errorMsg = response.message || `Failed to ${isRunning ? 'stop' : 'start'} campaign`;
+          setErrorMessage(errorMsg);
         }
+      } catch (error: any) {
+        // Extract user-friendly error message
+        const errorMsg = error.message || `Failed to ${isRunning ? 'stop' : 'start'} campaign`;
+        setErrorMessage(errorMsg);
+        console.error('Campaign operation error:', error);
       }
-    } catch (error: any) {
-      alert('Operation failed. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -300,19 +316,31 @@ const CampaignDetailPage: React.FC = () => {
           disabled={isProcessing}
           onClick={handleToggleCampaign}
           className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl font-black transition-all shadow-lg uppercase tracking-wider text-xs ${isRunning
-            ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/25'
-            : 'bg-green-500 hover:bg-green-600 text-white shadow-green-500/25'
-            } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+            ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/25 disabled:bg-red-400 disabled:hover:bg-red-400'
+            : 'bg-green-500 hover:bg-green-600 text-white shadow-green-500/25 disabled:bg-green-400 disabled:hover:bg-green-400'
+            } ${isProcessing ? 'opacity-75 cursor-not-allowed' : ''}`}
         >
-          {isRunning ? (
+          {isProcessing ? (
             <>
-              <StopIcon className="h-4 w-4" />
-              <span>Stop Campaign</span>
+              <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>{isRunning ? 'Stopping...' : 'Starting...'}</span>
             </>
           ) : (
             <>
-              <PlayIcon className="h-4 w-4" />
-              <span>Start Campaign</span>
+              {isRunning ? (
+                <>
+                  <StopIcon className="h-4 w-4" />
+                  <span>Stop Campaign</span>
+                </>
+              ) : (
+                <>
+                  <PlayIcon className="h-4 w-4" />
+                  <span>Start Campaign</span>
+                </>
+              )}
             </>
           )}
         </button>
@@ -361,6 +389,42 @@ const CampaignDetailPage: React.FC = () => {
       primaryAction={actionButtons}
     >
       <div className="py-6 space-y-8">
+        {/* Error Message Alert */}
+        {errorMessage && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/50 rounded-lg p-4 flex items-start gap-3">
+            <div className="text-red-600 dark:text-red-400 mt-0.5">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="font-bold text-red-900 dark:text-red-200">Error</h3>
+              <p className="text-red-800 dark:text-red-300 text-sm">{errorMessage}</p>
+            </div>
+            <button
+              onClick={() => setErrorMessage(null)}
+              className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {/* Success Message Alert */}
+        {successMessage && (
+          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-900/50 rounded-lg p-4 flex items-start gap-3">
+            <div className="text-green-600 dark:text-green-400 mt-0.5">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-green-800 dark:text-green-300 text-sm font-medium">{successMessage}</p>
+            </div>
+          </div>
+        )}
         {/* Configuration Section */}
         <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 mb-6">
           <h3 className="text-lg font-black text-slate-900 dark:text-white mb-4">Configuration</h3>

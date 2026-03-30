@@ -367,15 +367,35 @@ class MediaStreamHandler {
                             }
                         }
 
+                        // ✅ Process any queued audio that was buffered before stream was ready
+                        if (session.audioQueue.length > 0) {
+                            console.log(`📤 Processing ${session.audioQueue.length} queued audio buffers`);
+                            const queuedBuffers = session.audioQueue.splice(0);
+                            for (const buffer of queuedBuffers) {
+                                this.sendAudioToTwilio(session, buffer);
+                            }
+                        }
+
                         // Send greeting
                         setTimeout(async () => {
                             try {
                                 const audio = await this.synthesizeTTS(session.greetingMessage, session.agentVoiceId, session);
                                 if (audio && audio.length > 0) {
                                     this.sendAudioToTwilio(session, audio);
+                                } else {
+                                    console.warn("⚠️  Greeting TTS produced empty audio");
                                 }
                             } catch (err) {
                                 console.error("❌ Greeting error:", err);
+                                // Send a fallback message
+                                try {
+                                    const fallbackAudio = await this.synthesizeTTS("Hello", session.agentVoiceId, session);
+                                    if (fallbackAudio && fallbackAudio.length > 0) {
+                                        this.sendAudioToTwilio(session, fallbackAudio);
+                                    }
+                                } catch (fallbackErr) {
+                                    console.error("❌ Fallback greeting error:", fallbackErr);
+                                }
                             }
                         }, 800);
 

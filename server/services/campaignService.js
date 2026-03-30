@@ -4,13 +4,15 @@ const { buildBackendUrl } = require('../config/backendUrl');
 const { decrypt } = require('../utils/encryption.js');
 const crypto = require('crypto');
 const axios = require('axios');
+const emailService = require('./emailService.js');
+const { LLMService } = require('../llmService.js');
 
 class CampaignService {
-    constructor(mysqlPool, walletService, costCalculator, geminiService) {
+    constructor(mysqlPool, walletService, costCalculator, llmService = null) {
         this.mysqlPool = mysqlPool;
         this.walletService = walletService;
         this.costCalculator = costCalculator;
-        this.geminiService = geminiService; // New dependency for LLM
+        this.llmService = llmService; // LLM service for intent classification
         this.activeCampaigns = new Map(); // Track running campaigns
     }
 
@@ -580,7 +582,7 @@ class CampaignService {
         let llmClassification = null;
         let scheduleTime = null;
 
-        if (transcript && this.geminiService) {
+        if (transcript && this.llmService) {
             try {
                 const llmResponse = await this.classifyIntent(transcript);
                 llmClassification = llmResponse.intent;
@@ -592,6 +594,7 @@ class CampaignService {
         }
 
         let meetLink = null;
+        let emailSentAt = null;
         if ((llmClassification === 'scheduled_meeting' || llmClassification === 'needs_demo' || llmClassification === '1_on_1_session_requested') && scheduleTime) {
             try {
                 const [contactRows] = await this.mysqlPool.execute(
@@ -606,24 +609,37 @@ class CampaignService {
                     const agentName = campRows.length > 0 ? campRows[0].agent_name : 'Ziya Voice Agent';
 
                     meetLink = emailService.generateMeetLink();
-                    await emailService.sendMeetingInvite(
+                    const emailSent = await emailService.sendMeetingInvite(
                         contactInfo.email,
                         contactInfo.name,
                         agentName,
                         scheduleTime,
                         meetLink
                     );
+                    
+                    // ✅ CRITICAL FIX: Only mark as sent if email was actually sent successfully
+                    if (emailSent) {
+                        emailSentAt = new Date().toISOString();
+                        console.log(`✅ Meeting email CONFIRMED sent to ${contactInfo.email} with link: ${meetLink}`);
+                    } else {
+                        console.error(`❌ CRITICAL: Meeting email FAILED to send to ${contactInfo.email}. Customer will not receive meeting details. Link: ${meetLink}`);
+                        meetLink = null; // Don't store link if email failed
+                    }
+                } else {
+                    console.warn(`⚠️ No email found for contact ${contactId}. Cannot send meeting invite.`);
                 }
             } catch (e) {
-                console.error('Caught error during automated email/meetLink generation:', e);
+                console.error('❌ CRITICAL Error during meeting scheduling:', e.message);
+                console.error('   Contact will not receive meeting invite. Intent will be marked but meeting link cleared.');
+                meetLink = null; // Clear link on any error
             }
         }
 
         await this.mysqlPool.execute(
             `UPDATE campaign_contacts
-       SET status = ?, call_duration = ?, call_cost = ?, completed_at = NOW(), intent = ?, schedule_time = IFNULL(?, schedule_time), transcript = ?, meet_link = ?
+       SET status = ?, call_duration = ?, call_cost = ?, completed_at = NOW(), intent = ?, schedule_time = IFNULL(?, schedule_time), transcript = ?, meet_link = ?, email_sent_at = ?
        WHERE id = ?`,
-            [status, callDuration, callCost, llmClassification || null, scheduleTime || null, transcript || null, meetLink || null, contactId]
+            [status, callDuration, callCost, llmClassification || null, scheduleTime || null, transcript || null, meetLink || null, emailSentAt || null, contactId]
         );
 
         // Get contact and campaign details for Google Sheets logging and Webhooks
@@ -782,25 +798,30 @@ class CampaignService {
 
 
     async classifyIntent(transcript) {
-        if (!this.geminiService) {
-            console.warn('GeminiService not initialized. Cannot classify intent.');
+        if (!this.llmService) {
+            console.warn('⚠️ LLMService not initialized. Cannot classify intent. Returning unknown.');
             return { intent: null, schedule_time: null };
         }
 
         const prompt = `Analyze the following call transcript and classify the user's intent.
-        The intent MUST be one of the following exact strings: "interested", "not_interested", "needs_demo", or "scheduled_meeting".
-        If the intent is "needs_demo" or "scheduled_meeting", try to extract the agreed schedule date and time from the transcript. If a time is found, format it as an ISO 8601 string (e.g. 2026-05-20T14:30:00Z). If no exact time is found, return null. Assume current year is 2026.
+        The intent MUST be one of the following exact strings: "interested", "not_interested", "needs_demo", "scheduled_meeting", or "1_on_1_session_requested".
+        If the intent is "needs_demo", "scheduled_meeting", or "1_on_1_session_requested", try to extract the agreed schedule date and time from the transcript. If a time is found, format it as an ISO 8601 string (e.g. 2026-05-20T14:30:00Z). If no exact time is found, return null. Assume current year is 2026.
 
         IMPORTANT: ALWAYS return ONLY a valid JSON object matching this schema. Do not include any markdown formatting like \`\`\`json.
         {
-          "intent": "interested" | "not_interested" | "needs_demo" | "scheduled_meeting" | "unknown",
+          "intent": "interested" | "not_interested" | "needs_demo" | "scheduled_meeting" | "1_on_1_session_requested" | "unknown",
           "schedule_time": "ISO-8601 date string" | null
         }
         
         Transcript: "${transcript}"`;
 
         try {
-            const result = await this.geminiService.generateText(prompt);
+            // Use LLMService's generateContent method which handles both Gemini and OpenAI
+            const result = await this.llmService.generateContent({
+                model: 'gemini-2.0-flash',
+                contents: [{ role: 'user', parts: [{ text: prompt }] }]
+            });
+            
             let cleanedResult = result.trim();
             if (cleanedResult.startsWith('\`\`\`json')) {
                 cleanedResult = cleanedResult.substring(7);
@@ -811,9 +832,12 @@ class CampaignService {
             if (cleanedResult.endsWith('\`\`\`')) {
                 cleanedResult = cleanedResult.substring(0, cleanedResult.length - 3);
             }
-            return JSON.parse(cleanedResult.trim());
+            
+            const parsed = JSON.parse(cleanedResult.trim());
+            console.log(`✅ Intent classification result: ${parsed.intent}, Schedule: ${parsed.schedule_time}`);
+            return parsed;
         } catch (error) {
-            console.error('Error calling Gemini for intent classification:', error);
+            console.error('❌ Error classifying intent with LLM:', error);
             return { intent: 'unknown', schedule_time: null };
         }
     }

@@ -205,47 +205,93 @@ export const deleteRecord = async (campaignId: string, recordId: string, userId:
   return response.json();
 };
 
-export const startCampaign = async (id: string, userId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/start`, {
-    method: 'POST',
-    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ userId })
-  });
-  if (!response.ok) {
-    let errorMessage = `HTTP error! status: ${response.status}`;
-    try {
-      const errorData = await response.json();
-      if (errorData && errorData.message) {
-        errorMessage = errorData.message;
-      }
-    } catch (e) {
-      // fallback to status text if not json
+// Helper function to transform DB errors to user-friendly messages
+const transformCampaignError = (error: any): string => {
+  const errorMessage = error.message || '';
+  
+  // Map backend errors to user-friendly messages
+  const errorMap: Record<string, string> = {
+    'already running': 'Campaign is already running',
+    'already executed': 'Campaign has already been executed',
+    'campaign is already': 'Campaign operation in progress',
+    'insufficient balance': 'Insufficient credits to start campaign',
+    'no pending or retryable contacts': 'No leads to call. Please add leads to the campaign first',
+    'no active/verified twilio number': 'No verified phone number. Please configure a Twilio number first',
+    'please set a caller phone number': 'Please assign a phone number to this campaign',
+    'not found': 'Campaign not found',
+    'access denied': 'You do not have permission to access this campaign',
+  };
+
+  // Check if error message matches any known error pattern
+  const lowerError = errorMessage.toLowerCase();
+  for (const [key, value] of Object.entries(errorMap)) {
+    if (lowerError.includes(key)) {
+      return value;
     }
-    throw new Error(errorMessage);
   }
-  // Validate content type before parsing JSON
-  const contentType = response.headers.get('content-type');
-  if (!contentType || !contentType.includes('application/json')) {
-    throw new Error('Received non-JSON response from server');
+
+  // Default friendly message for generic errors
+  return 'Failed to process campaign. Please try again.';
+};
+
+export const startCampaign = async (id: string, userId: string) => {
+  try {
+    const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/start`, {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ userId })
+    });
+    
+    let responseData;
+    try {
+      responseData = await response.json();
+    } catch (e) {
+      throw new Error('Server error: Unable to process response');
+    }
+
+    if (!response.ok) {
+      const errorMessage = responseData?.message || `HTTP error! status: ${response.status}`;
+      throw new Error(errorMessage);
+    }
+
+    return responseData;
+  } catch (error: any) {
+    // Re-throw with transformed message
+    const userMessage = transformCampaignError(error);
+    const customError = new Error(userMessage);
+    (customError as any).originalError = error;
+    throw customError;
   }
-  return response.json();
 };
 
 export const stopCampaign = async (id: string, userId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/stop`, {
-    method: 'POST',
-    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ userId })
-  });
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+  try {
+    const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/campaigns/${id}/stop`, {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ userId })
+    });
+
+    let responseData;
+    try {
+      responseData = await response.json();
+    } catch (e) {
+      throw new Error('Server error: Unable to process response');
+    }
+
+    if (!response.ok) {
+      const errorMessage = responseData?.message || `HTTP error! status: ${response.status}`;
+      throw new Error(errorMessage);
+    }
+
+    return responseData;
+  } catch (error: any) {
+    // Re-throw with transformed message
+    const userMessage = transformCampaignError(error);
+    const customError = new Error(userMessage);
+    (customError as any).originalError = error;
+    throw customError;
   }
-  // Validate content type before parsing JSON
-  const contentType = response.headers.get('content-type');
-  if (!contentType || !contentType.includes('application/json')) {
-    throw new Error('Received non-JSON response from server');
-  }
-  return response.json();
 };
 
 export const fetchRecords = async (id: string, page: number = 1, limit: number = 20) => {

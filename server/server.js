@@ -1,6 +1,4 @@
-// Load environment configuration (must be first)
 const config = require('./config/envConfig.js');
-
 ﻿const dotenv = require('dotenv');
 const express = require('express');
 const cors = require('cors');
@@ -17,6 +15,7 @@ const { ExternalApiService } = require('./services/externalApiService.js');
 const { PhoneNumberService } = require('./services/phoneNumberService.js');
 const AgentService = require('./services/agentService.js');
 const CampaignService = require('./services/campaignService.js');
+const { LLMService } = require('./llmService.js');
 const CompanyService = require('./services/companyService.js');
 const { AuthService } = require('./services/authService.js');
 const TwilioService = require('./services/twilioService.js');
@@ -53,7 +52,7 @@ const expressWsInstance = expressWs(app, server, {
     perMessageDeflate: false,
     clientTracking: true,
     maxPayload: 100 * 1024 * 1024,
-    skipUTF8Validation: true  // â† THIS IS THE CRITICAL FIX
+    skipUTF8Validation: true  //  THIS IS THE CRITICAL FIX
   }
 });
 console.log(' WebSocket with skipUTF8Validation enabled');
@@ -66,7 +65,8 @@ console.log('PORT:', PORT);
 console.log('========================');
 
 // Instantiate ONLY services that require instances
-const campaignService = new CampaignService(mysqlPool, walletService, costCalculator);
+const llmService = new LLMService(geminiApiKey, openaiApiKey, mysqlPool);
+const campaignService = new CampaignService(mysqlPool, walletService, costCalculator, llmService);
 const authService = new AuthService(mysqlPool);
 const twilioService = new TwilioService();
 const twilioBasicService = new TwilioBasicService();
@@ -2197,7 +2197,7 @@ app.delete('/api/superadmin/users/:userId', async (req, res) => {
   }
 });
 
-// â”€â”€â”€ Super Admin: Price Management Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  Super Admin: Price Management Dashboard 
 
 // GET all service pricing rows
 app.get('/api/superadmin/pricing/services', async (req, res) => {
@@ -2276,7 +2276,7 @@ app.put('/api/superadmin/pricing/config', async (req, res) => {
   }
 });
 
-// â”€â”€â”€ Individual Users (role = individual_user) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  Individual Users (role = individual_user) 
 
 
 // GET /api/superadmin/individual-users - List all individual_user accounts
@@ -4844,7 +4844,7 @@ app.get('/api/agents', async (req, res) => {
     res.json({
       success: true,
       data: agents,
-      agents: agents   // â† used by CampaignDetailPage dropdown
+      agents: agents   //  used by CampaignDetailPage dropdown
     });
   } catch (error) {
     console.error('Error fetching agents:', error);
@@ -6077,7 +6077,7 @@ app.get('/api/admin/migrate-schema', async (req, res) => {
 
     const alterQueries = [];
 
-    // â”€â”€ campaigns table â”€â”€
+    //  campaigns table 
     if (!(await checkColumn('campaigns', 'agent_id')))
       alterQueries.push("ALTER TABLE campaigns ADD COLUMN agent_id VARCHAR(50) NULL");
     if (!(await checkColumn('campaigns', 'phone_number_id')))
@@ -6087,7 +6087,7 @@ app.get('/api/admin/migrate-schema', async (req, res) => {
     if (!(await checkColumn('campaigns', 'retry_attempts')))
       alterQueries.push("ALTER TABLE campaigns ADD COLUMN retry_attempts INT DEFAULT 0");
 
-    // â”€â”€ campaign_contacts table â”€â”€
+    //  campaign_contacts table 
     const [ccTables] = await mysqlPool.execute("SHOW TABLES LIKE 'campaign_contacts'");
     if (ccTables.length > 0) {
       if (!(await checkColumn('campaign_contacts', 'email')))
@@ -6112,9 +6112,11 @@ app.get('/api/admin/migrate-schema', async (req, res) => {
         alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN last_attempt_at DATETIME NULL");
       if (!(await checkColumn('campaign_contacts', 'completed_at')))
         alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN completed_at DATETIME NULL");
+      if (!(await checkColumn('campaign_contacts', 'email_sent_at')))
+        alterQueries.push("ALTER TABLE campaign_contacts ADD COLUMN email_sent_at DATETIME NULL AFTER meet_link");
     }
 
-    // â”€â”€ users table â”€â”€
+    //  users table 
     const [userTables] = await mysqlPool.execute("SHOW TABLES LIKE 'users'");
     if (userTables.length > 0) {
       if (!(await checkColumn('users', 'status')))
