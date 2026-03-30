@@ -85,7 +85,7 @@ const voiceSyncService = new VoiceSyncService(mysqlPool);
 const voiceWsHandler = new VoiceWebSocketHandler(voiceSyncService);
 console.log(' Voice Sync Service initialized');
 
-console.log('âœ… WebSocket support enabled on HTTP server');
+console.log(' WebSocket support enabled on HTTP server');
 
 // Initialize Google Voice Stream Handler
 const GoogleVoiceStreamHandler = require('./services/GoogleVoiceStreamHandler.js');
@@ -93,7 +93,7 @@ const googleVoiceHandler = new GoogleVoiceStreamHandler(voiceSyncService, wallet
 app.ws('/voice-stream-google', (ws, req) => {
   googleVoiceHandler.handleConnection(ws, req);
 });
-console.log('âœ… Google Voice Stream Handler initialized at /voice-stream-google');
+console.log(' Google Voice Stream Handler initialized at /voice-stream-google');
 
 // Initialize Deepgram Browser Handler
 const { DeepgramBrowserHandler } = require('./services/DeepgramBrowserHandler.js');
@@ -116,7 +116,7 @@ if (deepgramApiKey) {
     console.error('Failed to initialize DeepgramBrowserHandler:', error.message);
   }
 } else {
-  console.warn('âš ï¸ DeepgramBrowserHandler not initialized (missing API keys)');
+  console.warn(' DeepgramBrowserHandler not initialized (missing API keys)');
 }
 
 // Initialize BrowserVoiceHandler for production-level browser voice interactions
@@ -138,7 +138,7 @@ if (sarvamApiKey) {
     app.ws('/browser-voice-stream', (ws, req) => {
       browserVoiceHandler.handleConnection(ws, req);
     });
-    console.log('âœ… Browser Voice Handler initialized at /browser-voice-stream');
+    console.log(' Browser Voice Handler initialized at /browser-voice-stream');
     console.log('   - Sarvam STT:');
     console.log('   - Gemini LLM: ' + (geminiApiKey ? '' : ''));
     console.log('   - ElevenLabs TTS: ' + (elevenLabsApiKey ? '' : ''));
@@ -146,7 +146,7 @@ if (sarvamApiKey) {
     console.error('Failed to initialize BrowserVoiceHandler:', error.message);
   }
 } else {
-  console.warn('âš ï¸ BrowserVoiceHandler not initialized (missing SARVAM_API_KEY)');
+  console.warn(' BrowserVoiceHandler not initialized (missing SARVAM_API_KEY)');
 }
 
 // === ADD THIS BLOCK ===
@@ -178,7 +178,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Initialize and mount voice routes
 app.use('/api/voices', initVoiceSync(mysqlPool));
-console.log('âœ… Voice API routes mounted at /api/voices');
+console.log(' Voice API routes mounted at /api/voices');
 
 
 // ==================== SESSION & GOOGLE OAUTH ====================
@@ -226,7 +226,7 @@ app.get('/api/auth/google/callback',
   (req, res) => {
     // Successful authentication
     const user = req.user;
-    console.log('âœ… Google OAuth successful for:', user.email);
+    console.log(' Google OAuth successful for:', user.email);
 
     // Redirect to frontend with user data
     const frontendUrl = process.env.FRONTEND_URL;
@@ -244,28 +244,28 @@ app.post('/api/auth/logout', (req, res) => {
   });
 });
 
-console.log('âœ… Google OAuth routes configured');
+console.log(' Google OAuth routes configured');
 
 // Initialize and mount call routes
 const callRoutes = require('./routes/callRoutes.js');
 app.set('mysqlPool', mysqlPool); // Make pool available to routes
 app.use('/api/calls', callRoutes);
-console.log('âœ… Call API routes mounted at /api/calls');
+console.log(' Call API routes mounted at /api/calls');
 
 const documentRoutes = require('./routes/documentRoutes.js')(mysqlPool);
 app.use('/api/documents', documentRoutes);
-console.log('âœ… Document API routes mounted at /api/documents');
+console.log(' Document API routes mounted at /api/documents');
 
 // Initialize and mount company routes
 const companyRoutes = require('./routes/companyRoutes.js')(companyService);
 app.use('/api/companies', companyRoutes);
-console.log('âœ… Company API routes mounted at /api/companies');
+console.log(' Company API routes mounted at /api/companies');
 
 // ==================== NEW API ARCHITECTURE ====================
 // Mount Health Check Routes (V1)
 const healthRoutes = require('./routes/healthRoutes.js');
 app.use('/api/health', healthRoutes);
-console.log('âœ… Health check routes mounted at /api/health');
+console.log(' Health check routes mounted at /api/health');
 
 // Mount V1 Routes (Versioned API)
 const { initializeV1Routes } = require('./routes/v1');
@@ -290,9 +290,9 @@ console.log('V2 API scaffold mounted at /api/v2 (ready for future features)');
 // Trigger initial voice sync
 voiceSyncService.syncAllProviders()
   .then(result => {
-    console.log(`âœ… Initial voice sync complete: ${result.synced} voices synced`);
+    console.log(` Initial voice sync complete: ${result.synced} voices synced`);
     if (result.errors.length > 0) {
-      console.warn('âš ï¸ Voice sync errors:', result.errors);
+      console.warn(' Voice sync errors:', result.errors);
     }
   })
   .catch(err => console.error('âŒ Initial voice sync failed:', err.message));
@@ -959,7 +959,7 @@ app.get('/api/voice-config-check', (req, res) => {
           result.apiTest = {
             status: testResponse.status,
             ok: testResponse.ok,
-            message: testResponse.ok ? 'API key is valid âœ…' : 'API key is invalid âŒ'
+            message: testResponse.ok ? 'API key is valid ' : 'API key is invalid âŒ'
           };
         } catch (error) {
           result.apiTest = {
@@ -988,8 +988,8 @@ app.get('/api/voice-config-check', (req, res) => {
       websocketUrl,
       expectedFormat: 'wss://your-domain.railway.app/api/call?callId=xxx&agentId=xxx&contactId=xxx',
       registeredEndpoints: {
-        '/api/call': 'WebSocket handler for Twilio media streams âœ…',
-        '/voice-stream': 'WebSocket handler for frontend voice chat âœ…'
+        '/api/call': 'WebSocket handler for Twilio media streams ',
+        '/voice-stream': 'WebSocket handler for frontend voice chat '
       },
       instructions: 'Make sure Twilio TwiML uses this exact WebSocket URL format'
     });
@@ -1051,7 +1051,7 @@ app.get('/api/voice-config-check', (req, res) => {
         audioFormat: 'ulaw_8000',
         voiceId: testVoiceId,
         keyUsed: `${apiKey.substring(0, 8)}...`,
-        message: 'Voice pipeline is working correctly âœ…'
+        message: 'Voice pipeline is working correctly '
       });
 
     } catch (error) {
@@ -1070,7 +1070,7 @@ app.get('/api/voice-config-check', (req, res) => {
     config.checks.appUrl.isPublic &&
     config.checks.mediaStreamHandler.initialized;
 
-  config.overallStatus = allConfigured ? 'READY âœ…' : 'NOT READY âŒ';
+  config.overallStatus = allConfigured ? 'READY ' : 'NOT READY âŒ';
   config.readyToMakeCalls = allConfigured;
 
   // Add missing items
@@ -1178,7 +1178,7 @@ app.get('/api/test-voice-pipeline', async (req, res) => {
     results.tests.elevenlabs.configured &&
     (!results.tests.elevenlabs.apiWorking || results.tests.elevenlabs.apiWorking === true);
 
-  results.overallStatus = allPassed ? 'ALL TESTS PASSED âœ…' : 'SOME TESTS FAILED âŒ';
+  results.overallStatus = allPassed ? 'ALL TESTS PASSED ' : 'SOME TESTS FAILED âŒ';
   results.readyForCalls = allPassed;
 
   res.json(results);
@@ -1224,7 +1224,7 @@ app.get('/api/test-deepgram-key', async (req, res) => {
 
       if (testResponse.ok) {
         const data = await testResponse.json();
-        result.apiTest.message = 'âœ… API key is VALID and working!';
+        result.apiTest.message = ' API key is VALID and working!';
         result.apiTest.projectsFound = data.projects ? data.projects.length : 0;
         result.status = 'SUCCESS';
       } else {
@@ -1426,7 +1426,7 @@ app.post('/api/auth/register', async (req, res) => {
       [txId, user.id, TRIAL_CREDITS, TRIAL_CREDITS]
     );
 
-    console.log(`âœ… New user ${email} registered with 14-day trial and ${TRIAL_CREDITS} credits`);
+    console.log(` New user ${email} registered with 14-day trial and ${TRIAL_CREDITS} credits`);
     res.json({ success: true, user });
   } catch (error) {
     console.error('Registration error:', error);
@@ -2494,7 +2494,7 @@ app.post('/api/admin/branding/update', async (req, res) => {
     }
     console.log('Platform settings table ready');
   } catch (err) {
-    console.warn('âš ï¸ Could not create platform_settings table:', err.message);
+    console.warn(' Could not create platform_settings table:', err.message);
   }
 })();
 
@@ -2574,7 +2574,7 @@ app.post('/api/superadmin/settings', async (req, res) => {
     `);
     console.log(' Support ticket tables ready');
   } catch (err) {
-    console.warn('âš ï¸ Could not create support_tickets table:', err.message);
+    console.warn(' Could not create support_tickets table:', err.message);
   }
 })();
 
@@ -3655,7 +3655,7 @@ app.post('/api/twilio/recording-status', async (req, res) => {
           [RecordingUrl, callId]
         );
 
-        console.log(`âœ… Recording URL saved for call ${callId}: ${RecordingUrl}`);
+        console.log(` Recording URL saved for call ${callId}: ${RecordingUrl}`);
 
         // Get campaign to check if Google Sheets is configured
         const [campaigns] = await mysqlPool.execute(
@@ -3696,7 +3696,7 @@ app.post('/api/twilio/recording-status', async (req, res) => {
                 metadata: contact.metadata ? JSON.parse(contact.metadata) : {}
               });
 
-              console.log(`âœ… Updated Google Sheets with recording URL for ${contact.phone_number}`);
+              console.log(` Updated Google Sheets with recording URL for ${contact.phone_number}`);
             } catch (error) {
               console.error('Failed to update Google Sheets with recording URL:', error.message);
             }
@@ -4726,7 +4726,7 @@ app.post('/api/twilio/voice', async (req, res) => {
 
     console.log('ðŸ”— WebSocket Stream URL:', streamUrl);
 
-    // âœ… Create proper TwiML with Twilio SDK
+    //  Create proper TwiML with Twilio SDK
     const VoiceResponse = require('twilio').twiml.VoiceResponse;
     const response = new VoiceResponse();
 
@@ -4738,7 +4738,7 @@ app.post('/api/twilio/voice', async (req, res) => {
       name: `stream_${actualCallId}`
     });
 
-    // âœ… CRITICAL: Add parameters to stream
+    //  CRITICAL: Add parameters to stream
     stream.parameter({ name: 'callId', value: actualCallId });
     stream.parameter({ name: 'agentId', value: agentId });
     stream.parameter({ name: 'userId', value: userId || '' });
@@ -4776,7 +4776,7 @@ app.post('/api/twilio/voice', async (req, res) => {
 
 // Stream fallback - keeps call alive if stream ends
 app.post('/api/twilio/stream-fallback', (req, res) => {
-  console.log('âš ï¸ Stream ended, keeping call alive...');
+  console.log(' Stream ended, keeping call alive...');
   const VoiceResponse = require('twilio').twiml.VoiceResponse;
   const response = new VoiceResponse();
 
@@ -5245,7 +5245,7 @@ app.get('/api/voices/elevenlabs/list', async (req, res) => {
       });
     }
 
-    console.log('âœ… Fetching voices from ElevenLabs API with key:', apiKey.substring(0, 4) + '...');
+    console.log(' Fetching voices from ElevenLabs API with key:', apiKey.substring(0, 4) + '...');
 
     // Fetch voices from ElevenLabs API
     const response = await nodeFetch('https://api.elevenlabs.io/v1/voices', {
@@ -5286,7 +5286,7 @@ app.get('/api/voices/elevenlabs/list', async (req, res) => {
 
     const data = await response.json();
 
-    console.log(`âœ… Successfully fetched ${data.voices?.length || 0} voices from ElevenLabs`);
+    console.log(` Successfully fetched ${data.voices?.length || 0} voices from ElevenLabs`);
 
     // Return voices with the voice_id as the id field (not mapped)
     res.json({
@@ -5341,7 +5341,7 @@ if (process.env.SARVAM_API_KEY && process.env.GEMINI_API_KEY) {
   );
   console.log(" MediaStreamHandler initialized with Sarvam STT + Gemini + OpenAI + Cost Tracking");
 } else {
-  console.warn("âš ï¸ Voice call feature disabled â€” missing SARVAM_API_KEY or GEMINI_API_KEY");
+  console.warn(" Voice call feature disabled â€” missing SARVAM_API_KEY or GEMINI_API_KEY");
 }
 // WebSocket endpoint for ElevenLabs STT
 app.ws('/api/stt', function (ws, req) {
@@ -5357,7 +5357,7 @@ app.ws('/api/call', (ws, req) => {
   }
 });
 // WebSocket endpoint for voice stream (frontend voice chat + Twilio calls)
-app.ws('/voice-stream', async function (ws, req) {  // âœ… ADDED async
+app.ws('/voice-stream', async function (ws, req) {  //  ADDED async
   console.log('New voice stream connection established');
   let audioChunksReceived = 0;
   const audioBuffer = [];
@@ -5371,7 +5371,7 @@ app.ws('/voice-stream', async function (ws, req) {  // âœ… ADDED async
   const agentId = req.query?.agentId;
   const voiceId = req.query?.voiceId;
   const identity = req.query?.identity ? decodeURIComponent(req.query.identity) : null;
-  const userId = req.query?.userId; // âœ… ADDED - Get userId from query params
+  const userId = req.query?.userId; //  ADDED - Get userId from query params
   const isTwilioCall = !!(callId && agentId);
   const isFrontendChat = !!(voiceId && !callId);
 
@@ -5463,7 +5463,7 @@ app.ws('/voice-stream', async function (ws, req) {  // âœ… ADDED async
               const transcript = deepgramResult.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
               const confidence = deepgramResult.results?.channels?.[0]?.alternatives?.[0]?.confidence || 0;
 
-              // âœ… Track Deepgram usage
+              //  Track Deepgram usage
               if (userId && callId) {
                 const audioDurationSeconds = combinedAudioBuffer.length / (16000 * 2);
                 try {
@@ -5510,7 +5510,7 @@ app.ws('/voice-stream', async function (ws, req) {  // âœ… ADDED async
                       const agentResponse = geminiResult.candidates?.[0]?.content?.parts?.[0]?.text || 'I could not generate a response.';
                       console.log('Gemini response:', agentResponse);
 
-                      // âœ… Track Gemini usage
+                      //  Track Gemini usage
                       if (userId && callId) {
                         const estimatedTokens = (fullPrompt.length + agentResponse.length) / 4;
                         try {
@@ -5550,7 +5550,7 @@ app.ws('/voice-stream', async function (ws, req) {  // âœ… ADDED async
                             const audioBuffer = await ttsResponse.arrayBuffer();
                             const audioBase64 = Buffer.from(audioBuffer).toString('base64');
 
-                            // âœ… Track ElevenLabs usage
+                            //  Track ElevenLabs usage
                             if (userId && callId) {
                               const characterCount = agentResponse.length;
                               try {
@@ -6030,7 +6030,7 @@ async function processCampaignCalls(campaignId, userId, campaign, records) {
         callId: callId,
         appUrl: cleanAppUrl
       });
-      // âœ… Log all incoming HTTP requests to spot patterns
+      //  Log all incoming HTTP requests to spot patterns
       app.use((req, res, next) => {
         const isWebSocket = req.headers.upgrade === 'websocket';
         if (isWebSocket || req.url.includes('/api/call') || req.url.includes('/api/twilio')) {
@@ -6127,7 +6127,7 @@ app.get('/api/admin/migrate-schema', async (req, res) => {
     for (const query of alterQueries) {
       try {
         await mysqlPool.execute(query);
-        results.push(`âœ… Executed: ${query}`);
+        results.push(` Executed: ${query}`);
       } catch (alterErr) {
         results.push(`âŒ Failed: ${query} â€” ${alterErr.message}`);
       }

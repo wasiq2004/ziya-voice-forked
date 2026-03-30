@@ -44,10 +44,6 @@ class GoogleVoiceStreamHandler {
                     // Buffer audio
                     audioBuffer.push(data.data); // base64 string
 
-                    // Process every ~1 second of audio (assuming approx 30-50 chunks/sec depending on frontend)
-                    // For better latency, we might process more aggressively, but let's stick to batching 
-                    // to match the previous logic and ensure we have enough context.
-                    // If we have > 20 chunks and aren't processing, go.
                     if (audioBuffer.length >= 20 && !isProcessing) {
                         isProcessing = true;
                         const chunksToProcess = [...audioBuffer];
@@ -210,12 +206,6 @@ class GoogleVoiceStreamHandler {
     }
 
     async generateAudio(text, voiceId, apiKey) {
-        // CHECK FOR SARVAM VOICE
-        // The frontend sends just the speaker name for Sarvam (e.g. "anushka"), 
-        // OR it might send a prefixed ID if we changed that logic.
-        // Based on previous context, user was adding "sarvam" provider.
-        // Let's assume if the ID doesn't look like an ElevenLabs ID (usually 20 chars), it might be Sarvam, 
-        // OR we specifically check against known Sarvam names.
 
         const sarvamSpeakers = [
             'anushka', 'abhilash', 'chitra', 'arvind',

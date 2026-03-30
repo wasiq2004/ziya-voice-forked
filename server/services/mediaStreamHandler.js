@@ -163,9 +163,7 @@ class MediaStreamHandler {
         session.context.push({ role, parts: [{ text }] });
         console.log(`💬 ${role.toUpperCase()}: ${text}`);
     }
-
     // REPLACE the handleConnection method in mediaStreamHandler.js:
-
     async handleConnection(ws, req) {
         let callId = null;
         let agentId = null;
