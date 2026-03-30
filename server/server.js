@@ -64,6 +64,14 @@ console.log('NODE_ENV:', process.env.NODE_ENV || 'NOT SET');
 console.log('PORT:', PORT);
 console.log('========================');
 
+// ✅ CRITICAL FIX: Declare API keys BEFORE using them
+const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
+const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+const openaiApiKey = process.env.OPENAI_API_KEY;
+console.log('Deepgram API Key configured:', !!deepgramApiKey);
+console.log('Gemini API Key configured:', !!geminiApiKey);
+console.log('OpenAI API Key configured:', !!openaiApiKey);
+
 // Instantiate ONLY services that require instances
 const llmService = new LLMService(geminiApiKey, openaiApiKey, mysqlPool);
 const campaignService = new CampaignService(mysqlPool, walletService, costCalculator, llmService);
@@ -97,9 +105,6 @@ console.log(' Google Voice Stream Handler initialized at /voice-stream-google');
 
 // Initialize Deepgram Browser Handler
 const { DeepgramBrowserHandler } = require('./services/DeepgramBrowserHandler.js');
-const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
-const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-const openaiApiKey = process.env.OPENAI_API_KEY;
 console.log('Deepgram API Key configured:', !!deepgramApiKey);
 console.log('Gemini API Key configured:', !!geminiApiKey);
 console.log('OpenAI API Key configured:', !!openaiApiKey);
