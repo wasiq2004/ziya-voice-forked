@@ -12,7 +12,7 @@ import KPICard from '../components/KPICard';
 import LeadsTable from '../components/LeadsTable';
 import AddLeadModal from '../components/AddLeadModal';
 import ImportLeadsModal from '../components/ImportLeadsModal';
-import { fetchCampaign, startCampaign, stopCampaign, deleteRecord, addRecord, getApiBaseUrl, getApiPath, importCSV, updateCampaign } from '../utils/api';
+import { fetchCampaign, startCampaign, stopCampaign, deleteRecord, addRecord, getApiBaseUrl, getApiPath, importCSV, setCallerPhone, updateCampaign } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 
 const CampaignDetailPage: React.FC = () => {
@@ -144,8 +144,30 @@ const CampaignDetailPage: React.FC = () => {
     if (!id || !user?.id) return;
     const newPhoneNumberId = e.target.value;
     try {
-      await updateCampaign(id, user.id, { phone_number_id: newPhoneNumberId });
-      setCampaign({ ...campaign, phone_number_id: newPhoneNumberId });
+      const selectedPhone = phoneNumbers.find((pn: any) => pn.id === newPhoneNumberId);
+      const resolvedAgentId =
+        selectedPhone?.agent_id ||
+        selectedPhone?.agentId ||
+        campaign.agent_id ||
+        '';
+
+      const response = await setCallerPhone(
+        id,
+        user.id,
+        newPhoneNumberId,
+        resolvedAgentId || undefined
+      );
+
+      const updatedCampaign = response?.campaign || response?.data || null;
+      if (updatedCampaign) {
+        setCampaign(updatedCampaign);
+      } else {
+        setCampaign({
+          ...campaign,
+          phone_number_id: newPhoneNumberId,
+          agent_id: resolvedAgentId || campaign.agent_id,
+        });
+      }
     } catch (error) {
       console.error('Failed to update phone number:', error);
       alert('Failed to update assigned phone number');

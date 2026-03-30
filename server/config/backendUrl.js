@@ -22,8 +22,9 @@ const ensureHttpProtocol = (url) => {
     return `https://${url}`;
 };
 
-const buildBackendUrl = (path = '') => {
-    const baseUrl = getBackendUrl();
+// ✅ FIXED: Accept optional appUrl parameter for WebSocket URL construction
+const buildBackendUrl = (path = '', appUrl = null) => {
+    const baseUrl = appUrl ? normalizeBackendUrl(appUrl) : getBackendUrl();
 
     if (!baseUrl) {
         return baseUrl;
@@ -37,9 +38,10 @@ const buildBackendUrl = (path = '') => {
     return `${baseUrl}${normalizedPath}`;
 };
 
-const buildBackendWsUrl = (path = '') => {
-    const baseUrl = getBackendUrl();
-    const httpUrl = ensureHttpProtocol(normalizeBackendUrl(baseUrl));
+// ✅ FIXED: Accept optional appUrl parameter for WebSocket URL construction
+const buildBackendWsUrl = (path = '', appUrl = null) => {
+    const baseUrl = appUrl ? normalizeBackendUrl(appUrl) : getBackendUrl();
+    const httpUrl = ensureHttpProtocol(baseUrl);
 
     if (!httpUrl) {
         return httpUrl;

@@ -4727,9 +4727,14 @@ app.post('/api/twilio/voice', async (req, res) => {
 
     // Convert to WebSocket protocol
     const actualCallId = callId || CallSid;
-    const streamUrl = `${buildBackendWsUrl('/call', appUrl)}?callId=${actualCallId}&agentId=${agentId}&contactId=${CallSid}`;
+    const streamUrl = `${buildBackendWsUrl('/call', appUrl)}?callId=${actualCallId}&agentId=${agentId}&userId=${userId||''}&contactId=${req.query.contactId||''}&campaignId=${campaignId||''}`;
 
-    console.log('ðŸ”— WebSocket Stream URL:', streamUrl);
+    console.log('🔗 WebSocket Stream URL:', streamUrl);
+    console.log('   CallSid:', CallSid);
+    console.log('   agentId:', agentId);
+    console.log('   userId:', userId);
+    console.log('   contactId:', req.query.contactId);
+    console.log('   campaignId:', campaignId);
 
     //  Create proper TwiML with Twilio SDK
     const VoiceResponse = require('twilio').twiml.VoiceResponse;
@@ -4743,7 +4748,7 @@ app.post('/api/twilio/voice', async (req, res) => {
       name: `stream_${actualCallId}`
     });
 
-    //  CRITICAL: Add parameters to stream
+    //  CRITICAL: Add parameters to stream as redundancy (for Twilio Media Streams parameters)
     stream.parameter({ name: 'callId', value: actualCallId });
     stream.parameter({ name: 'agentId', value: agentId });
     stream.parameter({ name: 'userId', value: userId || '' });
@@ -5914,6 +5919,21 @@ app.post('/api/campaigns/:id/start', async (req, res) => {
     // Verify campaign belongs to user
     if (campaign.user_id !== userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    // Match V1 start validation so we only report success when dialing can actually begin
+    if (!campaign.phone_number_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please set a caller phone number before starting the campaign'
+      });
+    }
+
+    if (!campaign.agent_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please select an agent for this campaign'
+      });
     }
 
     // Get all pending or retryable contacts
