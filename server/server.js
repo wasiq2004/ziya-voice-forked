@@ -4725,9 +4725,14 @@ app.post('/api/twilio/voice', async (req, res) => {
     // Ensure appUrl has protocol
     appUrl = ensureHttpProtocol(appUrl);
 
-    // Convert to WebSocket protocol
+    // Twilio Media Streams expect a plain WebSocket URL.
+    // Dynamic values are passed via nested <Parameter> elements instead.
     const actualCallId = callId || CallSid;
-    const streamUrl = `${buildBackendWsUrl('/call', appUrl)}?callId=${actualCallId}&agentId=${agentId}&userId=${userId||''}&contactId=${req.query.contactId||''}&campaignId=${campaignId||''}`;
+    const streamUrl = buildBackendWsUrl('/call', appUrl);
+    const streamStatusCallbackUrl =
+      `${buildBackendUrl('/twilio/stream-status', appUrl)}?callId=${encodeURIComponent(actualCallId)}`;
+    const streamFallbackUrl =
+      `${buildBackendUrl('/twilio/stream-fallback', appUrl)}?callId=${encodeURIComponent(actualCallId)}`;
 
     console.log('🔗 WebSocket Stream URL:', streamUrl);
     console.log('   CallSid:', CallSid);
@@ -4741,11 +4746,16 @@ app.post('/api/twilio/voice', async (req, res) => {
     const response = new VoiceResponse();
 
     // Connect directly to WebSocket stream (agent will send greeting)
-    const connect = response.connect();
+    const connect = response.connect({
+      action: streamFallbackUrl,
+      method: 'POST'
+    });
 
     const stream = connect.stream({
       url: streamUrl,
-      name: `stream_${actualCallId}`
+      name: `stream_${actualCallId}`,
+      statusCallback: streamStatusCallbackUrl,
+      statusCallbackMethod: 'POST'
     });
 
     //  CRITICAL: Add parameters to stream as redundancy (for Twilio Media Streams parameters)
@@ -4795,6 +4805,30 @@ app.post('/api/twilio/stream-fallback', (req, res) => {
 
   res.type('text/xml');
   res.send(response.toString());
+});
+
+app.post('/api/twilio/stream-status', (req, res) => {
+  const { callId } = req.query;
+  const {
+    CallSid,
+    StreamSid,
+    StreamName,
+    StreamEvent,
+    StreamError,
+    Timestamp
+  } = req.body || {};
+
+  console.log(' Twilio stream status callback:', {
+    callId,
+    CallSid,
+    StreamSid,
+    StreamName,
+    StreamEvent,
+    StreamError,
+    Timestamp
+  });
+
+  res.sendStatus(204);
 });
 
 // Twilio Status Callback

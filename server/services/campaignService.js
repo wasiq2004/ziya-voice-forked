@@ -329,6 +329,18 @@ class CampaignService {
             const accountSid = twilioInfo.twilio_account_sid;
             const encryptedAuthToken = twilioInfo.twilio_auth_token;
 
+            // calls.phone_number_id references phone_numbers.id, but campaigns currently
+            // store the selected caller using the Twilio-number selection flow.
+            // Resolve the matching phone_numbers row here so we don't disturb existing UI/state.
+            const [phoneNumberRows] = await this.mysqlPool.execute(
+                `SELECT id
+                 FROM phone_numbers
+                 WHERE user_id = ? AND phone_number = ?
+                 LIMIT 1`,
+                [campaign.user_id, fromNumber]
+            );
+            const resolvedPhoneNumberId = phoneNumberRows[0]?.id || null;
+
             if (!accountSid || !encryptedAuthToken) {
                 throw new Error('Twilio credentials (SID/Token) missing in database for this number');
             }
@@ -385,7 +397,7 @@ class CampaignService {
                     'initiated',  // Initial status
                     'twilio_outbound',   // Must match ENUM: 'twilio_inbound', 'twilio_outbound', 'web_call'
                     campaignId,
-                    campaign.phone_number_id || null  // Use campaign's phone_number_id
+                    resolvedPhoneNumberId
                 ]
             );
 
