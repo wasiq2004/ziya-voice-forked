@@ -34,7 +34,7 @@ const { router: voiceRouter, initVoiceSync } = require('./routes/voiceRoutes.js'
 const passport = require('passport');
 const session = require('express-session');
 const { configureGoogleAuth } = require('./config/googleAuth.js');
-const { getBackendUrl, normalizeBackendUrl, ensureHttpProtocol, buildBackendWsUrl } = require('./config/backendUrl.js');
+const { getBackendUrl, buildBackendUrl, normalizeBackendUrl, ensureHttpProtocol, buildBackendWsUrl } = require('./config/backendUrl.js');
 
 // Initialize wallet and cost services
 const walletService = new WalletService(mysqlPool);
@@ -52,7 +52,7 @@ const expressWsInstance = expressWs(app, server, {
     perMessageDeflate: false,
     clientTracking: true,
     maxPayload: 100 * 1024 * 1024,
-    skipUTF8Validation: true  //  THIS IS THE CRITICAL FIX
+    skipUTF8Validation: true 
   }
 });
 console.log(' WebSocket with skipUTF8Validation enabled');
@@ -563,7 +563,7 @@ app.get('/api/admin/wallet/all-balances', async (req, res) => {
 
 // ==================== ADMIN USER MANAGEMENT ENDPOINTS ====================
 
-// GET /api/admin/users â€” list users scoped to org (or all for super admin)
+// GET /api/admin/users” list users scoped to org (or all for super admin)
 app.get('/api/admin/users', async (req, res) => {
   try {
     const rawPage = Array.isArray(req.query.page) ? req.query.page[0] : req.query.page;
@@ -581,7 +581,7 @@ app.get('/api/admin/users', async (req, res) => {
   }
 });
 
-// GET /api/admin/users/:userId â€” single user detail including wallet_balance
+// GET /api/admin/users/:userId” single user detail including wallet_balance
 app.get('/api/admin/users/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -603,7 +603,7 @@ app.get('/api/admin/users/:userId', async (req, res) => {
   }
 });
 
-// DELETE /api/admin/users/:userId â€” permanently delete a user (org-scoped)
+// DELETE /api/admin/users/:userId” permanently delete a user (org-scoped)
 app.delete('/api/admin/users/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -629,7 +629,7 @@ app.delete('/api/admin/users/:userId', async (req, res) => {
   }
 });
 
-// PUT /api/admin/users/:userId/status â€” block or unblock user
+// PUT /api/admin/users/:userId/status” block or unblock user
 app.put('/api/admin/users/:userId/status', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -645,7 +645,7 @@ app.put('/api/admin/users/:userId/status', async (req, res) => {
   }
 });
 
-// GET /api/admin/wallet/summary?orgId=X â€” org-level credit KPIs
+// GET /api/admin/wallet/summary?orgId=X” org-level credit KPIs
 app.get('/api/admin/wallet/summary', async (req, res) => {
   try {
     const { orgId } = req.query;
@@ -669,7 +669,7 @@ app.get('/api/admin/wallet/summary', async (req, res) => {
   }
 });
 
-// GET /api/admin/wallet/transactions?orgId=X â€” org-level transaction log
+// GET /api/admin/wallet/transactions?orgId=X” org-level transaction log
 app.get('/api/admin/wallet/transactions', async (req, res) => {
   try {
     const { orgId, limit = 100, type } = req.query;
@@ -692,7 +692,7 @@ app.get('/api/admin/wallet/transactions', async (req, res) => {
   }
 });
 
-// GET /api/admin/impersonate/:userId â€” get user profile for impersonation
+// GET /api/admin/impersonate/:userId” get user profile for impersonation
 app.get('/api/admin/users/:userId/impersonate', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -705,7 +705,7 @@ app.get('/api/admin/users/:userId/impersonate', async (req, res) => {
   }
 });
 
-// GET /api/admin/logs?orgId=X â€” audit logs
+// GET /api/admin/logs?orgId=X” audit logs
 app.get('/api/admin/logs', async (req, res) => {
   try {
     const { page = 1, limit = 50, orgId } = req.query;
@@ -717,7 +717,7 @@ app.get('/api/admin/logs', async (req, res) => {
   }
 });
 
-// GET /api/admin/stats â€” dashboard statistics
+// GET /api/admin/stats” dashboard statistics
 app.get('/api/admin/stats', async (req, res) => {
   try {
     const { orgId } = req.query;
@@ -729,7 +729,7 @@ app.get('/api/admin/stats', async (req, res) => {
   }
 });
 
-// GET /api/admin/users/:userId/resources â€” user agents + campaigns
+// GET /api/admin/users/:userId/resources” user agents + campaigns
 app.get('/api/admin/users/:userId/resources', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -825,7 +825,7 @@ app.post('/api/admin/users/:userId/reset-password', async (req, res) => {
   }
 });
 
-// POST /api/admin/users/:userId/service-limits â€” set service limit
+// POST /api/admin/users/:userId/service-limits” set service limit
 app.post('/api/admin/users/:userId/service-limits', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -838,7 +838,7 @@ app.post('/api/admin/users/:userId/service-limits', async (req, res) => {
   }
 });
 
-// POST /api/admin/billing/:billingId/status â€” update billing status
+// POST /api/admin/billing/:billingId/status” update billing status
 app.post('/api/admin/billing/:billingId/status', async (req, res) => {
   try {
     const { billingId } = req.params;
@@ -852,7 +852,7 @@ app.post('/api/admin/billing/:billingId/status', async (req, res) => {
   }
 });
 
-// POST /api/admin/create-user â€” create user under org (org-scoped)
+// POST /api/admin/create-user” create user under org (org-scoped)
 app.post('/api/admin/create-user', async (req, res) => {
   try {
     const { email, username, password, organization_id } = req.body;
@@ -1427,7 +1427,7 @@ app.post('/api/auth/register', async (req, res) => {
     const txId = uuidv4();
     await mysqlPool.execute(
       `INSERT INTO wallet_transactions (id, user_id, transaction_type, amount, balance_after, service_type, description, created_by)
-       VALUES (?, ?, 'credit', ?, ?, 'initial_credit', 'Free trial â€” 50 credits', NULL)`,
+       VALUES (?, ?, 'credit', ?, ?, 'initial_credit', 'Free trial” 50 credits', NULL)`,
       [txId, user.id, TRIAL_CREDITS, TRIAL_CREDITS]
     );
 
@@ -2346,7 +2346,7 @@ app.patch('/api/superadmin/individual-users/:userId/status', async (req, res) =>
   }
 });
 
-// Assign plan to user (super admin â€” delegates to admin logic)
+// Assign plan to user (super admin” delegates to admin logic)
 app.post('/api/superadmin/users/:userId/assign-plan', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -2408,7 +2408,7 @@ app.post('/api/admin/users', async (req, res) => {
 // PROFILE & SETTINGS ENDPOINTS
 // ============================================================
 
-// POST /api/admin/profile/update â€” Update org admin profile (name, username)
+// POST /api/admin/profile/update” Update org admin profile (name, username)
 app.post('/api/admin/profile/update', async (req, res) => {
   try {
     const { userId, name, username } = req.body;
@@ -2435,7 +2435,7 @@ app.post('/api/admin/profile/update', async (req, res) => {
   }
 });
 
-// POST /api/admin/branding/update â€” Update org branding (logo URL, custom domain)
+// POST /api/admin/branding/update” Update org branding (logo URL, custom domain)
 app.post('/api/admin/branding/update', async (req, res) => {
   try {
     const { adminId, logoUrl, customDomain } = req.body;
@@ -2503,7 +2503,7 @@ app.post('/api/admin/branding/update', async (req, res) => {
   }
 })();
 
-// GET /api/superadmin/settings â€” Get all platform settings
+// GET /api/superadmin/settings” Get all platform settings
 app.get('/api/superadmin/settings', async (req, res) => {
   try {
     const [rows] = await mysqlPool.execute('SELECT setting_key, setting_value FROM platform_settings');
@@ -2516,7 +2516,7 @@ app.get('/api/superadmin/settings', async (req, res) => {
   }
 });
 
-// POST /api/superadmin/settings â€” Bulk upsert platform settings
+// POST /api/superadmin/settings” Bulk upsert platform settings
 app.post('/api/superadmin/settings', async (req, res) => {
   try {
     const { settings } = req.body; // { key: value, ... }
@@ -2604,7 +2604,7 @@ app.post('/api/support/tickets', async (req, res) => {
   }
 });
 
-// GET /api/support/tickets â€” List tickets (scoped by role & query params)
+// GET /api/support/tickets” List tickets (scoped by role & query params)
 app.get('/api/support/tickets', async (req, res) => {
   try {
     const { created_by, created_by_role, organization_id, page = 1, limit = 50 } = req.query;
@@ -2621,7 +2621,7 @@ app.get('/api/support/tickets', async (req, res) => {
       where.push('(t.organization_id = ? OR (t.created_by = ? AND t.created_by_role = "org_admin"))');
       params.push(parseInt(organization_id), created_by);
     }
-    // super_admin sees all â€” no WHERE filter
+    // super_admin sees all” no WHERE filter
 
     const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
 
@@ -2661,7 +2661,7 @@ app.get('/api/support/tickets', async (req, res) => {
   }
 });
 
-// GET /api/support/tickets/:id â€” Get full ticket with replies
+// GET /api/support/tickets/:id” Get full ticket with replies
 app.get('/api/support/tickets/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -2692,7 +2692,7 @@ app.get('/api/support/tickets/:id', async (req, res) => {
   }
 });
 
-// POST /api/support/tickets/:id/reply â€” Add reply to ticket
+// POST /api/support/tickets/:id/reply” Add reply to ticket
 app.post('/api/support/tickets/:id/reply', async (req, res) => {
   try {
     const { id } = req.params;
@@ -2717,7 +2717,7 @@ app.post('/api/support/tickets/:id/reply', async (req, res) => {
   }
 });
 
-// PATCH /api/support/tickets/:id â€” Update ticket status
+// PATCH /api/support/tickets/:id” Update ticket status
 app.patch('/api/support/tickets/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -2733,7 +2733,7 @@ app.patch('/api/support/tickets/:id', async (req, res) => {
   }
 });
 
-// GET /api/support/stats â€” Ticket stats for dashboard widgets
+// GET /api/support/stats” Ticket stats for dashboard widgets
 app.get('/api/support/stats', async (req, res) => {
   try {
     const { organization_id } = req.query;
@@ -2758,7 +2758,7 @@ app.get('/api/support/stats', async (req, res) => {
 // SUPERADMIN: ORG CREDIT ALLOCATION
 // ============================================================
 
-// POST /api/superadmin/credits/allocate â€” Allocate credits to an org admin wallet
+// POST /api/superadmin/credits/allocate” Allocate credits to an org admin wallet
 app.post('/api/superadmin/credits/allocate', async (req, res) => {
   try {
     const { target_admin_id, amount, description, allocated_by } = req.body;
@@ -2790,7 +2790,7 @@ app.post('/api/superadmin/credits/allocate', async (req, res) => {
   }
 });
 
-// GET /api/superadmin/credits/logs â€” Get credit allocation logs for super admin view
+// GET /api/superadmin/credits/logs” Get credit allocation logs for super admin view
 app.get('/api/superadmin/credits/logs', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
@@ -2814,7 +2814,7 @@ app.get('/api/superadmin/credits/logs', async (req, res) => {
   }
 });
 
-// GET /api/superadmin/credits/org-balances â€” Get wallet balance for all org admins
+// GET /api/superadmin/credits/org-balances” Get wallet balance for all org admins
 app.get('/api/superadmin/credits/org-balances', async (req, res) => {
   try {
     const [rows] = await mysqlPool.execute(
@@ -3541,7 +3541,7 @@ app.post('/api/twilio/status', async (req, res) => {
     const { contactId, callId } = req.query;
     const { CallSid, CallStatus, CallDuration } = req.body;
 
-    console.log('ðŸ“ž Twilio status callback:', {
+    console.log(' Twilio status callback:', {
       contactId,
       callId,
       callSid: CallSid,
@@ -4695,14 +4695,14 @@ app.post('/api/twilio/voice', async (req, res) => {
     const { CallSid, From, To } = req.body;
     const { userId, campaignId, agentId, callId } = req.query;
 
-    console.log('ðŸ“ž ========== TWILIO VOICE WEBHOOK ==========');
+    console.log(' ========== TWILIO VOICE WEBHOOK ==========');
     console.log('   CallSid:', CallSid);
     console.log('   From:', From);
     console.log('   To:', To);
     console.log('   Query params:', { userId, campaignId, agentId, callId });
 
     if (!agentId) {
-      console.error('âŒ Missing agentId in voice webhook');
+      console.error('Missing agentId in voice webhook');
       const VoiceResponse = require('twilio').twiml.VoiceResponse;
       const response = new VoiceResponse();
       response.say("Configuration error. Agent not specified.");
@@ -4713,7 +4713,7 @@ app.post('/api/twilio/voice', async (req, res) => {
 
     let appUrl = getBackendUrl();
     if (!appUrl) {
-      console.error('âŒ APP_URL not configured!');
+      console.error('APP_URL not configured!');
       const VoiceResponse = require('twilio').twiml.VoiceResponse;
       const response = new VoiceResponse();
       response.say("Server configuration error.");
@@ -4757,7 +4757,7 @@ app.post('/api/twilio/voice', async (req, res) => {
 
     const twiml = response.toString();
 
-    console.log('ðŸ“„ Generated TwiML:');
+    console.log('„ Generated TwiML:');
     console.log(twiml);
     console.log('=============================================');
 
@@ -4803,7 +4803,7 @@ app.post('/api/twilio/callback', async (req, res) => {
     const { CallSid, CallStatus, CallDuration } = req.body;
     const { callId } = req.query;
 
-    console.log('ðŸ“Š Status callback:', { CallSid, CallStatus, CallDuration });
+    console.log('Š Status callback:', { CallSid, CallStatus, CallDuration });
 
     const statusMap = {
       'queued': 'initiated',
@@ -5351,7 +5351,7 @@ if (process.env.SARVAM_API_KEY && process.env.GEMINI_API_KEY) {
   );
   console.log(" MediaStreamHandler initialized with Sarvam STT + Gemini + OpenAI + Cost Tracking");
 } else {
-  console.warn(" Voice call feature disabled â€” missing SARVAM_API_KEY or GEMINI_API_KEY");
+  console.warn(" Voice call feature disabled” missing SARVAM_API_KEY or GEMINI_API_KEY");
 }
 // WebSocket endpoint for ElevenLabs STT
 app.ws('/api/stt', function (ws, req) {
@@ -6059,7 +6059,7 @@ async function processCampaignCalls(campaignId, userId, campaign, records) {
       app.use((req, res, next) => {
         const isWebSocket = req.headers.upgrade === 'websocket';
         if (isWebSocket || req.url.includes('/api/call') || req.url.includes('/api/twilio')) {
-          console.log(`ðŸ“¥ ${req.method} ${req.url}`, {
+          console.log(` ${req.method} ${req.url}`, {
             headers: {
               upgrade: req.headers.upgrade,
               connection: req.headers.connection,
@@ -6154,7 +6154,7 @@ app.get('/api/admin/migrate-schema', async (req, res) => {
         await mysqlPool.execute(query);
         results.push(` Executed: ${query}`);
       } catch (alterErr) {
-        results.push(`âŒ Failed: ${query} â€” ${alterErr.message}`);
+        results.push(`âŒ Failed: ${query}” ${alterErr.message}`);
       }
     }
 
@@ -6224,7 +6224,7 @@ app.put('/api/campaigns/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Campaign not found' });
     }
 
-    // Build dynamic UPDATE â€” only set columns that were provided
+    // Build dynamic UPDATE” only set columns that were provided
     const updates = [];
     const values = [];
 
@@ -6366,7 +6366,7 @@ app.post('/api/scheduled-calls/reschedule', async (req, res) => {
   }
 });
 
-// Get User Phone Numbers (from user_twilio_numbers) â€” for campaign dropdown
+// Get User Phone Numbers (from user_twilio_numbers)” for campaign dropdown
 app.get('/api/phone-numbers', async (req, res) => {
   try {
     const { userId } = req.query;
@@ -6564,7 +6564,7 @@ app.use((req, res, next) => {
   const isWebSocket = req.headers.upgrade === 'websocket';
 
   if (isWebSocket || req.url.includes('/api/call') || req.url.includes('/api/twilio')) {
-    console.log(`ðŸ“¥ ${req.method} ${req.url}`, {
+    console.log(` ${req.method} ${req.url}`, {
       headers: {
         upgrade: req.headers.upgrade,
         connection: req.headers.connection,

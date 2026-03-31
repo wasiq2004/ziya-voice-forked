@@ -186,7 +186,16 @@ class CampaignService {
                 'SELECT * FROM campaign_settings WHERE campaign_id = ?',
                 [campaignId]
             );
-            const campaignSettings = settings[0] || { call_interval_seconds: 10, retry_interval_seconds: 300 }; // Default retry interval 5 mins
+            const rawCampaignSettings = settings[0] || {};
+            const campaignSettings = {
+                ...rawCampaignSettings,
+                call_interval_seconds:
+                    rawCampaignSettings.call_interval_seconds ?? 10,
+                retry_interval_seconds:
+                    rawCampaignSettings.retry_interval_seconds ?? 300
+            };
+
+            const maxRetryAttempts = campaign.max_retry_attempts ?? 0;
 
             // Get concurrent calls limit (default to 2 if not set)
             const concurrentCallsLimit = campaign.concurrent_calls || 2;
@@ -195,9 +204,9 @@ class CampaignService {
             // Get contacts that are pending or eligible for retry
             const [contacts] = await this.mysqlPool.execute(
                 `SELECT * FROM campaign_contacts
-         WHERE campaign_id = ? AND (status = 'pending' OR (status = 'failed' AND retry_count < ? AND last_attempt_at < NOW() - INTERVAL ? SECOND))
+         WHERE campaign_id = ? AND (status = 'pending' OR (status = 'failed' AND attempts < ? AND last_attempt_at < NOW() - INTERVAL ? SECOND))
          ORDER BY created_at ASC`,
-                [campaignId, campaign.max_retry_attempts, campaignSettings.retry_interval_seconds]
+                [campaignId, maxRetryAttempts, campaignSettings.retry_interval_seconds]
             );
 
             console.log(`📋 Found ${contacts.length} contacts to call (including retries)`);
@@ -239,7 +248,7 @@ class CampaignService {
                             // Mark contact as failed immediately if call initiation fails
                             this.mysqlPool.execute(
                                 `UPDATE campaign_contacts
-                                 SET status = 'failed', error_message = ?, completed_at = NOW(), retry_count = retry_count + 1
+                                 SET status = 'failed', error_message = ?, completed_at = NOW()
                                  WHERE id = ?`,
                                 [error.message, contact.id]
                             ).catch(err => console.error('Error updating contact status after call initiation failure:', err));
@@ -393,10 +402,10 @@ class CampaignService {
         } catch (error) {
             console.error(`Error making call to ${contact.phone_number}:`, error);
 
-            // Mark contact as failed and increment retry_count
+            // Mark contact as failed
             await this.mysqlPool.execute(
                 `UPDATE campaign_contacts
-         SET status = 'failed', error_message = ?, completed_at = NOW(), retry_count = retry_count + 1
+         SET status = 'failed', error_message = ?, completed_at = NOW()
          WHERE id = ?`,
                 [error.message, contact.id]
             );
@@ -444,7 +453,7 @@ class CampaignService {
 
         const [contactsToRetry] = await this.mysqlPool.execute(
             `SELECT id FROM campaign_contacts
-       WHERE campaign_id = ? AND status = 'failed' AND retry_count < ?`,
+       WHERE campaign_id = ? AND status = 'failed' AND attempts < ?`,
             [campaignId, campaign[0].max_retry_attempts]
         );
 
@@ -657,7 +666,7 @@ class CampaignService {
             const campaignId = contact.campaign_id;
 
             // Determine if this contact needs a retry
-            const needsRetry = status === 'failed' && contact.retry_count < contact.max_retry_attempts;
+            const needsRetry = status === 'failed' && (contact.attempts || 0) < (contact.max_retry_attempts ?? 0);
 
             // Update campaign stats
             await this.mysqlPool.execute(
@@ -667,7 +676,7 @@ class CampaignService {
          failed_calls = failed_calls + IF(? = 'failed' AND ? = 0, 1, 0), -- Only count as failed if no more retries
          total_cost = total_cost + ?
          WHERE id = ?`,
-                [status, needsRetry ? 0 : 1, callCost, campaignId]
+                [status, status, needsRetry ? 0 : 1, callCost, campaignId]
             );
 
             // If it needs retry, update campaign status to 'retrying'

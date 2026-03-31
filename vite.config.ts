@@ -3,9 +3,6 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ command, mode }) => {
-  // Load environment variables from .env files
-  // Vite automatically loads .env and .env.{mode}
-  // For local development, .env.local is loaded automatically
   const env = loadEnv(mode || 'development', process.cwd(), '');
   
   return {

@@ -51,7 +51,7 @@ class MediaStreamHandler {
             agentPrompt,
             agentVoiceId: agentVoiceId || "21m00Tcm4TlvDq8ikWAM",
             agentModel: agentModel || "gemini-2.0-flash",
-            agentSettings: agentSettings,
+            agentSettings: agentSettings, 
             ws,
             streamSid: null,
             isReady: false,
