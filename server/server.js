@@ -6,6 +6,7 @@ const path = require('path');
 const mysqlPool = require('./config/database.js');
 const nodeFetch = require('node-fetch');
 const expressWs = require('express-ws');
+const { WebSocketServer } = require('ws');
 const { v4: uuidv4 } = require('uuid');
 const twilio = require('twilio');
 const fs = require('fs');
@@ -57,6 +58,49 @@ const expressWsInstance = expressWs(app, server, {
 });
 console.log(' WebSocket with skipUTF8Validation enabled');
 
+const twilioCallWss = new WebSocketServer({
+  noServer: true,
+  perMessageDeflate: false,
+  clientTracking: true,
+  maxPayload: 100 * 1024 * 1024,
+  skipUTF8Validation: true
+});
+
+server.on('upgrade', (req) => {
+  const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  if (requestUrl.pathname === '/api/call') {
+    console.log(' HTTP upgrade request received', {
+      url: req.url,
+      headers: {
+        upgrade: req.headers.upgrade,
+        connection: req.headers.connection,
+        host: req.headers.host,
+        'user-agent': req.headers['user-agent']?.substring(0, 80)
+      }
+    });
+  }
+});
+
+server.on('upgrade', (req, socket, head) => {
+  const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  if (requestUrl.pathname !== '/api/call') {
+    return;
+  }
+
+  if (!mediaStreamHandler) {
+    console.error('MediaStreamHandler not initialized - rejecting Twilio WebSocket upgrade');
+    socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  twilioCallWss.handleUpgrade(req, socket, head, (ws) => {
+    twilioCallWss.emit('connection', ws, req);
+  });
+});
+
 // ADD THIS BLOCK HERE:
 console.log('=== ENVIRONMENT CHECK ===');
 console.log('APP_URL:', config.APP_URL);
@@ -87,6 +131,16 @@ const organizationService = new OrganizationService(mysqlPool);
 const agentService = new AgentService(mysqlPool);
 
 // MediaStreamHandler will be initialized later in the file (see line ~2700)
+let mediaStreamHandler;
+
+twilioCallWss.on('connection', (ws, req) => {
+  if (mediaStreamHandler) {
+    mediaStreamHandler.handleConnection(ws, req);
+  } else {
+    console.error('MediaStreamHandler not initialized - closing Twilio WebSocket connection');
+    ws.close();
+  }
+});
 
 // Initialize Voice Sync Service
 const voiceSyncService = new VoiceSyncService(mysqlPool);
@@ -983,13 +1037,15 @@ app.get('/api/voice-config-check', (req, res) => {
   // Test WebSocket connection path
   app.get('/api/test-websocket-path', (req, res) => {
     const appUrl = config.APP_URL;
+    const twilioWsBaseUrl = process.env.TWILIO_WS_BASE_URL || process.env.BACKEND_WS_BASE_URL || appUrl;
     const websocketUrl = !appUrl
       ? 'NOT SET'
-      : buildBackendWsUrl('/call', appUrl);
+      : buildBackendWsUrl('/call', twilioWsBaseUrl);
 
     res.json({
       timestamp: new Date().toISOString(),
       appUrl: appUrl,
+      twilioWsBaseUrl,
       websocketUrl,
       expectedFormat: 'wss://your-domain.railway.app/api/call?callId=xxx&agentId=xxx&contactId=xxx',
       registeredEndpoints: {
@@ -4727,14 +4783,21 @@ app.post('/api/twilio/voice', async (req, res) => {
 
     // Twilio Media Streams expect a plain WebSocket URL.
     // Dynamic values are passed via nested <Parameter> elements instead.
+    // Allow a dedicated WS base URL so production can bypass a frontend proxy
+    // that does not forward WebSocket upgrades correctly.
     const actualCallId = callId || CallSid;
-    const streamUrl = buildBackendWsUrl('/call', appUrl);
+    const twilioWsBaseUrl = process.env.TWILIO_WS_BASE_URL || process.env.BACKEND_WS_BASE_URL || appUrl;
+    const normalizedTwilioWsBaseUrl = ensureHttpProtocol(twilioWsBaseUrl);
+    const streamUrl = buildBackendWsUrl('/call', normalizedTwilioWsBaseUrl);
     const streamStatusCallbackUrl =
       `${buildBackendUrl('/twilio/stream-status', appUrl)}?callId=${encodeURIComponent(actualCallId)}`;
     const streamFallbackUrl =
       `${buildBackendUrl('/twilio/stream-fallback', appUrl)}?callId=${encodeURIComponent(actualCallId)}`;
 
     console.log('🔗 WebSocket Stream URL:', streamUrl);
+    if (twilioWsBaseUrl !== appUrl) {
+      console.log('   Twilio WS base override:', normalizedTwilioWsBaseUrl);
+    }
     console.log('   CallSid:', CallSid);
     console.log('   agentId:', agentId);
     console.log('   userId:', userId);
@@ -5391,14 +5454,11 @@ if (process.env.SARVAM_API_KEY && process.env.GEMINI_API_KEY) {
 app.ws('/api/stt', function (ws, req) {
   elevenLabsStreamHandler.handleConnection(ws, req);
 })
-// WebSocket endpoint for Twilio Media Streams (Voice Agent)
-app.ws('/api/call', (ws, req) => {
-  if (mediaStreamHandler) {
-    mediaStreamHandler.handleConnection(ws, req);
-  } else {
-    console.error('MediaStreamHandler not initialized - check API keys');
-    ws.close();
-  }
+app.get('/api/call', (req, res) => {
+  res.status(426).json({
+    success: false,
+    message: 'This endpoint requires a WebSocket upgrade.'
+  });
 });
 // WebSocket endpoint for voice stream (frontend voice chat + Twilio calls)
 app.ws('/voice-stream', async function (ws, req) {  //  ADDED async
