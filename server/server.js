@@ -66,39 +66,89 @@ const twilioCallWss = new WebSocketServer({
   skipUTF8Validation: true
 });
 
-server.on('upgrade', (req) => {
+// ============ CONSOLIDATED WEBSOCKET UPGRADE HANDLER ============
+// CRITICAL: This is a SINGLE handler that consolidates what was previously two separate listeners
+// Reason: Multiple server.on('upgrade') listeners cause race conditions and conflicts
+server.on('upgrade', (req, socket, head) => {
   const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
-  if (requestUrl.pathname === '/api/call') {
-    console.log(' HTTP upgrade request received', {
-      url: req.url,
-      headers: {
-        upgrade: req.headers.upgrade,
-        connection: req.headers.connection,
-        host: req.headers.host,
-        'user-agent': req.headers['user-agent']?.substring(0, 80)
-      }
+  // Only process Twilio media stream upgrade requests
+  if (requestUrl.pathname !== '/api/call') {
+    console.log('⚠️  Non-call upgrade request ignored:', {
+      pathname: requestUrl.pathname,
+      host: req.headers.host,
+      method: req.method
     });
+    return;
+  }
+
+  console.log('🔄 WebSocket upgrade request for /api/call', {
+    timestamp: new Date().toISOString(),
+    clientIp,
+    headers: {
+      upgrade: req.headers.upgrade || 'MISSING',
+      connection: req.headers.connection || 'MISSING',
+      host: req.headers.host,
+      'sec-websocket-key': req.headers['sec-websocket-key'] ? 'PRESENT' : 'MISSING',
+      'user-agent': req.headers['user-agent']?.substring(0, 60)
+    }
+  });
+
+  try {
+    // ✅ Validate required WebSocket headers
+    if (req.headers.upgrade !== 'websocket' || !req.headers['sec-websocket-key']) {
+      console.error('❌ Invalid WebSocket headers - rejecting upgrade');
+      socket.write('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    // ✅ Check if MediaStreamHandler is initialized
+    if (!mediaStreamHandler) {
+      console.error('❌ MediaStreamHandler NOT initialized - rejecting upgrade', {
+        timestamp: new Date().toISOString(),
+        reason: 'Missing API keys (SARVAM_API_KEY or GEMINI_API_KEY)',
+        suggestion: 'Verify environment variables and restart server'
+      });
+      socket.write('HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nMediaStreamHandler not ready');
+      socket.destroy();
+      return;
+    }
+
+    // ✅ Handle the WebSocket upgrade
+    console.log('✅ Processing WebSocket upgrade via twilioCallWss.handleUpgrade()');
+    twilioCallWss.handleUpgrade(req, socket, head, (ws) => {
+      console.log('✅ WebSocket upgrade completed, emitting connection event');
+      twilioCallWss.emit('connection', ws, req);
+    });
+
+  } catch (error) {
+    console.error('❌ Error during WebSocket upgrade:', {
+      message: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+    try {
+      socket.write('HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n');
+    } catch (writeError) {
+      console.error('Failed to send error response to socket');
+    }
+    socket.destroy();
   }
 });
 
-server.on('upgrade', (req, socket, head) => {
-  const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-
-  if (requestUrl.pathname !== '/api/call') {
-    return;
-  }
-
-  if (!mediaStreamHandler) {
-    console.error('MediaStreamHandler not initialized - rejecting Twilio WebSocket upgrade');
-    socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
-    socket.destroy();
-    return;
-  }
-
-  twilioCallWss.handleUpgrade(req, socket, head, (ws) => {
-    twilioCallWss.emit('connection', ws, req);
+// ✅ Handle inbound socket connections (before they become WebSockets)
+server.on('clientError', (err, socket) => {
+  console.error('❌ Socket client error:', {
+    message: err.message,
+    code: err.code,
+    timeSinceCreation: err.timeSinceCreation
   });
+  if (socket.writable) {
+    socket.write('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
+  }
+  socket.destroy();
 });
 
 // ADD THIS BLOCK HERE:
@@ -133,13 +183,47 @@ const agentService = new AgentService(mysqlPool);
 // MediaStreamHandler will be initialized later in the file (see line ~2700)
 let mediaStreamHandler;
 
+// ✅ ENHANCED Connection Listener with Detailed Logging
 twilioCallWss.on('connection', (ws, req) => {
-  if (mediaStreamHandler) {
-    mediaStreamHandler.handleConnection(ws, req);
-  } else {
-    console.error('MediaStreamHandler not initialized - closing Twilio WebSocket connection');
-    ws.close();
+  const remoteIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  const connectionId = require('crypto').randomBytes(6).toString('hex');
+  
+  console.log(`🟢 [Conn: ${connectionId}] NEW WebSocket connection received`, {
+    timestamp: new Date().toISOString(),
+    remoteIp,
+    url: req.url,
+    mediaStreamHandlerReady: !!mediaStreamHandler
+  });
+
+  if (!mediaStreamHandler) {
+    console.error(`🔴 [Conn: ${connectionId}] MediaStreamHandler NOT initialized - closing connection`, {
+      reason: 'Missing API keys or handler initialization failed',
+      suggestion: 'Check server logs during startup for initialization errors'
+    });
+    ws.close(1011, 'Service temporarily unavailable');
+    return;
   }
+
+  try {
+    console.log(`✅ [Conn: ${connectionId}] Calling mediaStreamHandler.handleConnection()`);
+    mediaStreamHandler.handleConnection(ws, req);
+    console.log(`✅ [Conn: ${connectionId}] Connection successfully passed to mediaStreamHandler`);
+  } catch (error) {
+    console.error(`🔴 [Conn: ${connectionId}] Error in mediaStreamHandler.handleConnection():`, {
+      message: error.message,
+      stack: error.stack
+    });
+    ws.close(1011, 'Handler error');
+  }
+});
+
+// ✅ Handle WebSocket server errors
+twilioCallWss.on('error', (error) => {
+  console.error('🔴 WebSocket Server Error:', {
+    message: error.message,
+    code: error.code,
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Initialize Voice Sync Service
@@ -4900,7 +4984,7 @@ app.post('/api/twilio/callback', async (req, res) => {
     const { CallSid, CallStatus, CallDuration } = req.body;
     const { callId } = req.query;
 
-    console.log('Š Status callback:', { CallSid, CallStatus, CallDuration });
+    console.log('Status callback:', { CallSid, CallStatus, CallDuration });
 
     const statusMap = {
       'queued': 'initiated',
@@ -6669,9 +6753,88 @@ app.use((req, res, next) => {
   next();
 });
 
+// ============ PRE-SERVER STARTUP VERIFICATION ============
+console.log('\n🔍 === PRE-SERVER STARTUP VERIFICATION ===');
+
+const preStartupChecks = {
+  timestamp: new Date().toISOString(),
+  checks: {
+    sarvamApiKey: !!process.env.SARVAM_API_KEY,
+    geminiApiKey: !!process.env.GEMINI_API_KEY,
+    elevenLabsApiKey: !!process.env.ELEVEN_LABS_API_KEY,
+    appUrl: !!config.APP_URL,
+    mediaStreamHandlerInitialized: !!mediaStreamHandler,
+    twilioCallWssCreated: !!twilioCallWss,
+    portConfigured: !!PORT
+  }
+};
+
+// Log each check
+Object.entries(preStartupChecks.checks).forEach(([key, value]) => {
+  const status = value ? '✅' : '❌';
+  console.log(`${status} ${key}: ${value}`);
+});
+
+// Check if all critical services are ready
+const allCriticalReady = 
+  preStartupChecks.checks.sarvamApiKey &&
+  preStartupChecks.checks.geminiApiKey &&
+  preStartupChecks.checks.mediaStreamHandlerInitialized &&
+  preStartupChecks.checks.twilioCallWssCreated;
+
+if (!allCriticalReady) {
+  console.warn('⚠️  WARNING: Some critical services are not ready. Voice calls may fail.');
+  console.warn('   Missing:', 
+    Object.entries(preStartupChecks.checks)
+      .filter(([_, val]) => !val)
+      .map(([key]) => key)
+      .join(', ')
+  );
+} else {
+  console.log('✅ All critical services are ready for voice calls');
+}
+console.log('🔍 === END VERIFICATION ===\n');
+
+// ============ DIAGNOSTIC ENDPOINT ============
+// This endpoint helps verify WebSocket connectivity and handler readiness
+app.get('/api/websocket-test', (req, res) => {
+  const diagnostics = {
+    timestamp: new Date().toISOString(),
+    websocket: {
+      twilioCallWssCreated: !!twilioCallWss,
+      twilioCallWssConnections: twilioCallWss ? twilioCallWss.clients?.size || 0 : 0
+    },
+    handler: {
+      mediaStreamHandlerInitialized: !!mediaStreamHandler,
+      mediaStreamHandlerHasMethod: !!mediaStreamHandler?.handleConnection
+    },
+    apiKeys: {
+      sarvam: !!process.env.SARVAM_API_KEY,
+      gemini: !!process.env.GEMINI_API_KEY,
+      elevenLabs: !!process.env.ELEVEN_LABS_API_KEY,
+      deepgram: !!process.env.DEEPGRAM_API_KEY
+    },
+    server: {
+      port: PORT,
+      appUrl: config.APP_URL,
+      nodeEnv: process.env.NODE_ENV || 'development',
+      uptime: process.uptime()
+    },
+    websocketUpgradeHandlerRegistered: true,
+    connectionListenerRegistered: true,
+    status: (!!mediaStreamHandler && !!twilioCallWss) ? 'READY ✅' : 'NOT READY ❌'
+  };
+
+  res.json(diagnostics);
+});
+
   // Start server and bind to 0.0.0.0 for Railway
   server.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n🚀 === SERVER STARTED ===`);
     console.log(`Server listening on port ${PORT}`);
     console.log(`Frontend URL: ${FRONTEND_URL}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`WebSocket endpoint: /api/call`);
+    console.log(`Diagnostic endpoint: /api/websocket-test`);
+    console.log(`🚀 === SERVER READY ===\n`);
   });
