@@ -4,6 +4,11 @@ const WalletService = require('./walletService.js');
 const CostCalculator = require('./costCalculator.js');
 const SarvamSttService = require('./sarvamSttService.js');
 
+const TWILIO_MULAW_BYTES_PER_20MS = 160;
+const TWILIO_CHUNK_DELAY_MS = Number(process.env.TWILIO_CHUNK_DELAY_MS || 20);
+const SESSION_TTL_MS = Number(process.env.MEDIA_SESSION_TTL_MS || 30 * 60 * 1000);
+const SESSION_CLEANUP_INTERVAL_MS = Number(process.env.MEDIA_SESSION_CLEANUP_INTERVAL_MS || 60 * 1000);
+
 // Precompute mu-law to linear PCM table for fast VAD
 const MU_LAW_TO_PCM = new Int16Array(256);
 for (let i = 0; i < 256; i++) {
@@ -34,15 +39,222 @@ class MediaStreamHandler {
             this.walletService = new WalletService(mysqlPool);
             this.costCalculator = new CostCalculator(mysqlPool, this.walletService);
         }
+        this.startSessionCleanupCycle();
         console.log('✅ MediaStreamHandler initialized (Sarvam STT)');
     }
 
     // ✅ FIX: Method to get fresh API key each time
+    startSessionCleanupCycle() {
+        if (MediaStreamHandler.cleanupInterval) {
+            return;
+        }
+        MediaStreamHandler.cleanupInterval = setInterval(() => {
+            this.cleanupExpiredSessions();
+        }, SESSION_CLEANUP_INTERVAL_MS);
+
+        if (typeof MediaStreamHandler.cleanupInterval.unref === 'function') {
+            MediaStreamHandler.cleanupInterval.unref();
+        }
+
+        console.log(`[MediaStream] Session cleanup enabled (ttl=${SESSION_TTL_MS}ms, interval=${SESSION_CLEANUP_INTERVAL_MS}ms)`);
+    }
+
+    cleanupExpiredSessions() {
+        const now = Date.now();
+
+        for (const [callId, session] of sessions.entries()) {
+            const lastActivityAt = session.lastActivityAt || session.createdAt || now;
+            const ageMs = now - lastActivityAt;
+
+            if (ageMs <= SESSION_TTL_MS) {
+                continue;
+            }
+
+            console.warn(`⚠️ [${callId}] Cleaning up stale session after ${ageMs}ms of inactivity`, {
+                createdAt: new Date(session.createdAt || now).toISOString(),
+                lastActivityAt: new Date(lastActivityAt).toISOString(),
+                isReady: session.isReady,
+                streamSidPresent: !!session.streamSid
+            });
+
+            try {
+                if (session.ws && session.ws.readyState === 1) {
+                    session.ws.close(1001, 'Session expired');
+                }
+            } catch (error) {
+                console.error(`❌ [${callId}] Failed to close stale WebSocket:`, error.message);
+            }
+
+            this.endSession(callId);
+        }
+    }
+
+    touchSession(session, reason = 'activity') {
+        if (!session) {
+            return;
+        }
+
+        session.lastActivityAt = Date.now();
+        session.lastActivityReason = reason;
+    }
+
+    clearMarkTimeout(session) {
+        if (session?.markTimeout) {
+            clearTimeout(session.markTimeout);
+            session.markTimeout = null;
+        }
+    }
+
+    finalizeAudioPlayback(session, reason) {
+        if (!session) {
+            return;
+        }
+
+        this.clearMarkTimeout(session);
+        session.pendingMarkName = null;
+        session.isSpeaking = false;
+        session.isSendingAudio = false;
+        this.touchSession(session, `audio:${reason}`);
+
+        if (session.audioQueue.length > 0 && !session.isCancelled) {
+            setTimeout(() => this.processNextAudioInQueue(session), 0);
+        }
+    }
+
+    processNextAudioInQueue(session) {
+        if (!session || session.isSendingAudio || !session.isReady || !session.streamSid) {
+            return;
+        }
+
+        if (!session.ws || session.ws.readyState !== 1) {
+            console.warn(`⚠️ [${session.callId}] Cannot send audio - WebSocket is not open`);
+            return;
+        }
+
+        const audioBuffer = session.audioQueue.shift();
+        if (!audioBuffer || audioBuffer.length === 0) {
+            return;
+        }
+
+        const totalChunks = Math.ceil(audioBuffer.length / TWILIO_MULAW_BYTES_PER_20MS);
+        let offset = 0;
+        let chunksSent = 0;
+
+        session.isSendingAudio = true;
+        session.isSpeaking = true;
+        this.touchSession(session, 'audio:start');
+
+        console.log(`🎵 [${session.callId}] Starting Twilio audio playback`, {
+            streamSid: session.streamSid,
+            bytes: audioBuffer.length,
+            totalChunks,
+            chunkDelayMs: TWILIO_CHUNK_DELAY_MS,
+            firstBytesHex: audioBuffer.slice(0, 16).toString('hex')
+        });
+
+        const sendNextChunk = () => {
+            if (!session.isSendingAudio || !session.isSpeaking || session.isCancelled) {
+                console.log(`🛑 [${session.callId}] Audio playback stopped early`, {
+                    isSendingAudio: session.isSendingAudio,
+                    isSpeaking: session.isSpeaking,
+                    isCancelled: session.isCancelled,
+                    chunksSent,
+                    totalChunks
+                });
+                return;
+            }
+
+            if (!session.ws || session.ws.readyState !== 1) {
+                console.warn(`⚠️ [${session.callId}] WebSocket closed during audio playback`);
+                this.finalizeAudioPlayback(session, 'ws-closed');
+                return;
+            }
+
+            if (offset >= audioBuffer.length) {
+                const expectedPlaybackMs = totalChunks * TWILIO_CHUNK_DELAY_MS;
+                const markName = `audio_end_${Date.now()}`;
+                session.pendingMarkName = markName;
+
+                console.log(`✅ [${session.callId}] Finished sending audio`, {
+                    chunksSent,
+                    totalChunks,
+                    bytes: audioBuffer.length,
+                    expectedPlaybackMs,
+                    markName
+                });
+
+                try {
+                    session.ws.send(JSON.stringify({
+                        event: "mark",
+                        streamSid: session.streamSid,
+                        mark: { name: markName },
+                    }));
+                } catch (err) {
+                    console.error(`❌ [${session.callId}] Failed to send mark:`, err.message);
+                    this.finalizeAudioPlayback(session, 'mark-send-failed');
+                    return;
+                }
+
+                this.clearMarkTimeout(session);
+                session.markTimeout = setTimeout(() => {
+                    console.warn(`⚠️ [${session.callId}] Mark timeout after audio playback`, {
+                        markName,
+                        expectedPlaybackMs
+                    });
+                    this.finalizeAudioPlayback(session, 'mark-timeout');
+                }, expectedPlaybackMs + 1500);
+
+                return;
+            }
+
+            const chunkBuffer = audioBuffer.slice(offset, offset + TWILIO_MULAW_BYTES_PER_20MS);
+            try {
+                session.ws.send(JSON.stringify({
+                    event: "media",
+                    streamSid: session.streamSid,
+                    media: { payload: chunkBuffer.toString('base64') },
+                }));
+                chunksSent += 1;
+                this.touchSession(session, 'audio:chunk');
+            } catch (err) {
+                console.error(`❌ [${session.callId}] Failed to send chunk ${chunksSent + 1}:`, err.message);
+                this.finalizeAudioPlayback(session, 'chunk-send-failed');
+                return;
+            }
+
+            offset += TWILIO_MULAW_BYTES_PER_20MS;
+            setTimeout(sendNextChunk, TWILIO_CHUNK_DELAY_MS);
+        };
+
+        sendNextChunk();
+    }
+
+    flushQueuedAudio(session, reason = 'flush') {
+        if (!session) {
+            return;
+        }
+
+        console.log(`📦 [${session.callId}] Checking queued audio`, {
+            reason,
+            queueDepth: session.audioQueue.length,
+            isReady: session.isReady,
+            streamSidPresent: !!session.streamSid,
+            isSendingAudio: session.isSendingAudio
+        });
+
+        if (!session.isReady || !session.streamSid || session.isSendingAudio || session.audioQueue.length === 0) {
+            return;
+        }
+
+        this.processNextAudioInQueue(session);
+    }
+
     getElevenLabsApiKey() {
         return process.env.ELEVEN_LABS_API_KEY;
     }
 
     createSession(callId, agentPrompt, agentVoiceId, ws, userId = null, agentId = null, agentModel = null, agentSettings = null, contactId = null, campaignId = null) {
+        const now = Date.now();
         const session = {
             callId,
             contactId,
@@ -57,12 +269,16 @@ class MediaStreamHandler {
             isReady: false,
             audioQueue: [],
             isSpeaking: false,
+            isSendingAudio: false,
             isCancelled: false,   // Fix 1 & 3: tracks whether the current LLM turn was interrupted
             lastUserSpeechTime: null,
             isProcessing: false,
             userId: userId,
             agentId: agentId,
             startTime: new Date(),
+            createdAt: now,
+            lastActivityAt: now,
+            markTimeout: null,
             // Sarvam STT Buffering & VAD
             audioBuffer: [],
             speechDetectedInChunk: false,
@@ -85,6 +301,7 @@ class MediaStreamHandler {
     async endSession(callId) {
         const session = sessions.get(callId);
         if (session) {
+            this.clearMarkTimeout(session);
             // Execute tools marked to run after call
             if (session.tools && session.tools.length > 0 && session.agentId) {
                 const afterCallTools = session.tools.filter(tool => tool.runAfterCall);
@@ -153,6 +370,7 @@ class MediaStreamHandler {
             if (session.silenceTimer) {
                 clearTimeout(session.silenceTimer);
             }
+            session.audioQueue = [];
             session.audioBuffer = [];
             sessions.delete(callId);
             console.log(`❌ Ended session for call ${callId}`);
@@ -167,284 +385,229 @@ class MediaStreamHandler {
     async handleConnection(ws, req) {
         let callId = null;
         let agentId = null;
+        let userId = null;
         let session = null;
 
         try {
-            console.log(`📞 WebSocket connection initiated from handleConnection`);
+            console.log(`📞 [NEW] WebSocket connection from Twilio (awaiting start event)`);
 
-            // Extract from query params as fallback (for non-Twilio or early identification)
-            const queryParams = require('url').parse(req.url, true).query;
-            let queryCallId = queryParams.callId;
-            let queryAgentId = queryParams.agentId;
-            let queryUserId = queryParams.userId;
-            let queryContactId = queryParams.contactId;
-            let queryCampaignId = queryParams.campaignId;
+            // ✅ DO NOT CLOSE THE CONNECTION - wait for start event from Twilio
+            let eventReceived = false;
 
-            // ✅ Set up error handler FIRST before any other operations
+            // ✅ Set up error handler FIRST
             ws.on("error", (error) => {
-                // Ignore UTF-8 errors from binary frames (Twilio sends binary audio data)
-                if (error.code === 'WS_ERR_INVALID_UTF8' ||
-                    error.message?.includes('invalid UTF-8') ||
-                    error.message?.includes('Invalid WebSocket frame')) {
-                    console.log("⚠️  Ignoring binary frame error (normal for audio data)");
-                    return; // Don't crash
+                if (error.code === 'WS_ERR_INVALID_UTF8' || error.message?.includes('invalid UTF-8') || error.message?.includes('Invalid WebSocket frame')) {
+                    // Normal - binary audio, ignore
+                    return;
                 }
-                console.error("❌ WebSocket error:", error);
+                console.error(`❌ [${callId || 'CONN'}] WebSocket error:`, error.message);
             });
 
+            // ✅ Main message handler
             ws.on("message", async (message) => {
                 try {
                     let data;
 
-                    // ✅ CRITICAL: Handle binary messages from Twilio
+                    // Try to parse as JSON (Twilio events)
                     if (Buffer.isBuffer(message)) {
-                        // Binary message - try to parse as JSON first
                         try {
-                            const messageStr = message.toString('utf8');
-                            data = JSON.parse(messageStr);
+                            data = JSON.parse(message.toString('utf8'));
                         } catch (e) {
-                            // Not JSON - could be raw audio, ignore
+                            // Binary data - handle as audio IF session exists
+                            if (session?.isReady) {
+                                this.handleIncomingAudio(session, message);
+                            }
                             return;
                         }
                     } else if (typeof message === 'string') {
-                        // String message - parse as JSON
-                        data = JSON.parse(message);
-                    } else {
-                        // Unknown message type
+                        try {
+                            data = JSON.parse(message);
+                        } catch (e) {
+                            return;
+                        }
+                    }
+
+                    if (!data || !data.event) {
                         return;
                     }
 
-                    // ✅ Get parameters from Twilio "start" event
+                    // ✅ CRITICAL: Handle "start" event - this is where Twilio sends parameters!
                     if (data.event === "start") {
-                        console.log("▶️  Media Stream START event received");
+                        if (eventReceived) return; // Ignore duplicate start events
+                        eventReceived = true;
 
-                        // Extract parameters from start event
-                        const streamParams = data.start?.customParameters || {};
-                        callId = streamParams.callId || queryCallId || data.start?.callSid;
-                        agentId = streamParams.agentId || queryAgentId;
-                        const userId = streamParams.userId || queryUserId;
-                        const contactId = streamParams.contactId || queryContactId;
-                        const campaignId = streamParams.campaignId || queryCampaignId;
+                        console.log(`🚀 [*] TWILIO START EVENT received`);
 
-                        console.log(`📞 Call ID: ${callId}`);
-                        console.log(`🤖 Agent ID: ${agentId}`);
-                        console.log(`👤 User ID: ${userId}`);
-                        if (contactId) console.log(`🧑‍💼 Contact ID: ${contactId}`);
+                        // ✅ Extract parameters from Twilio's customParameters
+                        const customParams = data.start?.customParameters || {};
+                        callId = customParams.callId;
+                        agentId = customParams.agentId;
+                        userId = customParams.userId;
+                        const contactId = customParams.contactId;
+                        const campaignId = customParams.campaignId;
+                        const streamSid = data.start?.streamSid;
 
-                        if (!callId) {
-                            console.error("❌ No callId found in start event or query params");
-                            ws.close();
+                        console.log(`📋 [${callId}] Received parameters:`, {
+                            callId, agentId, userId, contactId, campaignId, streamSidPresent: !!streamSid
+                        });
+
+                        // ✅ Validate we have minimum required parameters
+                        if (!callId || !agentId || !userId || !streamSid) {
+                            console.error(`❌ [${callId}] Missing required parameters from Twilio start event`);
+                            console.error('Missing start-event fields:', {
+                                hasCallId: !!callId,
+                                hasAgentId: !!agentId,
+                                hasUserId: !!userId,
+                                hasStreamSid: !!streamSid,
+                                startPayloadKeys: Object.keys(data.start || {})
+                            });
+                            ws.close(1008, 'Missing required stream parameters');
                             return;
                         }
 
-                        // Load agent configuration
-                        let agentPrompt = "You are a helpful AI assistant.";
-                        let agentVoiceId = "21m00Tcm4TlvDq8ikWAM"; // Default voice
-                        let agentModel = "gemini-2.0-flash"; // Default model
+                        // ✅ Load agent configuration
+                        let agentPrompt = "You are a helpful AI voice assistant. Keep responses concise and natural for phone conversations.";
+                        let agentVoiceId = "21m00Tcm4TlvDq8ikWAM"; // Default ElevenLabs voice
+                        let agentModel = "gemini-2.0-flash"; // Default Gemini model
                         let greetingMessage = "Hello! How can I help you today?";
                         let tools = [];
-                        let agent = null; // Declare agent outside the if block
 
-                        if (agentId) {
-                            try {
-                                const AgentService = require('./agentService.js');
-                                const agentService = new AgentService(require('../config/database.js').default);
+                        try {
+                            const AgentService = require('./agentService.js');
+                            const agentService = new AgentService(require('../config/database.js').default);
 
-                                console.log(`🔍 Fetching agent from database: userId=${userId}, agentId=${agentId}`);
-                                agent = await agentService.getAgentById(userId, agentId);
-                                console.log(`📋 Agent query result:`, agent ? `Found: ${agent.name}` : 'NOT FOUND');
+                            console.log(`🔍 [${callId}] Loading agent ${agentId} for user ${userId}`);
+                            const agent = await agentService.getAgentById(userId, agentId);
 
-                                if (agent) {
-                                    console.log(`📊 Agent details:`, {
-                                        name: agent.name,
-                                        voiceId: agent.voiceId,
-                                        hasIdentity: !!agent.identity,
-                                        hasGreeting: !!agent.settings?.greetingLine
-                                    });
+                            if (agent) {
+                                console.log(`✅ [${callId}] Agent loaded: "${agent.name}"`);
+                                agentPrompt = agent.identity || agentPrompt;
+                                agentVoiceId = agent.voiceId || agentVoiceId;
+                                agentModel = agent.model || agentModel;
+                                greetingMessage = agent.settings?.greetingLine || greetingMessage;
 
-                                    agentPrompt = agent.identity || agentPrompt;
-
-                                    // Process Tools
-                                    if (agent.settings && agent.settings.tools && agent.settings.tools.length > 0) {
-                                        tools = agent.settings.tools;
-                                        const toolDescriptions = tools.map(tool =>
-                                            `- ${tool.name}: ${tool.description} (Parameters: ${tool.parameters?.map(p => `${p.name} (${p.type})${p.required ? ' [required]' : ''}`).join(', ') || 'None'})`
-                                        ).join('\n');
-
-                                        agentPrompt += `\n\nAvailable Tools:\n${toolDescriptions}\n\nWhen you need to collect information from the user, ask for the required parameters. When all required information is collected, respond with a JSON object in the format: {"tool": "tool_name", "data": {"param1": "value1", "param2": "value2"}}. Do NOT add any other text before or after the JSON.`;
-                                    }
-
-                                    // ✅ CRITICAL: Use the voice ID directly from database
-                                    if (agent.voiceId) {
-                                        agentVoiceId = agent.voiceId;
-                                        console.log(`🎤 Using agent voice ID from database: ${agentVoiceId}`);
-                                    } else {
-                                        console.warn(`⚠️  Agent has no voiceId, using default: ${agentVoiceId}`);
-                                    }
-
-                                    // ✅ CRITICAL: Use the model directly from database
-                                    if (agent.model) {
-                                        agentModel = agent.model;
-                                        console.log(`🤖 Using agent model from database: ${agentModel}`);
-                                    } else {
-                                        console.warn(`⚠️  Agent has no model, using default: ${agentModel}`);
-                                    }
-
-                                    if (agent.settings?.greetingLine) {
-                                        greetingMessage = agent.settings.greetingLine;
-                                        console.log(`👋 Using custom greeting: "${greetingMessage}"`);
-                                    } else {
-                                        console.log(`👋 Using default greeting: "${greetingMessage}"`);
-                                    }
-                                    console.log(`✅ Loaded agent: ${agent.name} with ${tools.length} tools`);
-                                    console.log(`   Voice ID: ${agentVoiceId}`);
-                                    console.log(`   Prompt: ${agentPrompt.substring(0, 100)}...`);
-                                } else {
-                                    console.error(`❌ Agent ${agentId} not found in database for userId ${userId}`);
-                                    console.warn(`⚠️  Using defaults: voice=${agentVoiceId}, greeting="${greetingMessage}"`);
+                                if (agent.settings?.tools && agent.settings.tools.length > 0) {
+                                    tools = agent.settings.tools;
+                                    console.log(`🔧 [${callId}] ${tools.length} tools available`);
                                 }
+                            } else {
+                                console.warn(`⚠️  [${callId}] Agent not found, using defaults`);
+                            }
+                        } catch (err) {
+                            console.error(`⚠️  [${callId}] Error loading agent:`, err.message);
+                        }
+
+                        // ✅ Check wallet balance
+                        if (this.walletService) {
+                            try {
+                                const balanceCheck = await this.walletService.checkBalanceForCall(userId, 0.10);
+                                if (!balanceCheck.allowed) {
+                                    console.error(`❌ [${callId}] Insufficient balance`);
+                                    ws.close(1008, 'Insufficient balance');
+                                    return;
+                                }
+                                console.log(`✅ [${callId}] Balance OK: $${balanceCheck.balance.toFixed(2)}`);
                             } catch (err) {
-                                console.error("⚠️  Error loading agent:", err.message);
+                                console.error(`❌ [${callId}] Balance check error:`, err.message);
                             }
-                        } else {
-                            console.log(`ℹ️  No agentId provided, using default voice: ${agentVoiceId}`);
                         }
 
-                        // Check user balance before starting call
-                        if (userId && this.walletService) {
-                            const balanceCheck = await this.walletService.checkBalanceForCall(userId, 0.10);
-                            if (!balanceCheck.allowed) {
-                                console.error(`❌ Insufficient balance for user ${userId}: ${balanceCheck.message}`);
-                                // Send error to Twilio and close connection
-                                ws.send(JSON.stringify({
-                                    event: 'error',
-                                    message: balanceCheck.message
-                                }));
-                                ws.close();
-                                return;
-                            }
-                            console.log(`✅ Balance check passed: $${balanceCheck.balance.toFixed(4)}`);
-                        }
-
-                        // Map agent language to Sarvam language codes
-                        const languageMap = {
-                            'ENGLISH': 'en-IN',
-                            'HINDI': 'hi-IN',
-                            'TAMIL': 'ta-IN',
-                            'TELUGU': 'te-IN',
-                            'KANNADA': 'kn-IN',
-                            'MALAYALAM': 'ml-IN',
-                            'BENGALI': 'bn-IN',
-                            'MARATHI': 'mr-IN',
-                            'GUJARATI': 'gu-IN',
-                            'PUNJABI': 'pa-IN'
-                        };
-
-                        // Get language from agent or default to English
-                        const agentLanguage = agent?.language || 'ENGLISH';
-                        const sarvamLanguage = languageMap[agentLanguage] || 'en-IN';
-                        console.log(`🌐 Using language: ${agentLanguage} (Sarvam: ${sarvamLanguage})`);
-
-                        session = this.createSession(callId, agentPrompt, agentVoiceId, ws, userId, agentId, agentModel, agent?.settings, contactId, campaignId);
-                        session.tools = tools;
-                        session.language = agentLanguage;
-                        session.greetingMessage = greetingMessage;
-                        session.streamSid = data.start.streamSid;
+                        // ✅ CREATE SESSION - session is NOW ready!
+                        session = this.createSession(
+                            callId, agentPrompt, agentVoiceId, ws, userId, agentId, agentModel,
+                            { tools }, contactId, campaignId
+                        );
+                        session.streamSid = streamSid;
                         session.isReady = true;
+                        session.tools = tools;
+                        session.greetingMessage = greetingMessage;
+                        this.touchSession(session, 'twilio:start');
+                        this.flushQueuedAudio(session, 'start-event');
 
-                        // ✅ Twilio keep-alive: Send silence immediately
-                        if (session.isReady && session.streamSid) {
-                            const silenceBuffer = Buffer.alloc(160, 0xFF);
-                            const base64Silence = silenceBuffer.toString('base64');
-                            for (let i = 0; i < 5; i++) {
-                                session.ws.send(JSON.stringify({
-                                    event: "media",
-                                    streamSid: session.streamSid,
-                                    media: { payload: base64Silence }
-                                }));
-                            }
-                        }
+                        console.log(`🎉 [${callId}] SESSION INITIALIZED - Ready for real-time voice!`);
 
-                        // ✅ Process any queued audio that was buffered before stream was ready
-                        if (session.audioQueue.length > 0) {
-                            console.log(`📤 Processing ${session.audioQueue.length} queued audio buffers`);
-                            const queuedBuffers = session.audioQueue.splice(0);
-                            for (const buffer of queuedBuffers) {
-                                this.sendAudioToTwilio(session, buffer);
-                            }
-                        }
-
-                        // Send greeting
+                        // ✅ Send initial greeting
                         setTimeout(async () => {
                             try {
-                                const audio = await this.synthesizeTTS(session.greetingMessage, session.agentVoiceId, session);
-                                if (audio && audio.length > 0) {
-                                    this.sendAudioToTwilio(session, audio);
-                                } else {
-                                    console.warn("⚠️  Greeting TTS produced empty audio");
+                                console.log(`🎤 [${callId}] === GREETING SYNTHESIS START ===`);
+                                console.log(`🎤 [${callId}] Text: "${greetingMessage}"`);
+                                console.log(`🎤 [${callId}] Voice ID: "${agentVoiceId}"`);
+                                console.log(`🎤 [${callId}] Session ready: ${session.isReady}`);
+                                console.log(`🎤 [${callId}] StreamSid: ${session.streamSid ? '✅' : '❌'}`);
+
+                                const greetingAudio = await this.synthesizeTTS(greetingMessage, agentVoiceId, session);
+
+                                if (!greetingAudio) {
+                                    console.error(`❌ [${callId}] TTS returned null!`);
+                                    return;
                                 }
+
+                                console.log(`✅ [${callId}] TTS synthesis complete:`, {
+                                    audioSize: greetingAudio.length,
+                                    audioType: Buffer.isBuffer(greetingAudio) ? 'Buffer' : typeof greetingAudio,
+                                    firstBytes: greetingAudio.slice(0, 20).toString('hex')
+                                });
+
+                                if (greetingAudio.length === 0) {
+                                    console.error(`❌ [${callId}] TTS returned empty buffer!`);
+                                    return;
+                                }
+
+                                console.log(`📤 [${callId}] Sending greeting audio (${greetingAudio.length} bytes) to user via Twilio`);
+                                this.sendAudioToTwilioSafe(session, greetingAudio);
+                                console.log(`✅ [${callId}] Greeting sent successfully`);
+
                             } catch (err) {
-                                console.error("❌ Greeting error:", err);
-                                // Send a fallback message
-                                try {
-                                    const fallbackAudio = await this.synthesizeTTS("Hello", session.agentVoiceId, session);
-                                    if (fallbackAudio && fallbackAudio.length > 0) {
-                                        this.sendAudioToTwilio(session, fallbackAudio);
-                                    }
-                                } catch (fallbackErr) {
-                                    console.error("❌ Fallback greeting error:", fallbackErr);
-                                }
+                                console.error(`❌ [${callId}] Greeting error:`, {
+                                    message: err.message,
+                                    stack: err.stack
+                                });
                             }
-                        }, 800);
+                        }, 300);
 
-                    } else if (data.event === "connected") {
-                        console.log("✅ Twilio connected");
-
-                    } else if (data.event === "media") {
-                        if (session?.isReady && data.media?.payload) {
+                    } else if (data.event === "media" && session?.isReady) {
+                        // ✅ Real-time audio from user - process immediately (no buffering)
+                        if (data.media?.payload) {
+                            this.touchSession(session, 'twilio:media');
                             const audioBuffer = Buffer.from(data.media.payload, "base64");
                             this.handleIncomingAudio(session, audioBuffer);
                         }
 
+                    } else if (data.event === "connected") {
+                        console.log(`✅ [${callId}] Twilio stream connected`);
+
                     } else if (data.event === "stop") {
-                        console.log("⏹️  Stream stopped");
+                        console.log(`⏹️  [${callId}] Twilio stopped stream`);
                         if (callId) this.endSession(callId);
 
                     } else if (data.event === "mark") {
-                        const markName = data.mark?.name;
-                        console.log("📍 Mark:", markName);
-                        // Fix 5: Use Twilio's mark event to accurately track when audio finishes playing
-                        if (markName === session?.pendingMarkName) {
-                            session.isSpeaking = false;
-                            session.pendingMarkName = null;
-                            console.log(`✅ Audio playback confirmed complete by Twilio mark: ${markName}`);
+                        if (data.mark?.name === session?.pendingMarkName) {
+                            console.log(`Received Twilio playback mark for ${callId}: ${data.mark?.name}`);
+                            this.finalizeAudioPlayback(session, 'mark-received');
                         }
                     }
 
                 } catch (err) {
-                    // Only log real errors
-                    if (!err.message?.includes('JSON') && !err.message?.includes('Unexpected')) {
-                        console.error("❌ Message processing error:", err);
-                    }
+                    console.error(`❌ [${callId}] Message handler error:`, err.message);
                 }
             });
 
-            ws.on("close", () => {
-                console.log("🔌 WebSocket closed");
+            // ✅ Close handler
+            ws.on("close", (code, reasonBuffer) => {
+                console.log(`🔌 [${callId}] WebSocket closed`);
+                const reason = reasonBuffer ? reasonBuffer.toString() : '';
+                console.log('Twilio WebSocket close details:', { callId, code, reason });
                 if (callId) this.endSession(callId);
             });
 
-            console.log("✅ WebSocket handlers registered and ready");
+            console.log(`✅ WebSocket ready - waiting for Twilio "start" event...`);
 
         } catch (err) {
-            console.error("❌ Connection setup error:", err);
-            try {
-                ws.close();
-            } catch (closeErr) {
-                // Ignore close errors
-            }
+            console.error(`❌ handleConnection error:`, err.message);
+            ws.close(1011, 'Internal server error');
         }
     }
+
     async callLLM(session) {
         // Fix 6: LLM_TIMEOUT_MS — if Gemini does not complete within this window,
         // we abort and return a graceful fallback. Prevents indefinite silence on API hangs.
@@ -588,7 +751,7 @@ class MediaStreamHandler {
             const ttsAudio = await this.synthesizeTTS(text, session.agentVoiceId, session);
             // Re-check after the async TTS call (user may have interrupted while TTS was generating)
             if (ttsAudio && !session.isCancelled) {
-                this.sendAudioToTwilio(session, ttsAudio);
+                this.sendAudioToTwilioSafe(session, ttsAudio);
             } else if (session.isCancelled) {
                 console.log(`🚫 Discarding stale TTS audio (turn was cancelled during synthesis): "${text.substring(0, 40)}..."`);
             }
@@ -632,48 +795,190 @@ class MediaStreamHandler {
         }
     }
 
+    sendAudioToTwilioSafe(session, audioBuffer) {
+        try {
+            if (!audioBuffer || audioBuffer.length === 0) {
+                console.error(`Empty audio buffer for call ${session.callId}`);
+                return;
+            }
+
+            session.audioQueue.push(audioBuffer);
+            this.touchSession(session, 'audio:queued');
+
+            if (!session.isReady) {
+                console.warn(`Audio queued for ${session.callId}: session not ready`);
+                return;
+            }
+
+            if (!session.streamSid) {
+                console.warn(`Audio queued for ${session.callId}: streamSid missing`);
+                return;
+            }
+
+            if (session.isSendingAudio) {
+                console.log(`Audio already in progress for ${session.callId}; queue depth=${session.audioQueue.length}`);
+                return;
+            }
+
+            const nextAudioBuffer = session.audioQueue.shift();
+            if (!nextAudioBuffer) {
+                return;
+            }
+
+            const chunkSize = TWILIO_MULAW_BYTES_PER_20MS;
+            let offset = 0;
+            let chunksSent = 0;
+            session.isSpeaking = true;
+            session.isSendingAudio = true;
+
+            const sendNextChunk = () => {
+                if (!session.isSpeaking || session.isCancelled) {
+                    session.isSendingAudio = false;
+                    return;
+                }
+
+                if (!session.ws || session.ws.readyState !== 1) {
+                    console.warn(`WebSocket closed while sending audio for ${session.callId}`);
+                    this.finalizeAudioPlayback(session, 'ws-closed');
+                    return;
+                }
+
+                if (offset >= nextAudioBuffer.length) {
+                    const markName = `audio_end_${Date.now()}`;
+                    session.pendingMarkName = markName;
+                    this.clearMarkTimeout(session);
+
+                    try {
+                        session.ws.send(JSON.stringify({
+                            event: "mark",
+                            streamSid: session.streamSid,
+                            mark: { name: markName },
+                        }));
+                    } catch (error) {
+                        console.error(`Failed to send Twilio mark for ${session.callId}:`, error.message);
+                        this.finalizeAudioPlayback(session, 'mark-send-failed');
+                        return;
+                    }
+
+                    const expectedPlaybackMs = Math.ceil(nextAudioBuffer.length / chunkSize) * TWILIO_CHUNK_DELAY_MS;
+                    session.markTimeout = setTimeout(() => {
+                        console.warn(`Mark timeout for ${session.callId} after ${expectedPlaybackMs}ms`);
+                        this.finalizeAudioPlayback(session, 'mark-timeout');
+                    }, expectedPlaybackMs + 1500);
+
+                    return;
+                }
+
+                const chunkBuffer = nextAudioBuffer.slice(offset, offset + chunkSize);
+                try {
+                    session.ws.send(JSON.stringify({
+                        event: "media",
+                        streamSid: session.streamSid,
+                        media: { payload: chunkBuffer.toString('base64') },
+                    }));
+                    chunksSent += 1;
+                    this.touchSession(session, 'audio:chunk');
+                } catch (error) {
+                    console.error(`Failed to send Twilio audio chunk ${chunksSent + 1} for ${session.callId}:`, error.message);
+                    this.finalizeAudioPlayback(session, 'chunk-send-failed');
+                    return;
+                }
+
+                offset += chunkSize;
+                setTimeout(sendNextChunk, TWILIO_CHUNK_DELAY_MS);
+            };
+
+            console.log(`Sending ${nextAudioBuffer.length} bytes to Twilio for ${session.callId} in ${chunkSize}-byte chunks`);
+            sendNextChunk();
+        } catch (error) {
+            console.error(`Safe Twilio audio send failed for ${session.callId}:`, error);
+            session.isSpeaking = false;
+            session.isSendingAudio = false;
+        }
+    }
+
     sendAudioToTwilio(session, audioBuffer) {
         try {
-            if (!session.isReady || !session.streamSid) {
+            console.log(`📤 [${session.callId}] sendAudioToTwilio called:`, {
+                isReady: session.isReady,
+                streamSid: session.streamSid ? '✅ SET' : '❌ NOT SET',
+                audioSize: audioBuffer ? audioBuffer.length : 0,
+                audioType: audioBuffer ? (Buffer.isBuffer(audioBuffer) ? 'Buffer' : typeof audioBuffer) : 'null',
+                queueDepth: session.audioQueue.length,
+                wsState: session.ws?.readyState
+            });
+
+            if (!audioBuffer || audioBuffer.length === 0) {
+                console.warn(`⚠️  [${session.callId}] Session not ready, queuing audio`);
+                return;
+                return;
+            }
+
+            if (!session.streamSid) {
+                console.warn(`⚠️  [${session.callId}] No streamSid, queuing audio`);
                 session.audioQueue.push(audioBuffer);
                 return;
             }
 
+            if (!audioBuffer || audioBuffer.length === 0) {
+                console.error(`❌ [${session.callId}] Empty audio buffer!`);
+                return;
+            }
+
             session.isSpeaking = true;
-            const chunkSize = 160;
+            const chunkSize = 160; // 20ms of µ-law 8kHz audio
             let offset = 0;
+            let chunksSent = 0;
 
             const sendNextChunk = () => {
-                // Stop sending if the turn was cancelled (user interrupted)
-                if (!session.isSpeaking || session.isCancelled) return;
+                // Stop sending if cancelled
+                if (!session.isSpeaking || session.isCancelled) {
+                    if (session.isCancelled) {
+                        console.log(`🚫 [${session.callId}] Audio sending cancelled by user`);
+                    }
+                    return;
+                }
 
                 if (offset >= audioBuffer.length) {
-                    // Fix 5: Send a uniquely named mark so we can listen for Twilio's echo back
-                    // to know when audio has ACTUALLY finished playing in the user's ear
+                    console.log(`✅ [${session.callId}] Finished sending audio (${chunksSent} chunks, ${audioBuffer.length} bytes total)`);
+                    
+                    // Send mark to know when audio finishes playing
                     const markName = `audio_end_${Date.now()}`;
                     session.pendingMarkName = markName;
-                    session.ws.send(JSON.stringify({
-                        event: "mark",
-                        streamSid: session.streamSid,
-                        mark: { name: markName },
-                    }));
-                    // isSpeaking is now set to false ONLY when Twilio echoes the mark back
-                    // (see the mark event handler in handleConnection)
+                    try {
+                        session.ws.send(JSON.stringify({
+                            event: "mark",
+                            streamSid: session.streamSid,
+                            mark: { name: markName },
+                        }));
+                        console.log(`📍 [${session.callId}] Sent mark: ${markName}`);
+                    } catch (err) {
+                        console.error(`❌ [${session.callId}] Failed to send mark:`, err.message);
+                    }
                     return;
                 }
 
                 const chunkBuffer = audioBuffer.slice(offset, offset + chunkSize);
-                session.ws.send(JSON.stringify({
-                    event: "media",
-                    streamSid: session.streamSid,
-                    media: { payload: chunkBuffer.toString('base64') },
-                }));
+                try {
+                    session.ws.send(JSON.stringify({
+                        event: "media",
+                        streamSid: session.streamSid,
+                        media: { payload: chunkBuffer.toString('base64') },
+                    }));
+                    chunksSent++;
+                } catch (err) {
+                    console.error(`❌ [${session.callId}] Failed to send chunk ${chunksSent}:`, err.message);
+                    return;
+                }
+
                 offset += chunkSize;
-                setTimeout(sendNextChunk, 18);
+                setTimeout(sendNextChunk, TWILIO_CHUNK_DELAY_MS);
             };
+
+            console.log(`🎵 [${session.callId}] Starting to send ${audioBuffer.length} bytes of audio in ${chunkSize}-byte chunks...`);
             sendNextChunk();
         } catch (err) {
-            console.error("❌ Error sending audio to Twilio:", err);
+            console.error(`❌ [${session.callId}] Error in sendAudioToTwilio:`, err);
             session.isSpeaking = false;
         }
     }
@@ -683,6 +988,7 @@ class MediaStreamHandler {
      */
     async handleIncomingAudio(session, audioChunk) {
         try {
+            this.touchSession(session, 'audio:incoming');
             session.audioBuffer.push(audioChunk);
 
             // VAD Logic for mulaw
@@ -709,7 +1015,10 @@ class MediaStreamHandler {
                     console.log(`⚠️ User interruption detected — cancelling current LLM turn`);
                     session.isCancelled = true;   // signals callLLM & processSentenceTTS to stop
                     session.isSpeaking = false;
+                    session.isSendingAudio = false;
+                    session.audioQueue = [];
                     session.pendingMarkName = null;  // clear pending mark
+                    this.clearMarkTimeout(session);
                     if (session.ws && session.streamSid) {
                         session.ws.send(JSON.stringify({
                             event: "clear",

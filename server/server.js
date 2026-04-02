@@ -8,6 +8,17 @@ const nodeFetch = require('node-fetch');
 const expressWs = require('express-ws');
 const { WebSocketServer } = require('ws');
 const { v4: uuidv4 } = require('uuid');
+
+// Debug: Log environment startup
+console.log('[STARTUP] 🔧 Environment loaded:');
+console.log(`[STARTUP] NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`[STARTUP] APP_ENV: ${process.env.APP_ENV}`);
+console.log(`[STARTUP] PORT: ${process.env.PORT}`);
+console.log(`[STARTUP] BACKEND_BASE_URL: ${process.env.BACKEND_BASE_URL}`);
+console.log(`[STARTUP] MYSQL_HOST: ${process.env.MYSQL_HOST}`);
+console.log(`[STARTUP] SARVAM_API_KEY: ${process.env.SARVAM_API_KEY ? 'SET' : 'NOT SET'}`);
+console.log(`[STARTUP] GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? 'SET' : 'NOT SET'}`);
+console.log(`[STARTUP] OPENAI_API_KEY: ${process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET'}`);
 const twilio = require('twilio');
 const fs = require('fs');
 // Import services (STATIC classes)
@@ -46,7 +57,11 @@ const passportInstance = configureGoogleAuth(mysqlPool);
 
 // Init server
 const app = express();
-const PORT = Number(process.env.PORT);
+app.locals.startupChecks = {
+  ready: false,
+  checkedAt: new Date().toISOString()
+};
+const PORT = Number(process.env.PORT) || 5000;
 const server = require('http').createServer(app);
 const expressWsInstance = expressWs(app, server, {
   wsOptions: {
@@ -74,25 +89,30 @@ server.on('upgrade', (req, socket, head) => {
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
   // Only process Twilio media stream upgrade requests
-  if (requestUrl.pathname !== '/api/call') {
-    console.log('⚠️  Non-call upgrade request ignored:', {
-      pathname: requestUrl.pathname,
-      host: req.headers.host,
-      method: req.method
+  // Accept both /api/call and /api/call/.websocket (Twilio may append .websocket)
+  const isValidCallPath = requestUrl.pathname === '/api/call' || requestUrl.pathname === '/api/call/.websocket';
+  if (isValidCallPath) {
+    console.log('ℹ️ Twilio WebSocket upgrade detected; deferring to express-ws route handling', {
+      path: requestUrl.pathname,
+      userAgent: req.headers['user-agent']?.substring(0, 50)
     });
     return;
   }
 
-  console.log('🔄 WebSocket upgrade request for /api/call', {
-    timestamp: new Date().toISOString(),
-    clientIp,
-    headers: {
-      upgrade: req.headers.upgrade || 'MISSING',
-      connection: req.headers.connection || 'MISSING',
-      host: req.headers.host,
-      'sec-websocket-key': req.headers['sec-websocket-key'] ? 'PRESENT' : 'MISSING',
-      'user-agent': req.headers['user-agent']?.substring(0, 60)
-    }
+  if (!isValidCallPath) {
+    return;
+    console.log(`❌ WebSocket upgrade rejected: invalid path "${requestUrl.pathname}" (expected /api/call or /api/call/.websocket)`, {
+      method: req.method,
+      userAgent: req.headers['user-agent']?.substring(0, 50)
+    });
+    socket.write('HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nInvalid WebSocket path');
+    socket.destroy();
+    return;
+  }
+
+  console.log('� WebSocket upgrade request for /api/call', {
+    userAgent: req.headers['user-agent']?.substring(0, 50),
+    'sec-websocket-key': req.headers['sec-websocket-key'] ? 'present' : 'MISSING'
   });
 
   try {
@@ -183,8 +203,43 @@ const agentService = new AgentService(mysqlPool);
 // MediaStreamHandler will be initialized later in the file (see line ~2700)
 let mediaStreamHandler;
 
+function attachTwilioMediaStreamConnection(ws, req, source = 'express-ws') {
+  const remoteIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  const connectionId = require('crypto').randomBytes(6).toString('hex');
+
+  console.log(`🟢 [Conn: ${connectionId}] NEW WebSocket connection received`, {
+    timestamp: new Date().toISOString(),
+    remoteIp,
+    url: req.url,
+    source,
+    mediaStreamHandlerReady: !!mediaStreamHandler
+  });
+
+  if (!mediaStreamHandler) {
+    console.error(`🔴 [Conn: ${connectionId}] MediaStreamHandler NOT initialized - closing connection`, {
+      reason: 'Missing API keys or handler initialization failed',
+      suggestion: 'Check server logs during startup for initialization errors'
+    });
+    ws.close(1011, 'Service temporarily unavailable');
+    return;
+  }
+
+  try {
+    console.log(`✅ [Conn: ${connectionId}] Calling mediaStreamHandler.handleConnection()`);
+    mediaStreamHandler.handleConnection(ws, req);
+    console.log(`✅ [Conn: ${connectionId}] Connection successfully passed to mediaStreamHandler`);
+  } catch (error) {
+    console.error(`🔴 [Conn: ${connectionId}] Error in mediaStreamHandler.handleConnection():`, {
+      message: error.message,
+      stack: error.stack
+    });
+    ws.close(1011, 'Handler error');
+  }
+}
+
 // ✅ ENHANCED Connection Listener with Detailed Logging
 twilioCallWss.on('connection', (ws, req) => {
+  return attachTwilioMediaStreamConnection(ws, req, 'custom-wss');
   const remoteIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
   const connectionId = require('crypto').randomBytes(6).toString('hex');
   
@@ -303,9 +358,21 @@ console.log("Twilio Basic Service initialized");
 const FRONTEND_URL = process.env.FRONTEND_URL;
 
 const corsOptions = {
-  origin: [
-    FRONTEND_URL,
-  ],
+  origin: (origin, callback) => {
+    const allowed = [
+      FRONTEND_URL,
+      'https://ziyasuite.netlify.app',
+      'https://ziyasuite.com'
+    ];
+
+    if (!origin || allowed.includes(origin)) {
+      callback(null, true);
+    } else {
+      const err = new Error('CORS policy: origin not allowed');
+      err.status = 403;
+      callback(err, false);
+    }
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
@@ -313,6 +380,30 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
+
+// explicitly support OPTIONS for login (preflight)
+app.options('/api/auth/login', cors(corsOptions), (req, res) => res.sendStatus(204));
+
+// Keep request logging focused on Twilio and voice pipeline traffic.
+app.use((req, res, next) => {
+  const url = req.originalUrl || req.url || '';
+  const shouldLog =
+    url.includes('/api/twilio') ||
+    url.includes('/api/call') ||
+    url.includes('/voice-stream') ||
+    url.includes('/browser-voice-stream');
+
+  if (!shouldLog) {
+    next();
+    return;
+  }
+
+  console.log(`[REQ] ${req.method} ${url} - origin: ${req.headers.origin || 'none'} - ip: ${req.ip}`);
+  res.on('finish', () => {
+    console.log(`[RESP] ${req.method} ${url} -> ${res.statusCode}`);
+  });
+  next();
+});
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -1124,7 +1215,7 @@ app.get('/api/voice-config-check', (req, res) => {
     const twilioWsBaseUrl = process.env.TWILIO_WS_BASE_URL || process.env.BACKEND_WS_BASE_URL || appUrl;
     const websocketUrl = !appUrl
       ? 'NOT SET'
-      : buildBackendWsUrl('/call', twilioWsBaseUrl);
+      : buildBackendWsUrl('/api/call', twilioWsBaseUrl);
 
     res.json({
       timestamp: new Date().toISOString(),
@@ -4871,8 +4962,10 @@ app.post('/api/twilio/voice', async (req, res) => {
     // that does not forward WebSocket upgrades correctly.
     const actualCallId = callId || CallSid;
     const twilioWsBaseUrl = process.env.TWILIO_WS_BASE_URL || process.env.BACKEND_WS_BASE_URL || appUrl;
-    const normalizedTwilioWsBaseUrl = ensureHttpProtocol(twilioWsBaseUrl);
-    const streamUrl = buildBackendWsUrl('/call', normalizedTwilioWsBaseUrl);
+    // buildBackendWsUrl now extracts domain automatically, so pass just the path
+    // ✅ Twilio Media Streams will send parameters in the "start" event, not in URL
+    const baseStreamUrl = buildBackendWsUrl('/api/call', twilioWsBaseUrl);
+    const streamUrl = baseStreamUrl; // No query params - Twilio sends them via "start" event with customParameters
     const streamStatusCallbackUrl =
       `${buildBackendUrl('/twilio/stream-status', appUrl)}?callId=${encodeURIComponent(actualCallId)}`;
     const streamFallbackUrl =
@@ -4880,7 +4973,7 @@ app.post('/api/twilio/voice', async (req, res) => {
 
     console.log('🔗 WebSocket Stream URL:', streamUrl);
     if (twilioWsBaseUrl !== appUrl) {
-      console.log('   Twilio WS base override:', normalizedTwilioWsBaseUrl);
+      console.log('   Twilio WS base override:', twilioWsBaseUrl);
     }
     console.log('   CallSid:', CallSid);
     console.log('   agentId:', agentId);
@@ -4965,15 +5058,15 @@ app.post('/api/twilio/stream-status', (req, res) => {
     Timestamp
   } = req.body || {};
 
-  console.log(' Twilio stream status callback:', {
-    callId,
-    CallSid,
-    StreamSid,
-    StreamName,
-    StreamEvent,
-    StreamError,
-    Timestamp
-  });
+  // Only log errors or significant events, not every status update
+  if (StreamError || StreamEvent === 'stream-stopped' || StreamEvent === 'stream-started') {
+    console.log('🔄 Twilio stream status:', {
+      callId,
+      StreamEvent,
+      StreamError: StreamError || 'none',
+      Timestamp
+    });
+  }
 
   res.sendStatus(204);
 });
@@ -5523,6 +5616,7 @@ app.post('/api/voices/elevenlabs/preview', async (req, res) => {
 });
 
 if (process.env.SARVAM_API_KEY && process.env.GEMINI_API_KEY) {
+  console.log('[INIT] ✅ Initializing MediaStreamHandler with SARVAM_API_KEY and GEMINI_API_KEY');
   mediaStreamHandler = new MediaStreamHandler(
     process.env.GEMINI_API_KEY,
     process.env.OPENAI_API_KEY,
@@ -5532,12 +5626,20 @@ if (process.env.SARVAM_API_KEY && process.env.GEMINI_API_KEY) {
   );
   console.log(" MediaStreamHandler initialized with Sarvam STT + Gemini + OpenAI + Cost Tracking");
 } else {
-  console.warn(" Voice call feature disabled” missing SARVAM_API_KEY or GEMINI_API_KEY");
+  console.warn("[INIT] ❌ MediaStreamHandler NOT initialized - missing required API keys");
+  console.warn(`[INIT] SARVAM_API_KEY: ${process.env.SARVAM_API_KEY ? 'present' : 'MISSING'}`);
+  console.warn(`[INIT] GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? 'present' : 'MISSING'}`);
 }
 // WebSocket endpoint for ElevenLabs STT
 app.ws('/api/stt', function (ws, req) {
   elevenLabsStreamHandler.handleConnection(ws, req);
 })
+app.ws('/api/call', function (ws, req) {
+  attachTwilioMediaStreamConnection(ws, req, 'express-ws:/api/call');
+});
+app.ws('/api/call/.websocket', function (ws, req) {
+  attachTwilioMediaStreamConnection(ws, req, 'express-ws:/api/call/.websocket');
+});
 app.get('/api/call', (req, res) => {
   res.status(426).json({
     success: false,
@@ -6829,7 +6931,7 @@ app.get('/api/websocket-test', (req, res) => {
 });
 
   // Start server and bind to 0.0.0.0 for Railway
-  server.listen(PORT, '0.0.0.0', () => {
+  validateStartupDependencies().then(() => server.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 === SERVER STARTED ===`);
     console.log(`Server listening on port ${PORT}`);
     console.log(`Frontend URL: ${FRONTEND_URL}`);
@@ -6837,4 +6939,64 @@ app.get('/api/websocket-test', (req, res) => {
     console.log(`WebSocket endpoint: /api/call`);
     console.log(`Diagnostic endpoint: /api/websocket-test`);
     console.log(`🚀 === SERVER READY ===\n`);
+  })).catch((error) => {
+    console.error('[STARTUP] Fatal startup validation failure:', error);
+    process.exit(1);
   });
+
+// Global error handler for webhook/route crashes
+app.use((err, req, res, next) => {
+  console.error('[ERROR] Unhandled route exception:', err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ success: false, error: 'Internal server error' });
+});
+
+function getMissingCriticalStartupConfig() {
+  const required = [
+    'MYSQL_HOST',
+    'MYSQL_PORT',
+    'MYSQL_USER',
+    'MYSQL_PASSWORD',
+    'MYSQL_DATABASE',
+    'SESSION_SECRET',
+    'SARVAM_API_KEY',
+    'GEMINI_API_KEY'
+  ];
+
+  return required.filter((key) => !process.env[key]);
+}
+
+async function validateDatabaseConnection() {
+  const connection = await mysqlPool.getConnection();
+  try {
+    await connection.ping();
+  } finally {
+    connection.release();
+  }
+}
+
+async function validateStartupDependencies() {
+  const missingConfig = getMissingCriticalStartupConfig();
+  if (missingConfig.length > 0) {
+    throw new Error(`Missing critical startup configuration: ${missingConfig.join(', ')}`);
+  }
+
+  await validateDatabaseConnection();
+
+  if (!mediaStreamHandler) {
+    throw new Error('MediaStreamHandler failed to initialize; refusing to accept traffic');
+  }
+
+  app.locals.startupChecks = {
+    ready: true,
+    checkedAt: new Date().toISOString()
+  };
+}
+
+process.on('unhandledRejection', (error) => {
+  console.error('[PROCESS] Unhandled promise rejection:', error);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('[PROCESS] Uncaught exception:', error);
+});
