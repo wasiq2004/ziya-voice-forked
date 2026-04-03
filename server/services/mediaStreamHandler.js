@@ -8,6 +8,9 @@ const TWILIO_MULAW_BYTES_PER_20MS = 160;
 const TWILIO_CHUNK_DELAY_MS = Number(process.env.TWILIO_CHUNK_DELAY_MS || 20);
 const SESSION_TTL_MS = Number(process.env.MEDIA_SESSION_TTL_MS || 30 * 60 * 1000);
 const SESSION_CLEANUP_INTERVAL_MS = Number(process.env.MEDIA_SESSION_CLEANUP_INTERVAL_MS || 60 * 1000);
+const LLM_MIN_INTERVAL_MS = Number(process.env.MEDIA_LLM_MIN_INTERVAL_MS || 1200);
+const LLM_BURST_WINDOW_MS = Number(process.env.MEDIA_LLM_BURST_WINDOW_MS || 10000);
+const LLM_MAX_CALLS_PER_WINDOW = Number(process.env.MEDIA_LLM_MAX_CALLS_PER_WINDOW || 5);
 
 // Precompute mu-law to linear PCM table for fast VAD
 const MU_LAW_TO_PCM = new Int16Array(256);
@@ -102,6 +105,138 @@ class MediaStreamHandler {
         if (session?.markTimeout) {
             clearTimeout(session.markTimeout);
             session.markTimeout = null;
+        }
+    }
+
+    clearLlmRetryTimer(session) {
+        if (session?.llmRetryTimer) {
+            clearTimeout(session.llmRetryTimer);
+            session.llmRetryTimer = null;
+        }
+    }
+
+    pruneSessionLlmCallTimestamps(session) {
+        if (!session?.llmCallTimestamps) {
+            return;
+        }
+
+        const cutoff = Date.now() - LLM_BURST_WINDOW_MS;
+        session.llmCallTimestamps = session.llmCallTimestamps.filter((timestamp) => timestamp >= cutoff);
+    }
+
+    getLlmRateLimitState(session) {
+        this.pruneSessionLlmCallTimestamps(session);
+
+        const now = Date.now();
+        const sinceLastCall = session.llmLastCalledAt ? now - session.llmLastCalledAt : Number.POSITIVE_INFINITY;
+        const cooldownRemainingMs = session.llmLastCalledAt
+            ? Math.max(0, LLM_MIN_INTERVAL_MS - sinceLastCall)
+            : 0;
+
+        let burstRemainingMs = 0;
+        if (session.llmCallTimestamps.length >= LLM_MAX_CALLS_PER_WINDOW) {
+            const oldestTimestamp = session.llmCallTimestamps[0];
+            burstRemainingMs = Math.max(0, LLM_BURST_WINDOW_MS - (now - oldestTimestamp));
+        }
+
+        return {
+            allowed: cooldownRemainingMs === 0 && burstRemainingMs === 0,
+            cooldownRemainingMs,
+            burstRemainingMs,
+            retryAfterMs: Math.max(cooldownRemainingMs, burstRemainingMs, 0),
+            recentCallCount: session.llmCallTimestamps.length
+        };
+    }
+
+    recordLlmCall(session) {
+        const now = Date.now();
+        session.llmLastCalledAt = now;
+        session.llmCallTimestamps.push(now);
+        this.pruneSessionLlmCallTimestamps(session);
+    }
+
+    schedulePendingLlmRetry(session, waitMs, reason) {
+        if (!session?.pendingUserTranscript) {
+            return;
+        }
+
+        if (session.llmRetryTimer) {
+            return;
+        }
+
+        const retryDelayMs = Math.max(100, waitMs);
+        console.log(`[LLM Rate Limit] Scheduling retry for ${session.callId} in ${retryDelayMs}ms (${reason})`);
+
+        session.llmRetryTimer = setTimeout(async () => {
+            session.llmRetryTimer = null;
+
+            if (!sessions.has(session.callId)) {
+                return;
+            }
+
+            if (session.isProcessing || !session.pendingUserTranscript) {
+                return;
+            }
+
+            const pendingTranscript = session.pendingUserTranscript;
+            session.pendingUserTranscript = null;
+            await this.processTranscriptTurn(session, pendingTranscript, 'rate-limit-retry');
+        }, retryDelayMs);
+
+        if (typeof session.llmRetryTimer.unref === 'function') {
+            session.llmRetryTimer.unref();
+        }
+    }
+
+    async processTranscriptTurn(session, transcriptText, source = 'stt') {
+        const normalizedTranscript = (transcriptText || '').trim();
+        if (!normalizedTranscript) {
+            return;
+        }
+
+        const mergedTranscript = session.pendingUserTranscript
+            ? `${session.pendingUserTranscript} ${normalizedTranscript}`.trim()
+            : normalizedTranscript;
+        session.pendingUserTranscript = null;
+
+        const rateLimitState = this.getLlmRateLimitState(session);
+        if (!rateLimitState.allowed) {
+            session.pendingUserTranscript = mergedTranscript;
+            console.log(`[LLM Rate Limit] Delaying LLM call for ${session.callId}`, {
+                source,
+                retryAfterMs: rateLimitState.retryAfterMs,
+                cooldownRemainingMs: rateLimitState.cooldownRemainingMs,
+                burstRemainingMs: rateLimitState.burstRemainingMs,
+                recentCallCount: rateLimitState.recentCallCount
+            });
+            this.schedulePendingLlmRetry(session, rateLimitState.retryAfterMs, source);
+            return;
+        }
+
+        this.clearLlmRetryTimer(session);
+        this.recordLlmCall(session);
+
+        console.log(`[LLM Turn] Transcript ready: "${mergedTranscript}"`);
+        this.appendToContext(session, mergedTranscript, "user");
+
+        session.isCancelled = false;
+        session.isProcessing = true;
+
+        try {
+            const llmResponse = await this.callLLM(session);
+
+            if (!session.isCancelled && llmResponse) {
+                this.appendToContext(session, llmResponse, "model");
+            } else if (session.isCancelled) {
+                console.log(`[LLM Turn] Response discarded from context because the turn was cancelled`);
+            }
+        } finally {
+            session.isProcessing = false;
+
+            if (session.pendingUserTranscript) {
+                const nextRateLimitState = this.getLlmRateLimitState(session);
+                this.schedulePendingLlmRetry(session, nextRateLimitState.retryAfterMs || LLM_MIN_INTERVAL_MS, 'post-turn');
+            }
         }
     }
 
@@ -279,6 +414,10 @@ class MediaStreamHandler {
             createdAt: now,
             lastActivityAt: now,
             markTimeout: null,
+            llmLastCalledAt: 0,
+            llmCallTimestamps: [],
+            pendingUserTranscript: null,
+            llmRetryTimer: null,
             // Sarvam STT Buffering & VAD
             audioBuffer: [],
             speechDetectedInChunk: false,
@@ -302,6 +441,7 @@ class MediaStreamHandler {
         const session = sessions.get(callId);
         if (session) {
             this.clearMarkTimeout(session);
+            this.clearLlmRetryTimer(session);
             // Execute tools marked to run after call
             if (session.tools && session.tools.length > 0 && session.agentId) {
                 const afterCallTools = session.tools.filter(tool => tool.runAfterCall);
@@ -1080,12 +1220,22 @@ class MediaStreamHandler {
             session.usage.sarvam_stt += durationSeconds;
 
             if (transcript && transcript.trim()) {
+                await this.processTranscriptTurn(session, transcript.trim(), 'sarvam-stt');
+                return;
+            }
+
+            if (transcript && transcript.trim()) {
                 console.log(`📝 Sarvam Transcript: "${transcript}"`);
                 this.appendToContext(session, transcript, "user");
 
+                // Fix 1 & 3: Reset cancellation flag at start of a new fresh LLM turn
                 session.isCancelled = false;
                 session.isProcessing = true;
                 const llmResponse = await this.callLLM(session);
+
+                // Fix 3: Only commit the response to context if the turn was NOT cancelled
+                // (i.e., user did not interrupt). Prevents the AI from "remembering" things
+                // it said but the user never heard.
                 if (!session.isCancelled && llmResponse) {
                     this.appendToContext(session, llmResponse, "model");
                 } else if (session.isCancelled) {
@@ -1100,7 +1250,18 @@ class MediaStreamHandler {
         }
     }
 
-
+    /**
+     * Pure-JS mulaw→8kHz PCM→16kHz PCM→WAV conversion.
+     * Replaces the FFmpeg child-process spawn — eliminates 150–300ms cold-start per utterance.
+     *
+     * Steps:
+     *   1. Mulaw bytes → 16-bit signed PCM at 8kHz  (MU_LAW_TO_PCM lookup table already in memory)
+     *   2. 8kHz → 16kHz upsample via linear interpolation (2×)
+     *   3. Wrap in a standard 44-byte WAV header
+     *
+     * @param {Buffer} mulawBuffer - Raw µ-law 8kHz mono audio from Twilio
+     * @returns {Buffer} WAV file buffer at 16kHz PCM, ready for Sarvam STT
+     */
     convertMulawToWavJS(mulawBuffer) {
         const len = mulawBuffer.length;
 
@@ -1109,6 +1270,11 @@ class MediaStreamHandler {
         for (let i = 0; i < len; i++) {
             pcm8k[i] = MU_LAW_TO_PCM[mulawBuffer[i]];
         }
+
+        // Step 2: Upsample 8kHz → 16kHz by 2× linear interpolation
+        // Each input sample becomes 2 output samples:
+        //   out[2i]   = in[i]
+        //   out[2i+1] = average of in[i] and in[i+1]  (linear interpolation)
         const upLen = len * 2;
         const pcm16k = new Int16Array(upLen);
         for (let i = 0; i < len - 1; i++) {
