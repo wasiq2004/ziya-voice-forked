@@ -385,25 +385,25 @@ app.options("*", cors(corsOptions));
 app.options('/api/auth/login', cors(corsOptions), (req, res) => res.sendStatus(204));
 
 // Keep request logging focused on Twilio and voice pipeline traffic.
-app.use((req, res, next) => {
-  const url = req.originalUrl || req.url || '';
-  const shouldLog =
-    url.includes('/api/twilio') ||
-    url.includes('/api/call') ||
-    url.includes('/voice-stream') ||
-    url.includes('/browser-voice-stream');
+// app.use((req, res, next) => {
+//   const url = req.originalUrl || req.url || '';
+//   const shouldLog =
+//     url.includes('/api/twilio') ||
+//     url.includes('/api/call') ||
+//     url.includes('/voice-stream') ||
+//     url.includes('/browser-voice-stream');
 
-  if (!shouldLog) {
-    next();
-    return;
-  }
+//   if (!shouldLog) {
+//     next();
+//     return;
+//   }
 
-  console.log(`[REQ] ${req.method} ${url} - origin: ${req.headers.origin || 'none'} - ip: ${req.ip}`);
-  res.on('finish', () => {
-    console.log(`[RESP] ${req.method} ${url} -> ${res.statusCode}`);
-  });
-  next();
-});
+//   console.log(`[REQ] ${req.method} ${url} - origin: ${req.headers.origin || 'none'} - ip: ${req.ip}`);
+//   res.on('finish', () => {
+//     console.log(`[RESP] ${req.method} ${url} -> ${res.statusCode}`);
+//   });
+//   next();
+// });
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));

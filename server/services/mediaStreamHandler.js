@@ -1083,14 +1083,9 @@ class MediaStreamHandler {
                 console.log(`📝 Sarvam Transcript: "${transcript}"`);
                 this.appendToContext(session, transcript, "user");
 
-                // Fix 1 & 3: Reset cancellation flag at start of a new fresh LLM turn
                 session.isCancelled = false;
                 session.isProcessing = true;
                 const llmResponse = await this.callLLM(session);
-
-                // Fix 3: Only commit the response to context if the turn was NOT cancelled
-                // (i.e., user did not interrupt). Prevents the AI from "remembering" things
-                // it said but the user never heard.
                 if (!session.isCancelled && llmResponse) {
                     this.appendToContext(session, llmResponse, "model");
                 } else if (session.isCancelled) {
@@ -1105,18 +1100,7 @@ class MediaStreamHandler {
         }
     }
 
-    /**
-     * Pure-JS mulaw→8kHz PCM→16kHz PCM→WAV conversion.
-     * Replaces the FFmpeg child-process spawn — eliminates 150–300ms cold-start per utterance.
-     *
-     * Steps:
-     *   1. Mulaw bytes → 16-bit signed PCM at 8kHz  (MU_LAW_TO_PCM lookup table already in memory)
-     *   2. 8kHz → 16kHz upsample via linear interpolation (2×)
-     *   3. Wrap in a standard 44-byte WAV header
-     *
-     * @param {Buffer} mulawBuffer - Raw µ-law 8kHz mono audio from Twilio
-     * @returns {Buffer} WAV file buffer at 16kHz PCM, ready for Sarvam STT
-     */
+
     convertMulawToWavJS(mulawBuffer) {
         const len = mulawBuffer.length;
 
@@ -1125,11 +1109,6 @@ class MediaStreamHandler {
         for (let i = 0; i < len; i++) {
             pcm8k[i] = MU_LAW_TO_PCM[mulawBuffer[i]];
         }
-
-        // Step 2: Upsample 8kHz → 16kHz by 2× linear interpolation
-        // Each input sample becomes 2 output samples:
-        //   out[2i]   = in[i]
-        //   out[2i+1] = average of in[i] and in[i+1]  (linear interpolation)
         const upLen = len * 2;
         const pcm16k = new Int16Array(upLen);
         for (let i = 0; i < len - 1; i++) {
