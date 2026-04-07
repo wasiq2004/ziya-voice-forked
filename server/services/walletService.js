@@ -79,6 +79,9 @@ class WalletService {
       const wallet = await this.getOrCreateWallet(userId);
       // Convert INR to Credits (1 INR = 1 Credit)
       const creditsToAdd = inrToCredits(parseFloat(amountInr));
+      if (!Number.isFinite(creditsToAdd) || creditsToAdd <= 0) {
+        throw new Error('Invalid credit amount');
+      }
 
       // Check if admin is an org_admin
       let isOrgAdmin = false;
@@ -95,9 +98,12 @@ class WalletService {
       // If org_admin, deduct from their wallet first
       if (isOrgAdmin) {
          try {
-           await this.deductCredits(adminId, creditsToAdd, 'credit_transfer', `Transfer to user ${userId}`);
+           await this.deductCredits(adminId, creditsToAdd, 'admin_adjustment', `Transfer to user ${userId}`);
          } catch (e) {
-           throw new Error('Insufficient organization credits: ' + e.message);
+           if (e && e.message && e.message.toLowerCase().includes('insufficient balance')) {
+             throw new Error('Insufficient organization credits');
+           }
+           throw e;
          }
       }
 

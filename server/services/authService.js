@@ -149,7 +149,8 @@ var AuthService = /** @class */ (function () {
                         return [2 /*return*/, {
                             id: userId,
                             email: email,
-                            username: username
+                            username: username,
+                            organization_id: 5
                         }];
                     case 4:
                         error_2 = _a.sent();

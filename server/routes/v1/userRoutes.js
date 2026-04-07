@@ -136,12 +136,20 @@ router.post('/support/tickets', async (req, res) => {
     }
 
     const ticketId = require('crypto').randomBytes(8).toString('hex');
+    
+    // Generate ticket number in format TICKET-YYYY-XXXXXX
+    const [maxResult] = await mysqlPool.execute(
+      'SELECT MAX(CAST(SUBSTRING_INDEX(ticket_number, "-", -1) AS UNSIGNED)) as max_num FROM support_tickets'
+    );
+    const maxNum = maxResult[0]?.max_num || 0;
+    const year = new Date().getFullYear();
+    const ticketNumber = `TICKET-${year}-${String(maxNum + 1).padStart(6, '0')}`;
 
     await mysqlPool.execute(
       `INSERT INTO support_tickets 
-       (id, subject, category, priority, message, status, created_by, created_by_role) 
-       VALUES (?, ?, ?, ?, ?, 'Open', ?, 'user')`,
-      [ticketId, subject, category, priority || 'Medium', message, created_by]
+       (id, ticket_number, subject, category, priority, message, status, created_by, created_by_role) 
+       VALUES (?, ?, ?, ?, ?, ?, 'Open', ?, 'user')`,
+      [ticketId, ticketNumber, subject, category, priority || 'Medium', message, created_by]
     );
 
     const [rows] = await mysqlPool.execute(

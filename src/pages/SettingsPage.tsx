@@ -11,6 +11,10 @@ import { useAuth } from '../contexts/AuthContext';
 
 interface SettingsPageProps { }
 
+// Maximum profile image size: 5MB (5 * 1024 * 1024 bytes)
+const MAX_PROFILE_IMAGE_SIZE = 5 * 1024 * 1024;
+const MAX_PROFILE_IMAGE_SIZE_MB = 5;
+
 const SettingsPage: React.FC<SettingsPageProps> = () => {
     const { user, updateUser } = useAuth();
 
@@ -22,6 +26,10 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
         profile_image: ''
     });
 
+    const [saveStatus, setSaveStatus] = useState('');
+    const [fileSizeError, setFileSizeError] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+
     useEffect(() => {
         if (user) {
             setProfile({
@@ -31,11 +39,9 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
                 gender: user.gender || '',
                 profile_image: user.profile_image || ''
             });
+            setFileSizeError('');
         }
     }, [user]);
-
-    const [saveStatus, setSaveStatus] = useState('');
-    const [isSaving, setIsSaving] = useState(false);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -45,6 +51,17 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
+            // Check file size
+            if (file.size > MAX_PROFILE_IMAGE_SIZE) {
+                setFileSizeError(`File size too big. Image size under: ${MAX_PROFILE_IMAGE_SIZE_MB}MB`);
+                // Clear the file input
+                e.target.value = '';
+                return;
+            }
+
+            // Clear any previous error
+            setFileSizeError('');
+
             const reader = new FileReader();
             reader.onloadend = () => {
                 setProfile(prev => ({ ...prev, profile_image: reader.result as string }));
@@ -130,10 +147,10 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
                                             name="profile_image"
                                             id="profile_image"
                                             onChange={handleImageUpload}
-                                            className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all font-bold text-slate-900 dark:text-white file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                                            className={`w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900/50 border rounded-2xl focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all font-bold text-slate-900 dark:text-white file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 ${fileSizeError ? 'border-red-300 dark:border-red-900/50' : 'border-slate-100 dark:border-slate-800'}`}
                                         />
                                     </div>
-                                    {profile.profile_image && (
+                                    {profile.profile_image && !fileSizeError && (
                                         <div className="shrink-0 relative">
                                             <img src={profile.profile_image} alt="Profile Preview" className="h-16 w-16 rounded-2xl object-cover shadow-md border border-slate-200 dark:border-slate-700" />
                                             <button
@@ -148,6 +165,11 @@ const SettingsPage: React.FC<SettingsPageProps> = () => {
                                         </div>
                                     )}
                                 </div>
+                                {fileSizeError && (
+                                    <p className="mt-2 text-sm font-semibold text-red-600 dark:text-red-400">
+                                        {fileSizeError}
+                                    </p>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

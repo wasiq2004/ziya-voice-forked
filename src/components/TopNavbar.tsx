@@ -294,7 +294,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                                 </div>
 
                                 {/* Menu Items */}
-                                <div className="p-2">
+                                {/* <div className="p-2">
                                     {adminUser ? (
                                         adminUser.role === 'org_admin' && (
                                             <button
@@ -344,7 +344,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                                             </button>
                                         </>
                                     )}
-                                </div>
+                                </div> */}
 
                                 {/* Logout Button */}
                                 <div className="p-2 border-t border-slate-100 dark:border-slate-700">

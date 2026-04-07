@@ -635,7 +635,7 @@ export const assignPlanToUser = async (
   return response.json();
 };
 
-/** Check if a user has valid plan access (credits > 0 AND plan not expired) */
+/** Check if a user has valid plan access (credits > 0 only - timing constraints removed) */
 export const checkUserPlanAccess = async (userId: string): Promise<PlanAccessInfo> => {
   const response = await fetch(`${API_BASE_URL}/users/plan-access/${userId}`);
   const contentType = response.headers.get('content-type');

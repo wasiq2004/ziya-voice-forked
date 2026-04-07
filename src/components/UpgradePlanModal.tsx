@@ -12,7 +12,9 @@ const UpgradePlanModal: React.FC<UpgradePlanModalProps> = ({ reason, onClose }) 
 
     if (!reason) return null;
 
+    // Show insufficient credits modal (plan_expired no longer blocks access)
     const isExpired = reason === 'plan_expired';
+    const showInsufficientCredits = reason === 'insufficient_credits';
 
     return (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
@@ -27,27 +29,26 @@ const UpgradePlanModal: React.FC<UpgradePlanModalProps> = ({ reason, onClose }) 
                 </button>
 
                 {/* Icon */}
-                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5 ${isExpired
-                        ? 'bg-amber-100 dark:bg-amber-900/30'
-                        : 'bg-red-100 dark:bg-red-900/30'
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5 ${
+                        showInsufficientCredits
+                            ? 'bg-red-100 dark:bg-red-900/30'
+                            : 'bg-amber-100 dark:bg-amber-900/30'
                     }`}>
-                    <ExclamationTriangleIcon className={`w-8 h-8 ${isExpired
-                            ? 'text-amber-500 dark:text-amber-400'
-                            : 'text-red-500 dark:text-red-400'
+                    <ExclamationTriangleIcon className={`w-8 h-8 ${
+                            showInsufficientCredits
+                                ? 'text-red-500 dark:text-red-400'
+                                : 'text-amber-500 dark:text-amber-400'
                         }`} />
                 </div>
 
                 {/* Title */}
                 <h2 className="text-xl font-black text-slate-900 dark:text-white text-center mb-3">
-                    {isExpired ? 'Your Plan Has Expired' : 'Insufficient Credits'}
+                    Insufficient Credits
                 </h2>
 
                 {/* Message */}
                 <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-6 leading-relaxed">
-                    {isExpired
-                        ? 'Your plan has expired. Please purchase a new plan or add funds to continue using the platform.'
-                        : 'You have run out of credits. Please purchase a plan or add funds to continue using the platform.'
-                    }
+                    You have run out of credits. Your account currently has 0 credits. Please purchase credits to continue using all features.
                 </p>
 
                 {/* Divider */}
@@ -61,7 +62,7 @@ const UpgradePlanModal: React.FC<UpgradePlanModalProps> = ({ reason, onClose }) 
                         className="w-full flex items-center justify-center gap-2.5 py-3.5 bg-gradient-to-r from-primary to-blue-600 text-white rounded-2xl font-black text-sm hover:opacity-90 transition-all shadow-lg shadow-primary/25"
                     >
                         <ArrowUpCircleIcon className="w-5 h-5" />
-                        View Plans
+                        Purchase Credits
                     </button>
                     <button
                         id="add-credits-btn"
@@ -69,7 +70,7 @@ const UpgradePlanModal: React.FC<UpgradePlanModalProps> = ({ reason, onClose }) 
                         className="w-full flex items-center justify-center gap-2.5 py-3.5 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-white rounded-2xl font-black text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-700"
                     >
                         <CreditCardIcon className="w-5 h-5" />
-                        Add Credits
+                        Add Funds
                     </button>
                 </div>
 

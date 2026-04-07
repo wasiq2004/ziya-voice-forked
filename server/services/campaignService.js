@@ -160,7 +160,10 @@ class CampaignService {
      */
     async processCampaign(campaignId, userId) {
         try {
-            console.log(`📞 Starting campaign ${campaignId}`);
+            console.log(`\n${'='.repeat(70)}`);
+            console.log(`📞 STARTING CAMPAIGN PROCESSING: ${campaignId}`);
+            console.log(`${'='.repeat(70)}\n`);
+            
             this.activeCampaigns.set(campaignId, { status: 'running' });
 
             // Get campaign details
@@ -177,6 +180,15 @@ class CampaignService {
             }
 
             const campaign = campaigns[0];
+            console.log(`📋 Campaign details:`, {
+                id: campaign.id,
+                name: campaign.name,
+                agentId: campaign.agent_id,
+                userId: campaign.user_id,
+                phoneNumberId: campaign.phone_number_id,
+                concurrentCalls: campaign.concurrent_calls || 2
+            });
+
             const agentSettings = typeof campaign.settings === 'string'
                 ? JSON.parse(campaign.settings)
                 : campaign.settings;
@@ -199,7 +211,10 @@ class CampaignService {
 
             // Get concurrent calls limit (default to 2 if not set)
             const concurrentCallsLimit = campaign.concurrent_calls || 2;
-            console.log(`🔢 Concurrent calls limit: ${concurrentCallsLimit}`);
+            console.log(`\n⚙️  Campaign Settings:`);
+            console.log(`   Concurrent calls limit: ${concurrentCallsLimit}`);
+            console.log(`   Call interval: ${campaignSettings.call_interval_seconds}s`);
+            console.log(`   Max retry attempts: ${maxRetryAttempts}`);
 
             // Get contacts that are pending or eligible for retry
             const [contacts] = await this.mysqlPool.execute(
@@ -209,8 +224,9 @@ class CampaignService {
                 [campaignId, maxRetryAttempts, campaignSettings.retry_interval_seconds]
             );
 
-            console.log(`📋 Found ${contacts.length} contacts to call (including retries)`);
-            console.log(`⏱️ Call interval: ${campaignSettings.call_interval_seconds} seconds between batches`);
+            console.log(`\n📊 Contacts:`);
+            console.log(`   Total to process: ${contacts.length}`);
+            console.log(`   Batches: ${Math.ceil(contacts.length / concurrentCallsLimit)}`);
 
             if (contacts.length === 0) {
                 console.log(`✅ No more contacts to process for campaign ${campaignId}. Completing.`);
@@ -223,42 +239,50 @@ class CampaignService {
                 // Check if campaign is still running
                 const campaignState = this.activeCampaigns.get(campaignId);
                 if (!campaignState || campaignState.status !== 'running') {
-                    console.log(`⏸️ Campaign ${campaignId} paused or stopped`);
+                    console.log(`⏸️  Campaign ${campaignId} paused or stopped`);
                     break;
                 }
 
                 // Get batch of contacts
                 const batch = contacts.slice(i, i + concurrentCallsLimit);
-                console.log(`\n📞 Processing batch ${Math.floor(i / concurrentCallsLimit) + 1}/${Math.ceil(contacts.length / concurrentCallsLimit)}: ${batch.length} concurrent calls`);
+                const batchNum = Math.floor(i / concurrentCallsLimit) + 1;
+                const totalBatches = Math.ceil(contacts.length / concurrentCallsLimit);
+                
+                console.log(`\n📞 Processing batch ${batchNum}/${totalBatches}`);
+                console.log(`   Contacts in batch: ${batch.length}`);
+                console.log(`   Contact IDs: ${batch.map(c => c.id).join(', ')}`);
 
                 // Check user balance before batch
                 const balanceCheck = await this.walletService.checkBalanceForCall(userId, 0.10 * batch.length);
                 if (!balanceCheck.allowed) {
-                    console.error(`❌ Insufficient balance, pausing campaign ${campaignId}`);
+                    console.error(`❌ Insufficient balance for batch ${batchNum}, pausing campaign`);
                     await this.pauseCampaign(campaignId);
                     break;
                 }
 
+                console.log(`   Balance check: PASSED (${balanceCheck.available || 'sufficient'} available)`);
+
                 // Make calls concurrently for this batch
                 const callPromises = batch.map(contact => {
-                    console.log(`🔄 Initiating call to ${contact.phone_number}...`);
+                    console.log(`   🔄 Initiating call to ${contact.phone_number} (${contact.name || 'Unknown'})`);
                     return this.makeCall(campaignId, contact, campaign, agentSettings)
                         .catch(error => {
-                            console.error(`Error calling ${contact.phone_number}:`, error);
+                            console.error(`   ❌ Error calling ${contact.phone_number}:`, error.message);
                             // Mark contact as failed immediately if call initiation fails
                             this.mysqlPool.execute(
                                 `UPDATE campaign_contacts
                                  SET status = 'failed', error_message = ?, completed_at = NOW()
                                  WHERE id = ?`,
                                 [error.message, contact.id]
-                            ).catch(err => console.error('Error updating contact status after call initiation failure:', err));
+                            ).catch(err => console.error('   Error updating contact status after call initiation failure:', err.message));
                             return { success: false, error: error.message };
                         });
                 });
 
                 // Wait for all calls in this batch to be initiated
-                await Promise.all(callPromises);
-                console.log(`✅ Batch ${Math.floor(i / concurrentCallsLimit) + 1} initiated`);
+                const results = await Promise.all(callPromises);
+                const successful = results.filter(r => r.success).length;
+                console.log(`   ✅ Batch ${batchNum} completed: ${successful}/${batch.length} calls initiated`);
 
                 // Wait between batches (prevents calling all numbers at once)
                 if (i + concurrentCallsLimit < contacts.length) {
@@ -266,7 +290,7 @@ class CampaignService {
                         ? campaignSettings.call_interval_seconds
                         : 10; // Default 10 seconds
 
-                    console.log(`⏳ Waiting ${waitTime} seconds before next batch...`);
+                    console.log(`   ⏳ Waiting ${waitTime}s before next batch...`);
                     await new Promise(resolve =>
                         setTimeout(resolve, waitTime * 1000)
                     );
@@ -274,10 +298,12 @@ class CampaignService {
             }
 
             // After processing all current contacts, check if there are any pending retries
+            console.log(`\n🏁 Campaign ${campaignId} processing complete`);
             await this.completeCampaign(campaignId);
+            console.log(`${'='.repeat(70)}\n`);
 
         } catch (error) {
-            console.error(`Error processing campaign ${campaignId}:`, error);
+            console.error(`\n❌ Error processing campaign ${campaignId}:`, error.message);
             await this.mysqlPool.execute(
                 `UPDATE campaigns SET status = 'cancelled' WHERE id = ?`,
                 [campaignId]
@@ -364,12 +390,20 @@ class CampaignService {
                 `campaignId=${campaignId}&` +
                 `contactId=${contact.id}`;
 
+            console.log(`\n🔗 TwiML URL:`, twimlUrl);
+
             // Make the call using the user-specific client
+            console.log(`📞 Initiating Twilio call...`);
+            console.log(`   From: ${fromNumber}`);
+            console.log(`   To: ${contact.phone_number}`);
+            console.log(`   Agent: ${campaign.agent_id}`);
+            console.log(`   Contact: ${contact.id}`);
+            
             const call = await userTwilioClient.calls.create({
                 from: fromNumber,
                 to: contact.phone_number,
                 url: twimlUrl,
-                statusCallback: `${buildBackendUrl('/twilio/status')}?callId=${contact.id}`,
+                statusCallback: `${buildBackendUrl('/twilio/status')}?callId=${contact.id}&contactId=${contact.id}`,
                 statusCallbackEvent: ['completed'],
                 statusCallbackMethod: 'POST',
                 record: true,  // Enable recording for campaign calls
@@ -378,7 +412,9 @@ class CampaignService {
                 recordingStatusCallbackMethod: 'POST'
             });
 
-            console.log(`✅ Call initiated: ${call.sid}`);
+            console.log(`✅ Call initiated successfully`);
+            console.log(`   Call SID: ${call.sid}`);
+            console.log(`   Status: ${call.status}`);
 
             // Create comprehensive call record for call history
             const callId = uuidv4();
@@ -409,10 +445,13 @@ class CampaignService {
                 [callId, contact.id]
             );
 
+            console.log(`✅ Contact ${contact.id} updated with call_id and status=calling`);
+
             return { success: true, callSid: call.sid, callId };
 
         } catch (error) {
-            console.error(`Error making call to ${contact.phone_number}:`, error);
+            console.error(`\n❌ Error making call to ${contact.phone_number}:`, error.message);
+            console.error('   Error details:', error);
 
             // Mark contact as failed
             await this.mysqlPool.execute(
@@ -600,17 +639,35 @@ class CampaignService {
      * Now includes LLM intent classification.
      */
     async updateContactAfterCall(contactId, callDuration, callCost, status = 'completed', transcript = null, recordingUrl = null) {
+        ///  DEBUG: Log when this method is called
+        console.log(`\n📞 updateContactAfterCall called for contact ${contactId}`, {
+            status,
+            hasDuration: !!callDuration,
+            hasCost: !!callCost,
+            hasTranscript: !!transcript,
+            transcriptLength: transcript ? transcript.length : 0,
+            hasRecordingUrl: !!recordingUrl
+        });
+
         let llmClassification = null;
         let scheduleTime = null;
 
         if (transcript && this.llmService) {
             try {
+                console.log(`🤖 Analyzing transcript with LLM for intent classification...`);
                 const llmResponse = await this.classifyIntent(transcript);
                 llmClassification = llmResponse.intent;
                 scheduleTime = llmResponse.schedule_time;
-                console.log(`LLM Classification for contact ${contactId}: ${llmClassification}, Schedule: ${scheduleTime}`);
+                console.log(`✅ LLM Classification for contact ${contactId}: ${llmClassification}, Schedule: ${scheduleTime}`);
             } catch (llmError) {
-                console.error(`Error classifying intent for contact ${contactId}:`, llmError);
+                console.error(`❌ Error classifying intent for contact ${contactId}:`, llmError.message);
+            }
+        } else {
+            if (!transcript) {
+                console.warn(`⚠️ No transcript provided for intent classification`);
+            }
+            if (!this.llmService) {
+                console.warn(`⚠️ LLM Service not available`);
             }
         }
 
@@ -618,6 +675,7 @@ class CampaignService {
         let emailSentAt = null;
         if ((llmClassification === 'scheduled_meeting' || llmClassification === 'needs_demo' || llmClassification === '1_on_1_session_requested') && scheduleTime) {
             try {
+                console.log(`📧 Sending meeting email for intent: ${llmClassification}`);
                 const [contactRows] = await this.mysqlPool.execute(
                     'SELECT email, name, campaign_id FROM campaign_contacts WHERE id = ?', [contactId]
                 );
@@ -630,6 +688,10 @@ class CampaignService {
                     const agentName = campRows.length > 0 ? campRows[0].agent_name : 'Ziya Voice Agent';
 
                     meetLink = emailService.generateMeetLink();
+                    console.log(`   Sending to: ${contactInfo.email}`);
+                    console.log(`   Meeting time: ${scheduleTime}`);
+                    console.log(`   Agent: ${agentName}`);
+                    
                     const emailSent = await emailService.sendMeetingInvite(
                         contactInfo.email,
                         contactInfo.name,
@@ -653,6 +715,10 @@ class CampaignService {
                 console.error('❌ CRITICAL Error during meeting scheduling:', e.message);
                 console.error('   Contact will not receive meeting invite. Intent will be marked but meeting link cleared.');
                 meetLink = null; // Clear link on any error
+            }
+        } else {
+            if (llmClassification && scheduleTime) {
+                console.log(`ℹ️  Intent ${llmClassification} does not trigger email (expected intents: scheduled_meeting, needs_demo, 1_on_1_session_requested)`);
             }
         }
 

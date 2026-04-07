@@ -4,18 +4,15 @@ import AppLayout from '../components/AppLayout';
 import {
     CogIcon,
     ShieldCheckIcon,
-    BellAlertIcon,
-    ServerIcon,
     KeyIcon,
     GlobeAltIcon,
     CheckCircleIcon,
     ArrowPathIcon,
     CpuChipIcon,
-    CurrencyDollarIcon,
 } from '@heroicons/react/24/outline';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
 
-type Tab = 'general' | 'api_keys' | 'notifications' | 'resources' | 'billing';
+type Tab = 'general' | 'api_keys';
 
 const SuperAdminSettingsPage: React.FC = () => {
     const navigate = useNavigate();
@@ -31,24 +28,10 @@ const SuperAdminSettingsPage: React.FC = () => {
         maintenanceMode: false,
     });
 
-    const [providerKeys] = useState({
-        elevenLabs: '••••••••••••••••••••',
-        twilioSid: 'AC••••••••••••••••••••',
-        openai: 'sk-••••••••••••••••••••',
-    });
-
-    const [resources, setResources] = useState({
-        maxConcurrentCalls: 2000,
-        storageQuotaGb: 50,
-    });
-
-    const [billing, setBilling] = useState({ platformMargin: 25 });
-
-    const [notifications, setNotifications] = useState({
-        daily: true,
-        critical: true,
-        new_org: true,
-        wallet: false,
+    const [providerKeys, setProviderKeys] = useState({
+        elevenLabs: '',
+        sarvam: '',
+        gemini: '',
     });
 
     useEffect(() => {
@@ -70,16 +53,10 @@ const SuperAdminSettingsPage: React.FC = () => {
                 supportEmail: s.support_email || 'support@ziyavoice.com',
                 maintenanceMode: s.maintenance_mode === '1',
             });
-            setResources({
-                maxConcurrentCalls: parseInt(s.max_concurrent_calls || '2000'),
-                storageQuotaGb: parseInt(s.storage_quota_gb || '50'),
-            });
-            setBilling({ platformMargin: parseInt(s.platform_margin || '25') });
-            setNotifications({
-                daily: s.notify_daily_report !== '0',
-                critical: s.notify_critical !== '0',
-                new_org: s.notify_new_org !== '0',
-                wallet: s.notify_wallet_empty === '1',
+            setProviderKeys({
+                elevenLabs: s.elevenlabs_api_key || '',
+                sarvam: s.sarvam_api_key || '',
+                gemini: s.gemini_api_key || '',
             });
         } catch (err) {
             console.error('Failed to fetch settings:', err);
@@ -116,29 +93,15 @@ const SuperAdminSettingsPage: React.FC = () => {
         maintenance_mode: general.maintenanceMode ? '1' : '0',
     });
 
-    const handleSaveResources = () => saveSettings('Resource Limits', {
-        max_concurrent_calls: String(resources.maxConcurrentCalls),
-        storage_quota_gb: String(resources.storageQuotaGb),
+    const handleSaveApiKeys = () => saveSettings('Provider APIs', {
+        elevenlabs_api_key: providerKeys.elevenLabs,
+        sarvam_api_key: providerKeys.sarvam,
+        gemini_api_key: providerKeys.gemini,
     });
-
-    const handleSaveBilling = () => saveSettings('Billing', {
-        platform_margin: String(billing.platformMargin),
-    });
-
-    const handleSaveNotifications = () => saveSettings('Notification', {
-        notify_daily_report: notifications.daily ? '1' : '0',
-        notify_critical: notifications.critical ? '1' : '0',
-        notify_new_org: notifications.new_org ? '1' : '0',
-        notify_wallet_empty: notifications.wallet ? '1' : '0',
-    });
-
 
     const tabs = [
-        { id: 'general', label: 'Global Platform', icon: GlobeAltIcon, desc: 'Core platform identity' },
-        { id: 'api_keys', label: 'Provider APIs', icon: KeyIcon, desc: 'Master API credentials' },
-        { id: 'resources', label: 'System Resource', icon: ServerIcon, desc: 'Throttling & limits' },
-        { id: 'notifications', label: 'Audit Alerts', icon: BellAlertIcon, desc: 'System notifications' },
-        { id: 'billing', label: 'Platform Financials', icon: CurrencyDollarIcon, desc: 'Global pricing & margins' },
+        { id: 'general' as const, label: 'Global Platform', icon: GlobeAltIcon, desc: 'Core platform identity' },
+        { id: 'api_keys' as const, label: 'Provider APIs', icon: KeyIcon, desc: 'Master API credentials' },
     ];
 
     return (
@@ -259,155 +222,54 @@ const SuperAdminSettingsPage: React.FC = () => {
                                         <KeyIcon className="w-6 h-6 text-violet-500" />
                                         Master API Credentials
                                     </h2>
-                                    <p className="text-sm text-slate-500 font-medium mt-1">These keys override tenant-specific keys if they fallback to platform billing.</p>
+                                    <p className="text-sm text-slate-500 font-medium mt-1">Configure master API keys for ElevenLabs (TTS), Sarvam (STT), and Gemini (LLM). These override .env values.</p>
                                 </div>
                                 <div className="p-8 space-y-6">
                                     <div className="space-y-6 max-w-xl">
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Eleven Labs System Key</label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">ElevenLabs API Key (TTS)</label>
                                             <input 
                                                 type="password" 
                                                 value={providerKeys.elevenLabs}
-                                                className="w-full bg-slate-100 dark:bg-slate-900/40 border-2 border-slate-200 dark:border-slate-800 rounded-2xl px-5 py-3 text-sm font-mono text-slate-400 cursor-not-allowed outline-none"
-                                                disabled
+                                                onChange={e => setProviderKeys({...providerKeys, elevenLabs: e.target.value})}
+                                                placeholder="sk-[your-elevenlabs-key]"
+                                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-5 py-3 text-sm font-mono text-slate-800 dark:text-white focus:ring-2 focus:ring-violet-500/20 outline-none transition-all"
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Twilio Master Account SID</label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sarvam API Key (STT)</label>
                                             <input 
                                                 type="password" 
-                                                value={providerKeys.twilioSid}
-                                                className="w-full bg-slate-100 dark:bg-slate-900/40 border-2 border-slate-200 dark:border-slate-800 rounded-2xl px-5 py-3 text-sm font-mono text-slate-400 cursor-not-allowed outline-none"
-                                                disabled
+                                                value={providerKeys.sarvam}
+                                                onChange={e => setProviderKeys({...providerKeys, sarvam: e.target.value})}
+                                                placeholder="sk_[your-sarvam-key]"
+                                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-5 py-3 text-sm font-mono text-slate-800 dark:text-white focus:ring-2 focus:ring-violet-500/20 outline-none transition-all"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Gemini API Key (LLM)</label>
+                                            <input 
+                                                type="password" 
+                                                value={providerKeys.gemini}
+                                                onChange={e => setProviderKeys({...providerKeys, gemini: e.target.value})}
+                                                placeholder="AIza[your-gemini-key]"
+                                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-5 py-3 text-sm font-mono text-slate-800 dark:text-white focus:ring-2 focus:ring-violet-500/20 outline-none transition-all"
                                             />
                                         </div>
                                     </div>
                                     <div className="p-5 bg-violet-50 dark:bg-violet-900/10 border border-violet-100 dark:border-violet-900/30 rounded-2xl max-w-xl">
                                         <p className="text-xs text-violet-700 dark:text-violet-400 font-bold leading-relaxed flex items-start gap-3">
                                             <CpuChipIcon className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                                            API Keys are hardcoded in the server environment variables for maximum security. Edit the .env file and restart the API layer to apply new keys.
+                                            These keys will be saved to the system and override environment variables. Changes take effect immediately.
                                         </p>
                                     </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* RESOURCES */}
-                        {activeTab === 'resources' && (
-                            <div className="animate-in fade-in duration-300">
-                                <div className="p-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-                                    <h2 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-3">
-                                        <ServerIcon className="w-6 h-6 text-blue-500" />
-                                        System Throttling
-                                    </h2>
-                                    <p className="text-sm text-slate-500 font-medium mt-1">Protection against DDoS and runaway tenant campaigns.</p>
-                                </div>
-                                <div className="p-8 space-y-6">
-                                    <div className="flex flex-col md:flex-row gap-6">
-                                        <div className="flex-1 space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Global Max Concurrent Calls</label>
-                                            <input
-                                                type="number"
-                                                value={resources.maxConcurrentCalls}
-                                                onChange={e => setResources({...resources, maxConcurrentCalls: parseInt(e.target.value) || 0})}
-                                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-5 py-3 text-xl font-black text-slate-800 dark:text-white outline-none"
-                                            />
-                                            <p className="text-[9px] text-slate-400 ml-1">Hard limit across ALL tenants.</p>
-                                        </div>
-                                        <div className="flex-1 space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Storage Quota per Org (GB)</label>
-                                            <input
-                                                type="number"
-                                                value={resources.storageQuotaGb}
-                                                onChange={e => setResources({...resources, storageQuotaGb: parseInt(e.target.value) || 0})}
-                                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-5 py-3 text-xl font-black text-slate-800 dark:text-white outline-none"
-                                            />
-                                            <p className="text-[9px] text-slate-400 ml-1">Default data limit for new orgs.</p>
-                                        </div>
-                                    </div>
                                     <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
                                         <button 
-                                            onClick={handleSaveResources}
+                                            onClick={handleSaveApiKeys}
                                             disabled={saving || settingsLoading}
-                                            className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-[11px] uppercase tracking-widest shadow-lg shadow-blue-600/20 transition-all active:scale-95 disabled:opacity-50"
+                                            className="px-8 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-black text-[11px] uppercase tracking-widest shadow-lg shadow-violet-600/20 transition-all active:scale-95 disabled:opacity-50"
                                         >
-                                            {saving ? 'Applying Limits...' : 'Enforce Limits'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* NOTIFICATIONS */}
-                        {activeTab === 'notifications' && (
-                            <div className="animate-in fade-in duration-300">
-                                <div className="p-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-                                    <h2 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-3">
-                                        <BellAlertIcon className="w-6 h-6 text-pink-500" />
-                                        Audit & Alerts
-                                    </h2>
-                                    <p className="text-sm text-slate-500 font-medium mt-1">Super Admin notifications for critical system events.</p>
-                                </div>
-                                <div className="p-8 space-y-4 max-w-xl">
-                                    {([
-                                        { id: 'daily' as const, label: 'Daily Super Admin Analytics Report' },
-                                        { id: 'critical' as const, label: 'Critical Service Disruptions (Twilio/LLM)' },
-                                        { id: 'new_org' as const, label: 'New Organization Signup' },
-                                        { id: 'wallet' as const, label: 'Tenant Wallet Empty Warning' },
-                                    ]).map(item => (
-                                        <div key={item.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800/80">
-                                            <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{item.label}</span>
-                                            <input
-                                                type="checkbox"
-                                                checked={notifications[item.id]}
-                                                onChange={e => setNotifications({...notifications, [item.id]: e.target.checked})}
-                                                className="w-5 h-5 accent-pink-500"
-                                            />
-                                        </div>
-                                    ))}
-                                    <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
-                                        <button 
-                                            onClick={handleSaveNotifications}
-                                            disabled={saving || settingsLoading}
-                                            className="px-8 py-3 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 rounded-xl font-black text-[11px] uppercase tracking-widest transition-all disabled:opacity-50"
-                                        >
-                                            {saving ? 'Saving...' : 'Save Preferences'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        
-                        {/* BILLING */}
-                        {activeTab === 'billing' && (
-                            <div className="animate-in fade-in duration-300">
-                                <div className="p-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-                                    <h2 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-3">
-                                        <CurrencyDollarIcon className="w-6 h-6 text-emerald-500" />
-                                        Platform Margins & Costs
-                                    </h2>
-                                    <p className="text-sm text-slate-500 font-medium mt-1">Define the Global Credit value compared to USD.</p>
-                                </div>
-                                <div className="p-8 space-y-6">
-                                    <div className="max-w-xl space-y-6">
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Platform Margin (%)</label>
-                                            <input
-                                                type="number"
-                                                value={billing.platformMargin}
-                                                onChange={e => setBilling({ platformMargin: parseInt(e.target.value) || 0 })}
-                                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-5 py-3 text-sm font-bold text-slate-800 dark:text-white outline-none"
-                                            />
-                                            <p className="text-[9px] text-slate-400 font-medium ml-1">Additional markup applied on top of raw Twilio/ElevenLabs costs.</p>
-                                        </div>
-                                    </div>
-                                    <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
-                                        <button 
-                                            onClick={handleSaveBilling}
-                                            disabled={saving || settingsLoading}
-                                            className="px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-[11px] uppercase tracking-widest shadow-lg shadow-emerald-600/20 transition-all disabled:opacity-50"
-                                        >
-                                            {saving ? 'Saving...' : 'Update Margins'}
+                                            {saving ? 'Updating Keys...' : 'Save API Keys'}
                                         </button>
                                     </div>
                                 </div>

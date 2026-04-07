@@ -33,6 +33,7 @@ const { AuthService } = require('./services/authService.js');
 const TwilioService = require('./services/twilioService.js');
 const { TwilioBasicService } = require('./services/twilioBasicService.js');
 const { MediaStreamHandler } = require('./services/mediaStreamHandler.js');
+const SupportChatWebSocketHandler = require('./services/supportChatWebSocketHandler.js');
 const { ElevenLabsStreamHandler } = require('./services/elevenLabsStreamHandler.js');
 const AdminService = require('./services/adminService.js');
 const OrganizationService = require('./services/organizationService.js');
@@ -51,9 +52,6 @@ const { getBackendUrl, buildBackendUrl, normalizeBackendUrl, ensureHttpProtocol,
 // Initialize wallet and cost services
 const walletService = new WalletService(mysqlPool);
 const costCalculator = new CostCalculator(mysqlPool, walletService);
-
-// Configure Google OAuth
-const passportInstance = configureGoogleAuth(mysqlPool);
 
 // Init server
 const app = express();
@@ -80,6 +78,15 @@ const twilioCallWss = new WebSocketServer({
   maxPayload: 100 * 1024 * 1024,
   skipUTF8Validation: true
 });
+
+// Initialize Support Chat WebSocket
+let supportChatWss = null;
+try {
+  supportChatWss = SupportChatWebSocketHandler.initialize(server);
+  console.log(' Support Chat WebSocket initialized');
+} catch (err) {
+  console.warn(' Failed to initialize Support Chat WebSocket:', err.message);
+}
 
 // ============ CONSOLIDATED WEBSOCKET UPGRADE HANDLER ============
 // CRITICAL: This is a SINGLE handler that consolidates what was previously two separate listeners
@@ -196,6 +203,9 @@ const companyService = new CompanyService(mysqlPool);
 const adminService = new AdminService(mysqlPool);
 const organizationService = new OrganizationService(mysqlPool);
 // Google Sheets service removed
+
+// Configure Google OAuth
+const passportInstance = configureGoogleAuth(mysqlPool, organizationService);
 
 // Initialize MediaStreamHandler for voice call pipeline
 const agentService = new AgentService(mysqlPool);
@@ -1511,8 +1521,10 @@ app.post('/api/auth/login', async (req, res) => {
     if (!user.current_company_id) {
       const [companies] = await mysqlPool.execute('SELECT id FROM companies WHERE user_id = ?', [user.id]);
       if (companies.length === 0) {
+        const org = await organizationService.getOrganization(user.organization_id);
+        const companyName = `${org.name} company`;
         const companyId = uuidv4();
-        await mysqlPool.execute('INSERT INTO companies (id, user_id, name) VALUES (?, ?, ?)', [companyId, user.id, 'Default Company']);
+        await mysqlPool.execute('INSERT INTO companies (id, user_id, name) VALUES (?, ?, ?)', [companyId, user.id, companyName]);
         await mysqlPool.execute('UPDATE users SET current_company_id = ? WHERE id = ?', [companyId, user.id]);
         user.current_company_id = companyId;
       } else {
@@ -1631,8 +1643,10 @@ app.post('/api/auth/register', async (req, res) => {
     const user = await authService.registerUser(email, username, password);
 
     // Default company creation
+    const org = await organizationService.getOrganization(user.organization_id);
+    const companyName = `${org.name} company`;
     const companyId = uuidv4();
-    await mysqlPool.execute('INSERT INTO companies (id, user_id, name) VALUES (?, ?, ?)', [companyId, user.id, 'Default Company']);
+    await mysqlPool.execute('INSERT INTO companies (id, user_id, name) VALUES (?, ?, ?)', [companyId, user.id, companyName]);
 
     // Trial plan + 50 credits on sign-up
     const trialStart = new Date();
@@ -2034,6 +2048,8 @@ app.post('/api/admin/users/:userId/assign-plan', async (req, res) => {
 });
 
 // GET /api/users/plan-access/:userId - Check if user can perform restricted actions
+// CREDIT-BASED ACCESS CONTROL: Users must have credits > 0 to use any features
+// Timing constraints are REMOVED - only credit balance matters
 app.get('/api/users/plan-access/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -2045,10 +2061,8 @@ app.get('/api/users/plan-access/:userId', async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
 
     const user = rows[0];
-    const now = new Date();
-    const expiry = user.plan_valid_until ? new Date(user.plan_valid_until) : null;
 
-    // Also check wallet balance
+    // Check wallet balance as fallback
     let walletBalance = 0;
     try {
       const [walletRows] = await mysqlPool.execute('SELECT balance FROM user_wallets WHERE user_id = ?', [userId]);
@@ -2056,22 +2070,20 @@ app.get('/api/users/plan-access/:userId', async (req, res) => {
     } catch (e) { /* ignore */ }
 
     const effectiveCredits = user.credits_balance !== null ? parseFloat(user.credits_balance) : walletBalance;
-    const isExpired = expiry ? now > expiry : false;
     const hasCredits = effectiveCredits > 0;
 
-    const canAccess = hasCredits && !isExpired;
+    // ACCESS RULE: Only check if user has credits (timing constraint removed)
+    const canAccess = hasCredits;
 
     res.json({
       success: true,
       can_access: canAccess,
       credits_balance: effectiveCredits,
       plan_valid_until: user.plan_valid_until || null,
-      is_expired: isExpired,
       has_credits: hasCredits,
       plan_type: user.plan_type || null,
-      blocking_reason: !canAccess
-        ? (!hasCredits ? 'insufficient_credits' : 'plan_expired')
-        : null
+      // Blocking reason: only insufficient_credits or null (plan_expired removed)
+      blocking_reason: !canAccess ? 'insufficient_credits' : null
     });
   } catch (error) {
     console.error('Error checking plan access:', error);
@@ -2755,6 +2767,42 @@ app.post('/api/superadmin/settings', async (req, res) => {
       return res.status(400).json({ success: false, message: 'settings object required' });
     }
     for (const [key, value] of Object.entries(settings)) {
+      // Handle API keys specially - update env files too
+      if (key === 'elevenlabs_api_key' || key === 'sarvam_api_key' || key === 'gemini_api_key') {
+        const envKeyMap = {
+          'elevenlabs_api_key': 'ELEVENLABS_API_KEY',
+          'sarvam_api_key': 'SARVAM_API_KEY',
+          'gemini_api_key': 'GEMINI_API_KEY'
+        };
+        const envKey = envKeyMap[key];
+        const envValue = String(value);
+
+        // Update env files
+        const envFilePaths = [
+          path.join(__dirname, '..', '.env.prod'),
+          path.join(__dirname, '..', '.env.production'),
+        ];
+
+        for (const envFilePath of envFilePaths) {
+          if (fs.existsSync(envFilePath)) {
+            try {
+              let envContent = fs.readFileSync(envFilePath, 'utf-8');
+              const regex = new RegExp(`^${envKey}=.*$`, 'm');
+              if (regex.test(envContent)) {
+                envContent = envContent.replace(regex, `${envKey}=${envValue}`);
+              } else {
+                envContent += `\n${envKey}=${envValue}`;
+              }
+              fs.writeFileSync(envFilePath, envContent, 'utf-8');
+              process.env[envKey] = envValue;
+              console.log(`✅ Updated ${envKey} in ${envFilePath}`);
+            } catch (fileErr) {
+              console.warn(`⚠️ Warning: Could not update ${envFilePath}: ${fileErr.message}`);
+            }
+          }
+        }
+      }
+
       await mysqlPool.execute(
         `INSERT INTO platform_settings (setting_key, setting_value)
          VALUES (?, ?)
@@ -2774,29 +2822,153 @@ app.post('/api/superadmin/settings', async (req, res) => {
 // ============================================================
 
 
-// Auto-create support_tickets table if it doesn't exist
+// Support Ticket Number Generator
+let nextSupportTicketNumber = null;
+
+const generateTicketNumber = async () => {
+  if (nextSupportTicketNumber === null) {
+    try {
+      const [rows] = await mysqlPool.execute(
+        'SELECT MAX(CAST(SUBSTRING_INDEX(ticket_number, "-", -1) AS UNSIGNED)) as max_num FROM support_tickets'
+      );
+      const maxNum = rows[0]?.max_num || 0;
+      nextSupportTicketNumber = maxNum + 1;
+    } catch (err) {
+      nextSupportTicketNumber = 1;
+    }
+  }
+
+  const nextNum = nextSupportTicketNumber;
+  nextSupportTicketNumber += 1;
+  const year = new Date().getFullYear();
+  return `TICKET-${year}-${String(nextNum).padStart(6, '0')}`;
+};
+
+// Auto-create support tables if they don't exist
 (async () => {
   try {
+    // First, check if support_tickets table exists
+    const [tables] = await mysqlPool.execute(
+      "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'support_tickets'",
+      [process.env.MYSQL_DATABASE || 'ziya_voice_agent']
+    );
+
+    if (tables.length === 0) {
+      // Table doesn't exist, create it with all columns including ticket_number
+      await mysqlPool.execute(`
+        CREATE TABLE support_tickets (
+          id VARCHAR(36) PRIMARY KEY,
+          ticket_number VARCHAR(100) UNIQUE NOT NULL,
+          subject VARCHAR(255) NOT NULL,
+          category VARCHAR(100) DEFAULT 'Technical',
+          priority ENUM('Low','Medium','High','Urgent') DEFAULT 'Medium',
+          status ENUM('Open','In Progress','Resolved','Closed') DEFAULT 'Open',
+          message TEXT NOT NULL,
+          created_by VARCHAR(36) NOT NULL,
+          created_by_role ENUM('user','org_admin','super_admin') NOT NULL,
+          organization_id INT NULL,
+          assigned_to VARCHAR(36) NULL,
+          escalated_to_super_admin BOOLEAN DEFAULT FALSE,
+          escalated_at TIMESTAMP NULL,
+          escalated_by VARCHAR(36) NULL,
+          resolved_by VARCHAR(36) NULL,
+          resolved_at TIMESTAMP NULL,
+          is_read_by_admin BOOLEAN DEFAULT FALSE,
+          unread_count INT DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_ticket_number (ticket_number),
+          INDEX idx_created_by (created_by),
+          INDEX idx_organization_id (organization_id),
+          INDEX idx_status (status),
+          INDEX idx_assigned_to (assigned_to),
+          INDEX idx_escalated_to_super_admin (escalated_to_super_admin),
+          INDEX idx_created_by_role (created_by_role)
+        )
+      `);
+      console.log('✓ Created support_tickets table');
+    } else {
+      // Table exists, check if ticket_number column exists
+      const [columns] = await mysqlPool.execute(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'support_tickets' AND COLUMN_NAME = 'ticket_number'",
+        [process.env.MYSQL_DATABASE || 'ziya_voice_agent']
+      );
+
+      if (columns.length === 0) {
+        // Column doesn't exist, add it
+        try {
+          await mysqlPool.execute(`
+            ALTER TABLE support_tickets
+            ADD COLUMN ticket_number VARCHAR(100) UNIQUE NOT NULL AFTER id
+          `);
+          console.log('✓ Added ticket_number column to support_tickets table');
+        } catch (alterErr) {
+          // If it fails due to existing data, try without UNIQUE constraint first
+          try {
+            await mysqlPool.execute(`
+              ALTER TABLE support_tickets
+              ADD COLUMN ticket_number VARCHAR(100) AFTER id
+            `);
+            console.log('✓ Added ticket_number column (without unique constraint)');
+          } catch (err2) {
+            console.warn('⚠ Could not add ticket_number column:', err2.message);
+          }
+        }
+      } else {
+        console.log('✓ ticket_number column already exists');
+      }
+    }
+
+    // Create other support tables
     await mysqlPool.execute(`
-      CREATE TABLE IF NOT EXISTS support_tickets (
+      CREATE TABLE IF NOT EXISTS support_ticket_messages (
         id VARCHAR(36) PRIMARY KEY,
-        subject VARCHAR(255) NOT NULL,
-        category VARCHAR(100) DEFAULT 'Technical',
-        priority ENUM('Low','Medium','High','Urgent') DEFAULT 'Medium',
-        status ENUM('Open','In Progress','Resolved','Closed') DEFAULT 'Open',
+        ticket_id VARCHAR(36) NOT NULL,
+        sender_id VARCHAR(36) NOT NULL,
+        sender_role ENUM('user','org_admin','super_admin') NOT NULL,
         message TEXT NOT NULL,
-        created_by VARCHAR(36) NOT NULL,
-        created_by_role ENUM('user','org_admin','super_admin') NOT NULL,
-        organization_id INT NULL,
-        assigned_to VARCHAR(36) NULL,
+        message_type ENUM('text','attachment_notification','system_update') DEFAULT 'text',
+        is_read BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_created_by (created_by),
-        INDEX idx_organization_id (organization_id),
-        INDEX idx_status (status),
-        INDEX idx_created_by_role (created_by_role)
+        FOREIGN KEY (ticket_id) REFERENCES support_tickets(id) ON DELETE CASCADE,
+        INDEX idx_ticket_id (ticket_id),
+        INDEX idx_sender_id (sender_id),
+        INDEX idx_created_at (created_at)
       )
     `);
+
+    await mysqlPool.execute(`
+      CREATE TABLE IF NOT EXISTS support_ticket_attachments (
+        id VARCHAR(36) PRIMARY KEY,
+        ticket_id VARCHAR(36) NOT NULL,
+        message_id VARCHAR(36) NULL,
+        uploaded_by VARCHAR(36) NOT NULL,
+        file_name VARCHAR(255) NOT NULL,
+        file_path VARCHAR(500) NOT NULL,
+        file_size INT NOT NULL,
+        mime_type VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (ticket_id) REFERENCES support_tickets(id) ON DELETE CASCADE,
+        INDEX idx_ticket_id (ticket_id),
+        INDEX idx_uploaded_by (uploaded_by)
+      )
+    `);
+
+    await mysqlPool.execute(`
+      CREATE TABLE IF NOT EXISTS support_ticket_members (
+        id VARCHAR(36) PRIMARY KEY,
+        ticket_id VARCHAR(36) NOT NULL,
+        user_id VARCHAR(36) NOT NULL,
+        user_role ENUM('user','org_admin','super_admin') NOT NULL,
+        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_ticket_user (ticket_id, user_id),
+        FOREIGN KEY (ticket_id) REFERENCES support_tickets(id) ON DELETE CASCADE,
+        INDEX idx_ticket_id (ticket_id),
+        INDEX idx_user_id (user_id)
+      )
+    `);
+
+    // Keep legacy support_ticket_replies table for backward compatibility
     await mysqlPool.execute(`
       CREATE TABLE IF NOT EXISTS support_ticket_replies (
         id VARCHAR(36) PRIMARY KEY,
@@ -2808,27 +2980,71 @@ app.post('/api/superadmin/settings', async (req, res) => {
         FOREIGN KEY (ticket_id) REFERENCES support_tickets(id) ON DELETE CASCADE
       )
     `);
-    console.log(' Support ticket tables ready');
-  } catch (err) {
-    console.warn(' Could not create support_tickets table:', err.message);
-  }
+
+    } catch (err) {
+      console.warn('⚠ Could not create support ticket tables:', err.message);
+      // Still try to log helpful error info
+      if (err.message.includes('Unknown column')) {
+        console.warn('⚠ The support_tickets table might be missing the ticket_number column');
+        console.warn('⚠ Try manually running: ALTER TABLE support_tickets ADD COLUMN ticket_number VARCHAR(100) UNIQUE NOT NULL AFTER id;');
+      }
+    }
 })();
 
 // POST /api/support/tickets – Create a new ticket
 app.post('/api/support/tickets', async (req, res) => {
   try {
-    const { subject, category, priority, message, created_by, created_by_role, target_role, organization_id } = req.body;
-    if (!subject || !message || !created_by || !created_by_role || !target_role) {
-      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    const { subject, category, priority, message, created_by, created_by_role, organization_id } = req.body;
+    if (!subject || !message || !created_by || !created_by_role) {
+      return res.status(400).json({ success: false, message: 'Missing required fields: subject, message, created_by, created_by_role' });
     }
+
     const ticketId = require('crypto').randomBytes(8).toString('hex');
-    await mysqlPool.execute(
-      `INSERT INTO support_tickets (id, subject, category, priority, message, created_by, created_by_role, target_role, organization_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [ticketId, subject, category || 'Technical', priority || 'Medium', message, created_by, created_by_role, target_role, organization_id || null]
-    );
-    const [rows] = await mysqlPool.execute('SELECT * FROM support_tickets WHERE id = ?', [ticketId]);
-    res.json({ success: true, ticket: rows[0] });
+    const ticketNumber = await generateTicketNumber(organization_id);
+
+    // Start transaction for ticket creation with member addition
+    const connection = await mysqlPool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      // Insert ticket
+      await connection.execute(
+        `INSERT INTO support_tickets (id, ticket_number, subject, category, priority, message, created_by, created_by_role, organization_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [ticketId, ticketNumber, subject, category || 'Technical', priority || 'Medium', message, created_by, created_by_role, organization_id || null]
+      );
+
+      // Add ticket creator as a member
+      const memberId = require('crypto').randomBytes(8).toString('hex');
+      await connection.execute(
+        'INSERT INTO support_ticket_members (id, ticket_id, user_id, user_role) VALUES (?, ?, ?, ?)',
+        [memberId, ticketId, created_by, created_by_role]
+      );
+
+      // Insert initial message
+      const messageId = require('crypto').randomBytes(8).toString('hex');
+      await connection.execute(
+        'INSERT INTO support_ticket_messages (id, ticket_id, sender_id, sender_role, message) VALUES (?, ?, ?, ?, ?)',
+        [messageId, ticketId, created_by, created_by_role, message]
+      );
+
+      await connection.commit();
+
+      console.log(` Support ticket created: ${ticketNumber} (${ticketId})`);
+
+      const [rows] = await mysqlPool.execute(
+        'SELECT * FROM support_tickets WHERE id = ?',
+        [ticketId]
+      );
+
+      res.json({
+        success: true,
+        ticket: rows[0],
+        message: `Ticket ${ticketNumber} created successfully`
+      });
+    } finally {
+      await connection.release();
+    }
   } catch (err) {
     console.error('Create ticket error:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -2856,16 +3072,10 @@ app.get('/api/support/tickets', async (req, res) => {
 
     const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
 
+    const safeLimit = Math.max(parseInt(limit, 10) || 50, 1);
+    const safeOffset = Math.max(offset, 0);
     const [tickets] = await mysqlPool.execute(
-      `SELECT t.*,
-              COALESCE(u.username, oa.username, 'Unknown') as created_by_name,
-              COALESCE(u.email, oa.email, 'Unknown') as created_by_email
-       FROM support_tickets t
-       LEFT JOIN users u ON t.created_by = u.id AND t.created_by_role = 'user'
-       LEFT JOIN users oa ON t.created_by = oa.id AND t.created_by_role = 'org_admin'
-       ${whereClause}
-       ORDER BY t.created_at DESC
-       LIMIT ${parseInt(limit)} OFFSET ${offset}`,
+      `SELECT t.* FROM support_tickets t ${whereClause} ORDER BY t.created_at DESC LIMIT ${safeLimit} OFFSET ${safeOffset}`,
       params
     );
 
@@ -2873,19 +3083,7 @@ app.get('/api/support/tickets', async (req, res) => {
       `SELECT COUNT(*) as total FROM support_tickets t ${whereClause}`, params
     );
 
-    // Attach last reply to each ticket
-    const enriched = await Promise.all(tickets.map(async (ticket) => {
-      const [replies] = await mysqlPool.execute(
-        'SELECT message, reply_by_role, created_at FROM support_ticket_replies WHERE ticket_id = ? ORDER BY created_at DESC LIMIT 1',
-        [ticket.id]
-      );
-      return {
-        ...ticket,
-        lastMessage: replies.length > 0 ? (`${replies[0].reply_by_role}: ${replies[0].message}`) : ticket.message,
-      };
-    }));
-
-    res.json({ success: true, tickets: enriched, pagination: { page: parseInt(page), limit: parseInt(limit), total, totalPages: Math.ceil(total / parseInt(limit)) } });
+    res.json({ success: true, tickets, pagination: { page: parseInt(page, 10), limit: safeLimit, total, totalPages: Math.ceil(total / safeLimit) } });
   } catch (err) {
     console.error('List tickets error:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -2897,22 +3095,13 @@ app.get('/api/support/tickets/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const [tickets] = await mysqlPool.execute(`
-      SELECT t.*,
-             COALESCE(u.username, oa.username, 'Unknown') as created_by_name,
-             COALESCE(u.email, oa.email, 'Unknown') as created_by_email
-      FROM support_tickets t
-      LEFT JOIN users u ON t.created_by = u.id AND t.created_by_role = 'user'
-      LEFT JOIN users oa ON t.created_by = oa.id AND t.created_by_role = 'org_admin'
-      WHERE t.id = ?`, [id]);
+      SELECT t.* FROM support_tickets t WHERE t.id = ?`, 
+      [id]
+    );
     if (tickets.length === 0) return res.status(404).json({ success: false, message: 'Ticket not found' });
 
     const [replies] = await mysqlPool.execute(
-      `SELECT r.*, COALESCE(u.username, au.name, 'Support') as reply_by_name
-       FROM support_ticket_replies r
-       LEFT JOIN users u ON r.reply_by = u.id
-       LEFT JOIN admin_users au ON r.reply_by = au.id
-       WHERE r.ticket_id = ?
-       ORDER BY r.created_at ASC`,
+      `SELECT r.* FROM support_ticket_replies r WHERE r.ticket_id = ? ORDER BY r.created_at ASC`,
       [id]
     );
 
@@ -3772,9 +3961,9 @@ app.post('/api/twilio/status', async (req, res) => {
     const { contactId, callId } = req.query;
     const { CallSid, CallStatus, CallDuration } = req.body;
 
-    console.log(' Twilio status callback:', {
-      contactId,
-      callId,
+    console.log('\n📞 Twilio status callback received:', {
+      contactId: contactId || 'N/A',
+      callId: callId || 'N/A',
       callSid: CallSid,
       status: CallStatus,
       duration: CallDuration
@@ -3783,6 +3972,7 @@ app.post('/api/twilio/status', async (req, res) => {
     // Update campaign_contacts status in real-time via campaignService
     if (contactId) {
       try {
+        console.log(`   ✅ Updating campaign contact ${contactId}`);
         await campaignService.updateContactStatus(
           contactId,
           CallStatus,
@@ -3790,8 +3980,10 @@ app.post('/api/twilio/status', async (req, res) => {
           CallSid
         );
       } catch (err) {
-        console.error('Error updating campaign contact status:', err.message);
+        console.error(`   ❌ Error updating campaign contact status:`, err.message);
       }
+    } else {
+      console.warn('   ⚠️  No contactId in callback - cannot update campaign contact');
     }
 
     // Also update the calls table if callId is provided
@@ -4577,6 +4769,25 @@ app.post('/call/start', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
+    // CHECK MAINTENANCE MODE - prevent new calls from being initiated
+    try {
+      const [settingsRows] = await mysqlPool.execute(
+        'SELECT setting_value FROM platform_settings WHERE setting_key = ?',
+        ['maintenance_mode']
+      );
+      const maintenanceMode = settingsRows.length > 0 && settingsRows[0].setting_value === '1';
+      if (maintenanceMode) {
+        return res.status(503).json({
+          success: false,
+          message: 'Platform is under maintenance. New calls cannot be initiated at this time. Please try again later.',
+          maintenance: true
+        });
+      }
+    } catch (mErr) {
+      console.warn('Could not check maintenance mode:', mErr);
+      // Continue if check fails - don't block the request
+    }
+
     // Validate phone number formats
     if (!/^\+?[1-9]\d{1,14}$/.test(from)) {
       return res.status(400).json({ success: false, message: 'Invalid FROM number format' });
@@ -4667,6 +4878,25 @@ app.post('/api/twilio/make-call', async (req, res) => {
 
     if (!userId) {
       return res.status(400).json({ success: false, message: 'User ID is required' });
+    }
+
+    // CHECK MAINTENANCE MODE - prevent new calls from being initiated
+    try {
+      const [settingsRows] = await mysqlPool.execute(
+        'SELECT setting_value FROM platform_settings WHERE setting_key = ?',
+        ['maintenance_mode']
+      );
+      const maintenanceMode = settingsRows.length > 0 && settingsRows[0].setting_value === '1';
+      if (maintenanceMode) {
+        return res.status(503).json({
+          success: false,
+          message: 'Platform is under maintenance. New calls cannot be initiated at this time. Please try again later.',
+          maintenance: true
+        });
+      }
+    } catch (mErr) {
+      console.warn('Could not check maintenance mode:', mErr);
+      // Continue if check fails - don't block the request
     }
 
     // Validate user ID format (UUID)
@@ -6185,36 +6415,74 @@ app.post('/api/campaigns/:id/start', async (req, res) => {
     const { id } = req.params;
     const { userId } = req.body;
 
+    console.log(`\n${'='.repeat(70)}`);
+    console.log(`🚀 CAMPAIGN START REQUEST`);
+    console.log(`${'='.repeat(70)}`);
+    console.log(`   Campaign ID: ${id}`);
+    console.log(`   User ID: ${userId}`);
+
     if (!userId) {
       return res.status(400).json({ success: false, message: 'User ID is required' });
     }
 
+    // CHECK MAINTENANCE MODE - prevent new campaigns from starting
+    try {
+      const [settingsRows] = await mysqlPool.execute(
+        'SELECT setting_value FROM platform_settings WHERE setting_key = ?',
+        ['maintenance_mode']
+      );
+      const maintenanceMode = settingsRows.length > 0 && settingsRows[0].setting_value === '1';
+      if (maintenanceMode) {
+        console.warn(`   ⚠️  Maintenance mode is ON - blocking campaign start`);
+        return res.status(503).json({
+          success: false,
+          message: 'Platform is under maintenance. New campaigns cannot be started at this time. Please try again later.',
+          maintenance: true
+        });
+      }
+      console.log(`   ✅ Maintenance mode check: OFF`);
+    } catch (mErr) {
+      console.warn('Could not check maintenance mode:', mErr.message);
+      // Continue if check fails - don't block the request
+    }
+
     // Get campaign details
+    console.log(`   📋 Fetching campaign details...`);
     const campaign = await campaignService.getCampaign(id);
 
     if (!campaign) {
+      console.error(`   ❌ Campaign not found`);
       return res.status(404).json({ success: false, message: 'Campaign not found' });
     }
 
+    console.log(`   Campaign: ${campaign.name}`);
+
     // Verify campaign belongs to user
     if (campaign.user_id !== userId) {
+      console.error(`   ❌ Access denied - campaign user ID mismatch`);
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
     // Match V1 start validation so we only report success when dialing can actually begin
     if (!campaign.phone_number_id) {
+      console.error(`   ❌ No phone number configured`);
       return res.status(400).json({
         success: false,
         message: 'Please set a caller phone number before starting the campaign'
       });
     }
 
+    console.log(`   ✅ Phone number: ${campaign.phone_number_id}`);
+
     if (!campaign.agent_id) {
+      console.error(`   ❌ No agent configured`);
       return res.status(400).json({
         success: false,
         message: 'Please select an agent for this campaign'
       });
     }
+
+    console.log(`   ✅ Agent: ${campaign.agent_id}`);
 
     // Get all pending or retryable contacts
     const [contacts] = await mysqlPool.execute(
@@ -6222,7 +6490,10 @@ app.post('/api/campaigns/:id/start', async (req, res) => {
       [id, 'pending', 'failed']
     );
 
+    console.log(`   📞 Pending/failed contacts: ${contacts.length}`);
+
     if (contacts.length === 0) {
+      console.error(`   ❌ No contacts to call`);
       return res.status(400).json({
         success: false,
         message: 'No pending or retryable contacts found. Please add contacts to the campaign.'
@@ -6230,21 +6501,29 @@ app.post('/api/campaigns/:id/start', async (req, res) => {
     }
 
     // Update campaign status to running
+    console.log(`   🔄 Starting campaign via campaignService...`);
     await campaignService.startCampaign(id, userId);
 
     // Start processing campaign in background
+    console.log(`   📞 Launching processCampaign (background)...`);
     campaignService.processCampaign(id, userId).catch(err => {
-      console.error('Error processing campaign:', err);
+      console.error('Error processing campaign:', err.message);
     });
+
+    const updatedCampaign = await campaignService.getCampaign(id);
+    
+    console.log(`   ✅ Campaign started successfully`);
+    console.log(`${'='.repeat(70)}\n`);
 
     res.json({
       success: true,
-      data: await campaignService.getCampaign(id),
+      data: updatedCampaign,
       message: `Campaign started. Calling ${contacts.length} contacts...`
     });
 
   } catch (error) {
-    console.error('Error starting campaign:', error);
+    console.error('❌ Error starting campaign:', error.message);
+    console.error(`${'='.repeat(70)}\n`);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -6904,11 +7183,15 @@ app.get('/api/websocket-test', (req, res) => {
     timestamp: new Date().toISOString(),
     websocket: {
       twilioCallWssCreated: !!twilioCallWss,
-      twilioCallWssConnections: twilioCallWss ? twilioCallWss.clients?.size || 0 : 0
+      twilioCallWssConnections: twilioCallWss ? twilioCallWss.clients?.size || 0 : 0,
+      supportChatWssInitialized: !!supportChatWss,
+      supportChatActiveTickets: supportChatWss ? SupportChatWebSocketHandler.getActiveTicketCount() : 0,
+      supportChatActiveConnections: supportChatWss ? SupportChatWebSocketHandler.getActiveConnectionCount() : 0
     },
     handler: {
       mediaStreamHandlerInitialized: !!mediaStreamHandler,
-      mediaStreamHandlerHasMethod: !!mediaStreamHandler?.handleConnection
+      mediaStreamHandlerHasMethod: !!mediaStreamHandler?.handleConnection,
+      supportChatWssPath: '/ws/support'
     },
     apiKeys: {
       sarvam: !!process.env.SARVAM_API_KEY,
@@ -6924,7 +7207,7 @@ app.get('/api/websocket-test', (req, res) => {
     },
     websocketUpgradeHandlerRegistered: true,
     connectionListenerRegistered: true,
-    status: (!!mediaStreamHandler && !!twilioCallWss) ? 'READY ✅' : 'NOT READY ❌'
+    status: (!!mediaStreamHandler && !!twilioCallWss && !!supportChatWss) ? 'READY ✅' : 'NOT READY ❌'
   };
 
   res.json(diagnostics);
@@ -6936,7 +7219,11 @@ app.get('/api/websocket-test', (req, res) => {
     console.log(`Server listening on port ${PORT}`);
     console.log(`Frontend URL: ${FRONTEND_URL}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`WebSocket endpoint: /api/call`);
+    console.log(`WebSocket endpoints:`);
+    console.log(`  - Media Stream (Twilio): /api/call`);
+    console.log(`  - Support Chat (Real-time): /ws/support`);
+    console.log(`API endpoints:`);
+    console.log(`  - Support Chat REST: /api/v2/support/*`);
     console.log(`Diagnostic endpoint: /api/websocket-test`);
     console.log(`🚀 === SERVER READY ===\n`);
   })).catch((error) => {

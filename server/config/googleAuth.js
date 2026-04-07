@@ -8,7 +8,7 @@ const { buildBackendUrl } = require('./backendUrl.js');
  * Handles Google Sign-In authentication
  */
 
-function configureGoogleAuth(mysqlPool) {
+function configureGoogleAuth(mysqlPool, organizationService) {
     // Configure Google Strategy
     passport.use(new GoogleStrategy({
         clientID: process.env.GOOGLE_CLIENT_ID,
@@ -61,10 +61,12 @@ function configureGoogleAuth(mysqlPool) {
                     );
 
                     // Create default company for new user
+                    const org = await organizationService.getOrganization(user.organization_id);
+                    const companyName = `${org.name} company`;
                     const companyId = uuidv4();
                     await mysqlPool.execute(
                         'INSERT INTO companies (id, user_id, name) VALUES (?, ?, ?)',
-                        [companyId, userId, 'Default Company']
+                        [companyId, userId, companyName]
                     );
                     await mysqlPool.execute(
                         'UPDATE users SET current_company_id = ? WHERE id = ?',

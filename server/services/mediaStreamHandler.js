@@ -8,9 +8,6 @@ const TWILIO_MULAW_BYTES_PER_20MS = 160;
 const TWILIO_CHUNK_DELAY_MS = Number(process.env.TWILIO_CHUNK_DELAY_MS || 20);
 const SESSION_TTL_MS = Number(process.env.MEDIA_SESSION_TTL_MS || 30 * 60 * 1000);
 const SESSION_CLEANUP_INTERVAL_MS = Number(process.env.MEDIA_SESSION_CLEANUP_INTERVAL_MS || 60 * 1000);
-const LLM_MIN_INTERVAL_MS = Number(process.env.MEDIA_LLM_MIN_INTERVAL_MS || 1200);
-const LLM_BURST_WINDOW_MS = Number(process.env.MEDIA_LLM_BURST_WINDOW_MS || 10000);
-const LLM_MAX_CALLS_PER_WINDOW = Number(process.env.MEDIA_LLM_MAX_CALLS_PER_WINDOW || 5);
 
 // Precompute mu-law to linear PCM table for fast VAD
 const MU_LAW_TO_PCM = new Int16Array(256);
@@ -105,138 +102,6 @@ class MediaStreamHandler {
         if (session?.markTimeout) {
             clearTimeout(session.markTimeout);
             session.markTimeout = null;
-        }
-    }
-
-    clearLlmRetryTimer(session) {
-        if (session?.llmRetryTimer) {
-            clearTimeout(session.llmRetryTimer);
-            session.llmRetryTimer = null;
-        }
-    }
-
-    pruneSessionLlmCallTimestamps(session) {
-        if (!session?.llmCallTimestamps) {
-            return;
-        }
-
-        const cutoff = Date.now() - LLM_BURST_WINDOW_MS;
-        session.llmCallTimestamps = session.llmCallTimestamps.filter((timestamp) => timestamp >= cutoff);
-    }
-
-    getLlmRateLimitState(session) {
-        this.pruneSessionLlmCallTimestamps(session);
-
-        const now = Date.now();
-        const sinceLastCall = session.llmLastCalledAt ? now - session.llmLastCalledAt : Number.POSITIVE_INFINITY;
-        const cooldownRemainingMs = session.llmLastCalledAt
-            ? Math.max(0, LLM_MIN_INTERVAL_MS - sinceLastCall)
-            : 0;
-
-        let burstRemainingMs = 0;
-        if (session.llmCallTimestamps.length >= LLM_MAX_CALLS_PER_WINDOW) {
-            const oldestTimestamp = session.llmCallTimestamps[0];
-            burstRemainingMs = Math.max(0, LLM_BURST_WINDOW_MS - (now - oldestTimestamp));
-        }
-
-        return {
-            allowed: cooldownRemainingMs === 0 && burstRemainingMs === 0,
-            cooldownRemainingMs,
-            burstRemainingMs,
-            retryAfterMs: Math.max(cooldownRemainingMs, burstRemainingMs, 0),
-            recentCallCount: session.llmCallTimestamps.length
-        };
-    }
-
-    recordLlmCall(session) {
-        const now = Date.now();
-        session.llmLastCalledAt = now;
-        session.llmCallTimestamps.push(now);
-        this.pruneSessionLlmCallTimestamps(session);
-    }
-
-    schedulePendingLlmRetry(session, waitMs, reason) {
-        if (!session?.pendingUserTranscript) {
-            return;
-        }
-
-        if (session.llmRetryTimer) {
-            return;
-        }
-
-        const retryDelayMs = Math.max(100, waitMs);
-        console.log(`[LLM Rate Limit] Scheduling retry for ${session.callId} in ${retryDelayMs}ms (${reason})`);
-
-        session.llmRetryTimer = setTimeout(async () => {
-            session.llmRetryTimer = null;
-
-            if (!sessions.has(session.callId)) {
-                return;
-            }
-
-            if (session.isProcessing || !session.pendingUserTranscript) {
-                return;
-            }
-
-            const pendingTranscript = session.pendingUserTranscript;
-            session.pendingUserTranscript = null;
-            await this.processTranscriptTurn(session, pendingTranscript, 'rate-limit-retry');
-        }, retryDelayMs);
-
-        if (typeof session.llmRetryTimer.unref === 'function') {
-            session.llmRetryTimer.unref();
-        }
-    }
-
-    async processTranscriptTurn(session, transcriptText, source = 'stt') {
-        const normalizedTranscript = (transcriptText || '').trim();
-        if (!normalizedTranscript) {
-            return;
-        }
-
-        const mergedTranscript = session.pendingUserTranscript
-            ? `${session.pendingUserTranscript} ${normalizedTranscript}`.trim()
-            : normalizedTranscript;
-        session.pendingUserTranscript = null;
-
-        const rateLimitState = this.getLlmRateLimitState(session);
-        if (!rateLimitState.allowed) {
-            session.pendingUserTranscript = mergedTranscript;
-            console.log(`[LLM Rate Limit] Delaying LLM call for ${session.callId}`, {
-                source,
-                retryAfterMs: rateLimitState.retryAfterMs,
-                cooldownRemainingMs: rateLimitState.cooldownRemainingMs,
-                burstRemainingMs: rateLimitState.burstRemainingMs,
-                recentCallCount: rateLimitState.recentCallCount
-            });
-            this.schedulePendingLlmRetry(session, rateLimitState.retryAfterMs, source);
-            return;
-        }
-
-        this.clearLlmRetryTimer(session);
-        this.recordLlmCall(session);
-
-        console.log(`[LLM Turn] Transcript ready: "${mergedTranscript}"`);
-        this.appendToContext(session, mergedTranscript, "user");
-
-        session.isCancelled = false;
-        session.isProcessing = true;
-
-        try {
-            const llmResponse = await this.callLLM(session);
-
-            if (!session.isCancelled && llmResponse) {
-                this.appendToContext(session, llmResponse, "model");
-            } else if (session.isCancelled) {
-                console.log(`[LLM Turn] Response discarded from context because the turn was cancelled`);
-            }
-        } finally {
-            session.isProcessing = false;
-
-            if (session.pendingUserTranscript) {
-                const nextRateLimitState = this.getLlmRateLimitState(session);
-                this.schedulePendingLlmRetry(session, nextRateLimitState.retryAfterMs || LLM_MIN_INTERVAL_MS, 'post-turn');
-            }
         }
     }
 
@@ -414,10 +279,6 @@ class MediaStreamHandler {
             createdAt: now,
             lastActivityAt: now,
             markTimeout: null,
-            llmLastCalledAt: 0,
-            llmCallTimestamps: [],
-            pendingUserTranscript: null,
-            llmRetryTimer: null,
             // Sarvam STT Buffering & VAD
             audioBuffer: [],
             speechDetectedInChunk: false,
@@ -441,7 +302,6 @@ class MediaStreamHandler {
         const session = sessions.get(callId);
         if (session) {
             this.clearMarkTimeout(session);
-            this.clearLlmRetryTimer(session);
             // Execute tools marked to run after call
             if (session.tools && session.tools.length > 0 && session.agentId) {
                 const afterCallTools = session.tools.filter(tool => tool.runAfterCall);
@@ -492,7 +352,14 @@ class MediaStreamHandler {
                 try {
                     const fullTranscript = session.context.map(msg => `${msg.role.toUpperCase()}: ${msg.parts[0].text}`).join('\n');
                     const durationSeconds = Math.round(durationSecondsForCost);
-                    console.log(`📝 Saving transcript and classifying intent for contact ${session.contactId}...`);
+                    
+                    console.log(`\n📝 CAMPAIGN CONTACT FOLLOW-UP`);
+                    console.log(`   Contact ID: ${session.contactId}`);
+                    console.log(`   Campaign ID: ${session.campaignId || 'N/A'}`);
+                    console.log(`   Duration: ${durationSeconds}s`);
+                    console.log(`   Cost: $${finalCost.toFixed(4)}`);
+                    console.log(`   Transcript length: ${fullTranscript.length} chars`);
+                    console.log(`   Calling updateContactAfterCall()...`);
 
                     await this.campaignService.updateContactAfterCall(
                         session.contactId,
@@ -503,7 +370,12 @@ class MediaStreamHandler {
                     );
                     console.log(`✅ Campaign contact ${session.contactId} updated with transcript and LLM classification`);
                 } catch (campaignErr) {
-                    console.error('❌ Error updating campaign contact after call:', campaignErr);
+                    console.error(`❌ CRITICAL Error updating campaign contact after call:`, campaignErr.message);
+                    console.error(`   Stack:`, campaignErr.stack);
+                }
+            } else {
+                if (session.contactId) {
+                    console.warn(`⚠️  contactId found (${session.contactId}) but no campaignService available`);
                 }
             }
 
@@ -576,10 +448,13 @@ class MediaStreamHandler {
                         if (eventReceived) return; // Ignore duplicate start events
                         eventReceived = true;
 
-                        console.log(`🚀 [*] TWILIO START EVENT received`);
+                        console.log(`\n🚀 TWILIO MEDIA STREAM START EVENT received`);
+                        console.log('   Raw start data:', JSON.stringify(data.start, null, 2));
 
                         // ✅ Extract parameters from Twilio's customParameters
                         const customParams = data.start?.customParameters || {};
+                        console.log(`   Custom parameters:`, customParams);
+                        
                         callId = customParams.callId;
                         agentId = customParams.agentId;
                         userId = customParams.userId;
@@ -587,22 +462,27 @@ class MediaStreamHandler {
                         const campaignId = customParams.campaignId;
                         const streamSid = data.start?.streamSid;
 
-                        console.log(`📋 [${callId}] Received parameters:`, {
+                        console.log(`📋 Extracted parameters:`, {
                             callId, agentId, userId, contactId, campaignId, streamSidPresent: !!streamSid
                         });
 
                         // ✅ Validate we have minimum required parameters
                         if (!callId || !agentId || !userId || !streamSid) {
-                            console.error(`❌ [${callId}] Missing required parameters from Twilio start event`);
-                            console.error('Missing start-event fields:', {
+                            console.error(`❌ Missing required parameters from Twilio start event`);
+                            console.error('   Missing fields:', {
                                 hasCallId: !!callId,
                                 hasAgentId: !!agentId,
                                 hasUserId: !!userId,
-                                hasStreamSid: !!streamSid,
-                                startPayloadKeys: Object.keys(data.start || {})
+                                hasStreamSid: !!streamSid
                             });
+                            console.error('   Available keys in data.start:', Object.keys(data.start || {}));
                             ws.close(1008, 'Missing required stream parameters');
                             return;
+                        }
+
+                        // ✅ Log campaign context if available
+                        if (contactId || campaignId) {
+                            console.log(`   📊 Campaign call detected: contactId=${contactId}, campaignId=${campaignId}`);
                         }
 
                         // ✅ Load agent configuration
@@ -1218,11 +1098,6 @@ class MediaStreamHandler {
             // Track usage (8kHz mulaw = 8000 bytes/sec)
             const durationSeconds = completeBuffer.length / 8000;
             session.usage.sarvam_stt += durationSeconds;
-
-            if (transcript && transcript.trim()) {
-                await this.processTranscriptTurn(session, transcript.trim(), 'sarvam-stt');
-                return;
-            }
 
             if (transcript && transcript.trim()) {
                 console.log(`📝 Sarvam Transcript: "${transcript}"`);

@@ -550,7 +550,7 @@ const AgentPage: React.FC = () => {
                 </div>
             </Modal>
 
-            {/* Upgrade Plan Modal — shown when credits are 0 or plan is expired */}
+            {/* Upgrade Plan Modal — shown when credits are 0 */}
             <UpgradePlanModal reason={blockingReason} onClose={clearBlock} />
         </AppLayout>
     );

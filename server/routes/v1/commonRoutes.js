@@ -15,16 +15,17 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 
 // Initialize services through app context
-let authService, mysqlPool, walletService, companyService;
+let authService, mysqlPool, walletService, companyService, organizationService;
 
 /**
  * Initialize controller with required dependencies
  */
-function initCommonController(auth, pool, wallet, company) {
+function initCommonController(auth, pool, wallet, company, organization) {
   authService = auth;
   mysqlPool = pool;
   walletService = wallet;
   companyService = company;
+  organizationService = organization;
 }
 
 // ==================== LOGIN & REGISTRATION ====================
@@ -64,10 +65,12 @@ router.post('/auth/login', async (req, res) => {
         [user.id]
       );
       if (companies.length === 0) {
+        const org = await organizationService.getOrganization(user.organization_id);
+        const companyName = `${org.name} company`;
         const companyId = uuidv4();
         await mysqlPool.execute(
           'INSERT INTO companies (id, user_id, name) VALUES (?, ?, ?)',
-          [companyId, user.id, 'Default Company']
+          [companyId, user.id, companyName]
         );
         await mysqlPool.execute(
           'UPDATE users SET current_company_id = ? WHERE id = ?',
@@ -145,10 +148,12 @@ router.post('/auth/register', async (req, res) => {
     const user = await authService.registerUser(email, username, password);
 
     // Default company creation
+    const org = await organizationService.getOrganization(user.organization_id);
+    const companyName = `${org.name} company`;
     const companyId = uuidv4();
     await mysqlPool.execute(
       'INSERT INTO companies (id, user_id, name) VALUES (?, ?, ?)',
-      [companyId, user.id, 'Default Company']
+      [companyId, user.id, companyName]
     );
 
     // Trial plan + 50 credits on sign-up

@@ -39,7 +39,7 @@ function initializeV1Routes(services) {
   } = services;
 
   // Initialize each controller with its dependencies
-  initCommonController(authService, mysqlPool, walletService, companyService);
+  initCommonController(authService, mysqlPool, walletService, companyService, organizationService);
   initUserController(mysqlPool, walletService, campaignService);
   initAdminController(mysqlPool, adminService, walletService);
   initSuperAdminController(mysqlPool, adminService, organizationService, walletService);

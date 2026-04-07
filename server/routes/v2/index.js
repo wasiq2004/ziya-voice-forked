@@ -8,20 +8,26 @@
 const express = require('express');
 const router = express.Router();
 
+// Import V2 feature routes
+const supportChatRoutes = require('./supportChatRoutes');
+
+// Mount support chat routes
+router.use('/support', supportChatRoutes);
+
 // V2 will have similar structure but with improved features
 // Currently scaffolded for future development
 
-// Placeholder for future V2 routes
+// Status endpoint
 router.get('/status', (req, res) => {
   res.json({
     version: 'v2',
-    status: 'scaffold',
-    message: 'V2 API structure is ready for future features',
-    availableSoon: [
-      'Enhanced authentication',
-      'Advanced analytics',
-      'Improved performance',
-      'New endpoints'
+    status: 'active',
+    message: 'V2 API with enhanced features',
+    availableEndpoints: [
+      'Support Chat System (/api/v2/support/*)',
+      'Real-time ticket management',
+      'File attachments',
+      'Advanced search & filtering'
     ]
   });
 });
