@@ -13,6 +13,33 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
+const {
+  normalizeOrganizationSlug,
+  PLATFORM_ORG_SLUG
+} = require('../../services/organizationService.js');
+const { getPublicOriginFromBackendUrl } = require('../../config/backendUrl.js');
+
+const PLATFORM_PUBLIC_ORIGIN = getPublicOriginFromBackendUrl();
+let PLATFORM_PUBLIC_HOST = null;
+try {
+  PLATFORM_PUBLIC_HOST = PLATFORM_PUBLIC_ORIGIN ? new URL(PLATFORM_PUBLIC_ORIGIN).hostname.toLowerCase() : null;
+} catch (error) {
+  PLATFORM_PUBLIC_HOST = null;
+}
+
+const getOrganizationLoginUrl = (slug) => {
+  if (!slug || !PLATFORM_PUBLIC_ORIGIN || !PLATFORM_PUBLIC_HOST) {
+    return '/login';
+  }
+
+  const normalizedSlug = normalizeOrganizationSlug(slug);
+  if (!normalizedSlug) {
+    return '/login';
+  }
+
+  const protocol = PLATFORM_PUBLIC_ORIGIN.split('://')[0];
+  return `${protocol}://${normalizedSlug}.${PLATFORM_PUBLIC_HOST}/login`;
+};
 
 // Initialize services through app context
 let authService, mysqlPool, walletService, companyService, organizationService;
@@ -30,10 +57,70 @@ function initCommonController(auth, pool, wallet, company, organization) {
 
 // ==================== LOGIN & REGISTRATION ====================
 
+async function validateTenantContext(user, organizationSlug) {
+  const normalizedTenantSlug = normalizeOrganizationSlug(organizationSlug);
+
+  if (!normalizedTenantSlug) {
+    if (user.role === 'super_admin') {
+      return { allowed: true };
+    }
+
+    if (!user.organization_id) {
+      return { allowed: true };
+    }
+
+    const organization = await organizationService.getOrganization(user.organization_id);
+    if (normalizeOrganizationSlug(organization.slug || organization.name) === PLATFORM_ORG_SLUG) {
+      return { allowed: true };
+    }
+
+    return {
+      allowed: false,
+      status: 403,
+      message: `Use your organization login URL: ${getOrganizationLoginUrl(organization.slug)}`
+    };
+  }
+
+  if (user.role === 'super_admin') {
+    return {
+      allowed: false,
+      status: 403,
+      message: 'Super admin accounts must log in from the main platform URL.'
+    };
+  }
+
+  const tenantOrganization = await organizationService.getOrganizationBySlug(normalizedTenantSlug);
+  if (!tenantOrganization) {
+    return {
+      allowed: false,
+      status: 404,
+      message: 'Organization login not found for this subdomain.'
+    };
+  }
+
+  if (tenantOrganization.status !== 'active') {
+    return {
+      allowed: false,
+      status: 403,
+      message: 'This organization is inactive.'
+    };
+  }
+
+  if (Number(user.organization_id) !== Number(tenantOrganization.id)) {
+    return {
+      allowed: false,
+      status: 403,
+      message: `This account does not belong to ${tenantOrganization.name}.`
+    };
+  }
+
+  return { allowed: true };
+}
+
 // POST /api/v1/common/auth/login
 router.post('/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, organizationSlug } = req.body;
     if (!email || !password) {
       return res.status(400).json({
         success: false,
@@ -55,6 +142,14 @@ router.post('/auth/login', async (req, res) => {
       return res.status(403).json({
         success: false,
         message: `Access denied: Your ${reason}`
+      });
+    }
+
+    const loginContext = await validateTenantContext(user, organizationSlug);
+    if (!loginContext.allowed) {
+      return res.status(loginContext.status || 403).json({
+        success: false,
+        message: loginContext.message
       });
     }
 
@@ -114,7 +209,7 @@ router.post('/auth/login', async (req, res) => {
 // POST /api/v1/common/auth/register
 router.post('/auth/register', async (req, res) => {
   try {
-    const { email, username, password } = req.body;
+    const { email, username, password, organizationSlug } = req.body;
     if (!email || !username || !password) {
       return res.status(400).json({
         success: false,
@@ -145,7 +240,29 @@ router.post('/auth/register', async (req, res) => {
       });
     }
 
-    const user = await authService.registerUser(email, username, password);
+    let organizationId = 5;
+    if (organizationSlug) {
+      const normalizedSlug = normalizeOrganizationSlug(organizationSlug);
+      const organization = await organizationService.getOrganizationBySlug(normalizedSlug);
+
+      if (!organization) {
+        return res.status(404).json({
+          success: false,
+          message: 'Organization not found'
+        });
+      }
+
+      if (organization.status !== 'active') {
+        return res.status(403).json({
+          success: false,
+          message: 'This organization is inactive'
+        });
+      }
+
+      organizationId = organization.id;
+    }
+
+    const user = await authService.registerUser(email, username, password, organizationId);
 
     // Default company creation
     const org = await organizationService.getOrganization(user.organization_id);

@@ -5,6 +5,11 @@ const getBackendUrl = () => {
     return normalizeBackendUrl(`${BACKEND_BASE_URL}${API_PATH}`);
 };
 
+const getPublicOriginFromBackendUrl = () => {
+    const backendUrl = getBackendUrl();
+    return extractDomainFromUrl(backendUrl);
+};
+
 const normalizeBackendUrl = (url) => {
     if (!url) {
         return url;
@@ -85,5 +90,6 @@ module.exports = {
     ensureHttpProtocol,
     extractDomainFromUrl,
     buildBackendUrl,
-    buildBackendWsUrl
+    buildBackendWsUrl,
+    getPublicOriginFromBackendUrl
 };

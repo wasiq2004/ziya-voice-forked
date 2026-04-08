@@ -382,13 +382,17 @@ class CampaignService {
 
             // Create a specific Twilio client for this user/account
             const userTwilioClient = twilio(accountSid, authToken);
+            // Create the internal call record id up front so Twilio webhooks, media stream,
+            // and DB records all share the same identifier during campaign calls.
+            const callId = uuidv4();
 
-            // Create TwiML URL with campaign parameters
+            // Create TwiML URL with full campaign parameters
             const twimlUrl = `${buildBackendUrl('/twilio/voice')}?` +
-                `agentId=${campaign.agent_id}&` +
-                `userId=${campaign.user_id}&` +
-                `campaignId=${campaignId}&` +
-                `contactId=${contact.id}`;
+                `agentId=${encodeURIComponent(campaign.agent_id)}&` +
+                `userId=${encodeURIComponent(campaign.user_id)}&` +
+                `campaignId=${encodeURIComponent(campaignId)}&` +
+                `contactId=${encodeURIComponent(contact.id)}&` +
+                `callId=${encodeURIComponent(callId)}`;
 
             console.log(`\n🔗 TwiML URL:`, twimlUrl);
 
@@ -403,11 +407,11 @@ class CampaignService {
                 from: fromNumber,
                 to: contact.phone_number,
                 url: twimlUrl,
-                statusCallback: `${buildBackendUrl('/twilio/status')}?callId=${contact.id}&contactId=${contact.id}`,
-                statusCallbackEvent: ['completed'],
+                statusCallback: `${buildBackendUrl('/twilio/status')}?callId=${encodeURIComponent(callId)}&contactId=${encodeURIComponent(contact.id)}`,
+                statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed', 'failed', 'busy', 'no-answer'],
                 statusCallbackMethod: 'POST',
                 record: true,  // Enable recording for campaign calls
-                recordingStatusCallback: `${buildBackendUrl('/twilio/recording-status')}?contactId=${contact.id}`,
+                recordingStatusCallback: `${buildBackendUrl('/twilio/recording-status')}?contactId=${encodeURIComponent(contact.id)}`,
                 recordingStatusCallbackEvent: ['completed'],
                 recordingStatusCallbackMethod: 'POST'
             });
@@ -417,7 +421,6 @@ class CampaignService {
             console.log(`   Status: ${call.status}`);
 
             // Create comprehensive call record for call history
-            const callId = uuidv4();
             await this.mysqlPool.execute(
                 `INSERT INTO calls (
                     id, user_id, agent_id, call_sid, from_number, to_number,

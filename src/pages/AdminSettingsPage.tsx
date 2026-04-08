@@ -1,38 +1,49 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppLayout from '../components/AppLayout';
 import {
-    UserCircleIcon,
+    BuildingOffice2Icon,
     PhotoIcon,
-    GlobeAltIcon,
-    ArrowPathIcon,
     CloudArrowUpIcon,
     CheckCircleIcon,
 } from '@heroicons/react/24/outline';
 import { getApiBaseUrl, getApiPath } from '../utils/api';
 
+const MAX_LOGO_FILE_SIZE = 10 * 1024 * 1024;
+
 const AdminSettingsPage: React.FC = () => {
     const navigate = useNavigate();
-    const [loading, setLoading] = useState(false);
-    const [saving, setSaving] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [savingOrg, setSavingOrg] = useState(false);
+    const [savingBranding, setSavingBranding] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
-    
-    // Form states
-    const [profile, setProfile] = useState({
+
+    const [organization, setOrganization] = useState({
         name: '',
-        email: '',
-        username: '',
     });
-    
+
     const [branding, setBranding] = useState({
         logoUrl: '',
-        customDomain: '',
     });
 
     const getAdminUser = () => {
         const raw = localStorage.getItem('ziya-user');
         return raw ? JSON.parse(raw) : null;
+    };
+
+    const syncAdminUser = (updates: { organization_name?: string; organization_logo_url?: string }) => {
+        const admin = getAdminUser();
+        if (!admin) return;
+
+        const updatedUser = {
+            ...admin,
+            ...updates,
+        };
+
+        localStorage.setItem('ziya-user', JSON.stringify(updatedUser));
+        window.dispatchEvent(new CustomEvent('ziya-user-updated', { detail: updatedUser }));
     };
 
     useEffect(() => {
@@ -41,22 +52,45 @@ const AdminSettingsPage: React.FC = () => {
             navigate('/login');
             return;
         }
+
         const parsed = JSON.parse(adminData);
         if (parsed.role !== 'org_admin' && parsed.role !== 'super_admin') {
             navigate('/login');
             return;
         }
-        
-        setProfile({
-            name: parsed.name || '',
-            email: parsed.email || '',
-            username: parsed.username || '',
-        });
-        
-        setBranding({
-            logoUrl: parsed.organization_logo || '',
-            customDomain: parsed.custom_domain || '',
-        });
+
+        const loadOrganizationSettings = async () => {
+            setLoading(true);
+            try {
+                const API = getApiBaseUrl();
+                const response = await fetch(`${API}${getApiPath()}/admin/organization/settings?adminId=${encodeURIComponent(parsed.id)}`);
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || 'Failed to load organization settings');
+                }
+
+                setOrganization({
+                    name: data.organization?.name || parsed.organization_name || '',
+                });
+                setBranding({
+                    logoUrl: data.organization?.logoUrl || parsed.organization_logo_url || '',
+                });
+
+                syncAdminUser({
+                    organization_name: data.organization?.name || parsed.organization_name || '',
+                    organization_logo_url: data.organization?.logoUrl || parsed.organization_logo_url || '',
+                });
+            } catch (err: any) {
+                setOrganization({ name: parsed.organization_name || '' });
+                setBranding({ logoUrl: parsed.organization_logo_url || '' });
+                showError(err.message || 'Failed to load organization settings');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadOrganizationSettings();
     }, [navigate]);
 
     const showSuccess = (msg: string) => {
@@ -64,66 +98,88 @@ const AdminSettingsPage: React.FC = () => {
         setErrorMessage('');
         setTimeout(() => setSuccessMessage(''), 3000);
     };
+
     const showError = (msg: string) => {
         setErrorMessage(msg);
         setTimeout(() => setErrorMessage(''), 4000);
     };
 
-    const handleSaveProfile = async (e: React.FormEvent) => {
+    const handleSaveOrganization = async (e: React.FormEvent) => {
         e.preventDefault();
         const admin = getAdminUser();
         if (!admin) return;
-        setSaving(true);
-        try {
-            const API = getApiBaseUrl();
-            const res = await fetch(`${API}${getApiPath()}/admin/profile/update`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userId: admin.id,
-                    name: profile.name,
-                    username: profile.username,
-                }),
-            });
-            const data = await res.json();
-            if (!data.success) throw new Error(data.message || 'Update failed');
-            // Sync localStorage so header/nav reflects changes
-            const updated = { ...admin, name: profile.name, username: profile.username };
-            localStorage.setItem('ziya-user', JSON.stringify(updated));
-            showSuccess('Profile updated successfully!');
-        } catch (err: any) {
-            showError(err.message || 'Failed to update profile');
-        } finally {
-            setSaving(false);
-        }
-    };
 
-    const handleSaveBranding = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const admin = getAdminUser();
-        if (!admin) return;
-        setSaving(true);
+        setSavingOrg(true);
         try {
             const API = getApiBaseUrl();
-            const res = await fetch(`${API}${getApiPath()}/admin/branding/update`, {
+            const response = await fetch(`${API}${getApiPath()}/admin/organization/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     adminId: admin.id,
-                    logoUrl: branding.logoUrl,
-                    customDomain: branding.customDomain,
+                    organizationName: organization.name,
                 }),
             });
-            const data = await res.json();
-            if (!data.success) throw new Error(data.message || 'Branding update failed');
-            showSuccess('Branding settings updated!');
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Failed to update organization');
+            }
+
+            const nextName = data.organization?.name || organization.name;
+            setOrganization({ name: nextName });
+            syncAdminUser({ organization_name: nextName });
+            showSuccess('Organization name updated successfully!');
         } catch (err: any) {
-            showError(err.message || 'Failed to update branding');
+            showError(err.message || 'Failed to update organization');
         } finally {
-            setSaving(false);
+            setSavingOrg(false);
         }
     };
 
+    const handleLogoSelect = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleLogoUpload = async (file: File) => {
+        const admin = getAdminUser();
+        if (!admin) return;
+
+        if (file.size > MAX_LOGO_FILE_SIZE) {
+            showError('Logo size must be 10MB or less');
+            return;
+        }
+
+        setSavingBranding(true);
+        try {
+            const API = getApiBaseUrl();
+            const formData = new FormData();
+            formData.append('adminId', admin.id);
+            formData.append('logo', file);
+
+            const response = await fetch(`${API}${getApiPath()}/admin/branding/logo-upload`, {
+                method: 'POST',
+                body: formData,
+            });
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Failed to upload logo');
+            }
+
+            const nextLogo = data.organization?.logoUrl || data.logoUrl || '';
+            setBranding({ logoUrl: nextLogo });
+            syncAdminUser({ organization_logo_url: nextLogo });
+            showSuccess('Organization logo updated successfully!');
+        } catch (err: any) {
+            showError(err.message || 'Failed to upload logo');
+        } finally {
+            setSavingBranding(false);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
 
     return (
         <AppLayout
@@ -132,7 +188,7 @@ const AdminSettingsPage: React.FC = () => {
                 { label: 'Settings' }
             ]}
             pageTitle="Organization Settings"
-            pageDescription="Manage your administrative profile, branding, and custom domain configuration."
+            pageDescription="Manage your organization identity and branding."
         >
             <div className="max-w-4xl space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 {successMessage && (
@@ -147,60 +203,37 @@ const AdminSettingsPage: React.FC = () => {
                     </div>
                 )}
 
-                {/* Profile Section */}
                 <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
                     <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
                         <div className="p-2 bg-primary/10 rounded-xl">
-                            <UserCircleIcon className="w-5 h-5 text-primary" />
+                            <BuildingOffice2Icon className="w-5 h-5 text-primary" />
                         </div>
-                        <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Admin Profile</h3>
+                        <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Panel Settings</h3>
                     </div>
-                    <form onSubmit={handleSaveProfile} className="p-6 space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
-                                <input
-                                    type="text"
-                                    value={profile.name}
-                                    onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-                                    placeholder="Enter your name"
-                                    className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-primary/20 transition-all outline-none"
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Username</label>
-                                <input
-                                    type="text"
-                                    value={profile.username}
-                                    onChange={(e) => setProfile({ ...profile, username: e.target.value })}
-                                    placeholder="Choose a username"
-                                    className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-primary/20 transition-all outline-none"
-                                />
-                            </div>
-                        </div>
+                    <form onSubmit={handleSaveOrganization} className="p-6 space-y-4">
                         <div className="space-y-1.5">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Organization Name</label>
                             <input
-                                type="email"
-                                value={profile.email}
-                                disabled
-                                className="w-full bg-slate-100 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-400 cursor-not-allowed outline-none"
+                                type="text"
+                                value={organization.name}
+                                onChange={(e) => setOrganization({ name: e.target.value })}
+                                placeholder="Enter organization name"
+                                disabled={loading}
+                                className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-primary/20 transition-all outline-none disabled:opacity-60"
                             />
-                            <p className="text-[9px] text-slate-400 font-bold ml-1 italic">* Email cannot be changed</p>
                         </div>
                         <div className="pt-2 flex justify-end">
                             <button
                                 type="submit"
-                                disabled={saving}
+                                disabled={savingOrg || loading}
                                 className="px-6 py-2.5 bg-primary hover:bg-primary-hover text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
                             >
-                                {saving ? 'Saving...' : 'Update Profile'}
+                                {savingOrg ? 'Saving...' : 'Save Organization'}
                             </button>
                         </div>
                     </form>
                 </div>
 
-                {/* Branding & Whitelabel Section */}
                 <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
                     <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
                         <div className="p-2 bg-purple-500/10 rounded-xl">
@@ -208,12 +241,11 @@ const AdminSettingsPage: React.FC = () => {
                         </div>
                         <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Branding & Whitelabel</h3>
                     </div>
-                    <form onSubmit={handleSaveBranding} className="p-6 space-y-6">
-                        {/* Logo Upload */}
+                    <div className="p-6 space-y-6">
                         <div className="space-y-4">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Brand Logo</label>
-                            <div className="flex items-center gap-6 p-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-slate-900/30">
-                                <div className="w-20 h-20 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 flex items-center justify-center overflow-hidden">
+                            <div className="flex flex-col md:flex-row md:items-center gap-6 p-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-slate-900/30">
+                                <div className="w-24 h-24 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 flex items-center justify-center overflow-hidden shrink-0">
                                     {branding.logoUrl ? (
                                         <img src={branding.logoUrl} alt="Logo Preview" className="max-w-full max-h-full object-contain" />
                                     ) : (
@@ -222,51 +254,32 @@ const AdminSettingsPage: React.FC = () => {
                                 </div>
                                 <div className="space-y-2">
                                     <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Upload your organization logo</p>
-                                    <p className="text-[10px] text-slate-400 font-medium">Recommended: PNG or SVG with transparent background. Max size: 2MB.</p>
+                                    <p className="text-[10px] text-slate-400 font-medium">Accepted: PNG, JPG, JPEG, SVG, WEBP. Max size: 10MB.</p>
                                     <button
                                         type="button"
-                                        className="inline-flex items-center space-x-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-slate-50 transition-all shadow-sm"
+                                        onClick={handleLogoSelect}
+                                        disabled={savingBranding || loading}
+                                        className="inline-flex items-center space-x-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-slate-50 transition-all shadow-sm disabled:opacity-50"
                                     >
                                         <CloudArrowUpIcon className="w-4 h-4" />
-                                        <span>Select Image</span>
+                                        <span>{savingBranding ? 'Uploading...' : 'Select Image'}</span>
                                     </button>
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept=".png,.jpg,.jpeg,.svg,.webp,image/png,image/jpeg,image/svg+xml,image/webp"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                                handleLogoUpload(file);
+                                            }
+                                        }}
+                                    />
                                 </div>
                             </div>
                         </div>
-
-                        {/* Custom Domain */}
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-1.5">
-                                <GlobeAltIcon className="w-3 h-3" />
-                                Custom Domain
-                            </label>
-                            <div className="relative">
-                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">https://</span>
-                                <input
-                                    type="text"
-                                    value={branding.customDomain}
-                                    onChange={(e) => setBranding({ ...branding, customDomain: e.target.value })}
-                                    placeholder="voice.yourdomain.com"
-                                    className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl pl-16 pr-4 py-2.5 text-sm font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-primary/20 transition-all outline-none"
-                                />
-                            </div>
-                            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 rounded-xl">
-                                <p className="text-[10px] text-blue-700 dark:text-blue-400 font-bold leading-relaxed">
-                                    To use a custom domain, point your CNAME record to <code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">lb.ziyavoice.com</code> in your DNS settings. TLS/SSL will be automatically provisioned.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="pt-2 flex justify-end">
-                            <button
-                                type="submit"
-                                disabled={saving}
-                                className="px-6 py-2.5 bg-slate-900 dark:bg-white dark:text-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-slate-900/20 dark:shadow-none disabled:opacity-50"
-                            >
-                                {saving ? 'Applying...' : 'Save Branding'}
-                            </button>
-                        </div>
-                    </form>
+                    </div>
                 </div>
             </div>
         </AppLayout>

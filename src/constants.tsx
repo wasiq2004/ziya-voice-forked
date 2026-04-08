@@ -30,6 +30,7 @@ import {
     PresentationChartBarIcon,
     LifebuoyIcon,
     ChatBubbleLeftRightIcon,
+    Squares2X2Icon,
 } from '@heroicons/react/24/outline';
 // FIX: Add missing icon import
 import { PhoneIcon as SolidPhoneIcon, MicrophoneIcon } from '@heroicons/react/24/solid';
@@ -89,6 +90,7 @@ export const SUPER_ADMIN_SIDEBAR_ITEMS: SidebarItem[] = [
     { id: Page.SuperAdminOrganizations, icon: BuildingOfficeIcon },
     { id: Page.SuperAdminPricing, icon: CreditCardIcon },
     { id: Page.SuperAdminCredits, icon: CircleStackIcon },
+    { id: Page.SuperAdminIntegrations, icon: Squares2X2Icon },
     { id: Page.SuperAdminSupport, icon: LifebuoyIcon },
     { id: Page.SuperAdminSettings, icon: CogIcon },
 ];

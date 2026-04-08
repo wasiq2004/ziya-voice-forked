@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { getApiBaseUrl, getApiPath } from '../utils/api';
+import { buildOrganizationLoginUrl, getOrganizationSlugFromHostname, getPlatformLoginHost, TenantOrganization } from '../utils/tenant';
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -11,10 +12,53 @@ const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [tenantOrg, setTenantOrg] = useState<TenantOrganization | null>(null);
+  const [tenantLoading, setTenantLoading] = useState(true);
 
   const { signIn, signUp, signInWithGoogle } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
+  const organizationSlug = getOrganizationSlugFromHostname();
+  const platformLoginHost = getPlatformLoginHost();
+
+  useEffect(() => {
+    let ignore = false;
+
+    const resolveTenant = async () => {
+      if (!organizationSlug) {
+        setTenantOrg(null);
+        setTenantLoading(false);
+        return;
+      }
+
+      try {
+        setTenantLoading(true);
+        const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/public/organizations/resolve?slug=${encodeURIComponent(organizationSlug)}`);
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.message || 'Failed to resolve organization');
+        }
+
+        if (!ignore) {
+          setTenantOrg(result.organization);
+        }
+      } catch (err: any) {
+        if (!ignore) {
+          setTenantOrg(null);
+          setError(err.message || 'Organization login page is unavailable');
+        }
+      } finally {
+        if (!ignore) {
+          setTenantLoading(false);
+        }
+      }
+    };
+
+    resolveTenant();
+
+    return () => {
+      ignore = true;
+    };
+  }, [organizationSlug]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,7 +68,7 @@ const LoginPage: React.FC = () => {
 
     try {
       if (isSignUp) {
-        const { error } = await signUp(email, username, password);
+        const { error } = await signUp(email, username, password, organizationSlug);
         if (error) throw error;
         setShowSuccess(true);
         // Automatically switch to login mode after successful signup
@@ -33,7 +77,7 @@ const LoginPage: React.FC = () => {
           setShowSuccess(false);
         }, 2000);
       } else {
-        const { error } = await signIn(email, password);
+        const { error } = await signIn(email, password, organizationSlug);
         if (error) throw error;
         setShowSuccess(true);
         // AuthContext already handles navigation on signIn, so we just wait for it.
@@ -207,7 +251,9 @@ const LoginPage: React.FC = () => {
             {/* Header */}
             <div className="animate-slide-left mb-10 text-center" style={{ animationDelay: '0.2s' }}>
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/20 text-primary mb-4 border border-primary/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-                {isSignUp ? (
+                {tenantOrg?.logo_url ? (
+                  <img src={tenantOrg.logo_url} alt={tenantOrg.name} className="w-8 h-8 rounded-lg object-cover" />
+                ) : isSignUp ? (
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
                   </svg>
@@ -218,11 +264,20 @@ const LoginPage: React.FC = () => {
                 )}
               </div>
               <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">
-                {isSignUp ? 'Create Identity' : 'Welcome Back'}
+                {tenantOrg ? `${tenantOrg.name} Portal` : isSignUp ? 'Create Identity' : 'Welcome Back'}
               </h2>
               <p className="text-slate-400">
-                {isSignUp ? 'Register your agent command center' : 'Access your voice intelligence dashboard'}
+                {tenantOrg
+                  ? `Sign in with your ${tenantOrg.name} admin or user account`
+                  : isSignUp
+                    ? 'Register your agent command center'
+                    : 'Access your voice intelligence dashboard'}
               </p>
+              {organizationSlug && (
+                <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-300/80">
+                  {tenantLoading ? 'Checking organization...' : platformLoginHost ? `${organizationSlug}.${platformLoginHost}` : organizationSlug}
+                </p>
+              )}
             </div>
 
             <form className="space-y-5" onSubmit={handleSubmit}>
@@ -239,6 +294,16 @@ const LoginPage: React.FC = () => {
                   <svg className="h-5 w-5 text-emerald-400 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
                   <div className="text-sm text-emerald-300">
                     {isSignUp ? 'Identity created! Securing link...' : 'Login successful! Securing connection...'}
+                  </div>
+                </div>
+              )}
+              {tenantOrg && (
+                <div className="animate-slide-up rounded-xl bg-cyan-500/10 p-4 border border-cyan-500/20 flex items-start gap-3 backdrop-blur">
+                  <svg className="h-5 w-5 text-cyan-300 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12A9 9 0 113 12a9 9 0 0118 0z" />
+                  </svg>
+                  <div className="text-sm text-cyan-100">
+                    This login is reserved for <span className="font-bold">{tenantOrg.name}</span>. Accounts from other organizations must use their own organization URL.
                   </div>
                 </div>
               )}
@@ -308,14 +373,14 @@ const LoginPage: React.FC = () => {
               {/* Submit Button */}
               <div className="animate-slide-up pt-2" style={{ animationDelay: isSignUp ? '0.6s' : '0.5s' }}>
                 <button
-                  type="submit" disabled={loading}
+                  type="submit" disabled={loading || tenantLoading || (!!organizationSlug && !tenantOrg)}
                   className="group relative w-full flex justify-center items-center py-3.5 px-4 rounded-xl text-white font-bold bg-gradient-to-r from-primary to-cyan-500 hover:from-primary/90 hover:to-cyan-500/90 focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-slate-900 transition-all duration-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:-translate-y-0.5 overflow-hidden"
                 >
                   <div className="absolute inset-0 w-1/4 h-full bg-white/20 skew-x-12 -translate-x-full group-hover:animate-[shine_1.5s_ease-in-out_infinite]"></div>
                   {loading ? (
                     <div className="flex items-center gap-2">
                       <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                      <span>{isSignUp ? 'Deploying...' : 'Authenticating...'}</span>
+                      <span>{tenantLoading ? 'Loading portal...' : isSignUp ? 'Deploying...' : 'Authenticating...'}</span>
                     </div>
                   ) : (
                     isSignUp ? 'Create An Account' : 'Login'
@@ -326,6 +391,8 @@ const LoginPage: React.FC = () => {
 
             </form>
 
+            {!organizationSlug && (
+              <>
             <div className="relative my-8 animate-slide-up" style={{ animationDelay: isSignUp ? '0.7s' : '0.6s' }}>
               <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10"></div></div>
               <div className="relative flex justify-center text-sm"><span className="px-4 bg-[#0F172A] text-slate-500 font-medium rounded-full border border-white/5">Or connect with</span></div>
@@ -345,10 +412,14 @@ const LoginPage: React.FC = () => {
                 <span>Google</span>
               </button>
             </div>
+              </>
+            )}
 
             <div className="text-center mt-8 animate-slide-up" style={{ animationDelay: isSignUp ? '0.9s' : '0.8s' }}>
               <p className="text-sm text-slate-400">
-                {isSignUp ? 'Already have access? ' : 'New to the platform? '}
+                {organizationSlug
+                  ? (isSignUp ? 'Already have access? ' : 'Need an account? ')
+                  : (isSignUp ? 'Already have access? ' : 'New to the platform? ')}
                 <button
                   onClick={() => setIsSignUp(!isSignUp)}
                   className="font-bold text-primary hover:text-emerald-400 transition-colors outline-none border-b border-transparent hover:border-emerald-400 pb-0.5"
@@ -356,6 +427,12 @@ const LoginPage: React.FC = () => {
                   {isSignUp ? 'Login' : 'Sign Up'}
                 </button>
               </p>
+              {organizationSlug && (
+                <p className="text-sm text-slate-400 mt-3">
+                  Organization URL:
+                  <span className="ml-2 font-bold text-cyan-300">{tenantOrg ? buildOrganizationLoginUrl(tenantOrg.slug) : platformLoginHost ? `${organizationSlug}.${platformLoginHost}/login` : '/login'}</span>
+                </p>
+              )}
             </div>
 
           </div>

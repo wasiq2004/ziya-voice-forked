@@ -3,6 +3,7 @@ const config = require('./config/envConfig.js');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const multer = require('multer');
 const mysqlPool = require('./config/database.js');
 const nodeFetch = require('node-fetch');
 const expressWs = require('express-ws');
@@ -42,12 +43,14 @@ const CostCalculator = require('./services/costCalculator.js');
 const VoiceSyncService = require('./services/voiceSyncService.js');
 const VoiceWebSocketHandler = require('./services/voiceWebSocketHandler.js');
 const { router: voiceRouter, initVoiceSync } = require('./routes/voiceRoutes.js');
+const normalizeOrganizationSlug = OrganizationService.normalizeOrganizationSlug || ((value) => String(value || '').trim().toLowerCase());
+const PLATFORM_ORG_SLUG = OrganizationService.PLATFORM_ORG_SLUG || 'ziya';
 
 // Google OAuth
 const passport = require('passport');
 const session = require('express-session');
 const { configureGoogleAuth } = require('./config/googleAuth.js');
-const { getBackendUrl, buildBackendUrl, normalizeBackendUrl, ensureHttpProtocol, buildBackendWsUrl } = require('./config/backendUrl.js');
+const { getBackendUrl, buildBackendUrl, normalizeBackendUrl, ensureHttpProtocol, extractDomainFromUrl, buildBackendWsUrl, getPublicOriginFromBackendUrl } = require('./config/backendUrl.js');
 
 // Initialize wallet and cost services
 const walletService = new WalletService(mysqlPool);
@@ -70,6 +73,30 @@ const expressWsInstance = expressWs(app, server, {
   }
 });
 console.log(' WebSocket with skipUTF8Validation enabled');
+
+const PLATFORM_PUBLIC_ORIGIN = getPublicOriginFromBackendUrl();
+const BACKEND_PUBLIC_ORIGIN = extractDomainFromUrl(getBackendUrl());
+let PLATFORM_PUBLIC_HOST = null;
+
+try {
+  PLATFORM_PUBLIC_HOST = PLATFORM_PUBLIC_ORIGIN ? new URL(PLATFORM_PUBLIC_ORIGIN).hostname.toLowerCase() : null;
+} catch (error) {
+  PLATFORM_PUBLIC_HOST = null;
+}
+
+const getOrganizationLoginUrl = (slug) => {
+  if (!slug || !PLATFORM_PUBLIC_ORIGIN || !PLATFORM_PUBLIC_HOST) {
+    return '/login';
+  }
+
+  const normalizedSlug = normalizeOrganizationSlug(slug);
+  if (!normalizedSlug) {
+    return '/login';
+  }
+
+  const protocol = PLATFORM_PUBLIC_ORIGIN.split('://')[0];
+  return `${protocol}://${normalizedSlug}.${PLATFORM_PUBLIC_HOST}/login`;
+};
 
 const twilioCallWss = new WebSocketServer({
   noServer: true,
@@ -367,15 +394,102 @@ console.log("Twilio Basic Service initialized");
 // ================= CORS ==================
 const FRONTEND_URL = process.env.FRONTEND_URL;
 
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+
+  try {
+    const parsed = new URL(origin);
+    const hostname = parsed.hostname.toLowerCase();
+    const explicitAllowed = [FRONTEND_URL, PLATFORM_PUBLIC_ORIGIN, BACKEND_PUBLIC_ORIGIN]
+      .filter(Boolean);
+
+    if (explicitAllowed.includes(origin)) {
+      return true;
+    }
+
+    if (PLATFORM_PUBLIC_HOST && (hostname === PLATFORM_PUBLIC_HOST || hostname === `www.${PLATFORM_PUBLIC_HOST}`)) {
+      return true;
+    }
+
+    if (PLATFORM_PUBLIC_HOST && hostname.endsWith(`.${PLATFORM_PUBLIC_HOST}`)) {
+      return true;
+    }
+
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost')) {
+      return true;
+    }
+  } catch (error) {
+    return false;
+  }
+
+  return false;
+}
+
+async function validateLoginContext(user, tenantSlug) {
+  const normalizedTenantSlug = normalizeOrganizationSlug(tenantSlug);
+
+  if (!normalizedTenantSlug) {
+    if (user.role === 'super_admin') {
+      return { allowed: true };
+    }
+
+    if (!user.organization_id) {
+      return { allowed: true };
+    }
+
+    const organization = await organizationService.getOrganization(user.organization_id);
+    const isPlatformOrganization = organizationService.isPlatformOrganization(organization);
+
+    if (isPlatformOrganization) {
+      return { allowed: true };
+    }
+
+    return {
+      allowed: false,
+      status: 403,
+      message: `Use your organization login URL: ${getOrganizationLoginUrl(organization.slug)}`
+    };
+  }
+
+  if (user.role === 'super_admin') {
+    return {
+      allowed: false,
+      status: 403,
+      message: 'Super admin accounts must log in from the main platform URL.'
+    };
+  }
+
+  const tenantOrganization = await organizationService.getOrganizationBySlug(normalizedTenantSlug);
+  if (!tenantOrganization) {
+    return {
+      allowed: false,
+      status: 404,
+      message: 'Organization login not found for this subdomain.'
+    };
+  }
+
+  if (tenantOrganization.status !== 'active') {
+    return {
+      allowed: false,
+      status: 403,
+      message: 'This organization is inactive.'
+    };
+  }
+
+  if (Number(user.organization_id) !== Number(tenantOrganization.id)) {
+    return {
+      allowed: false,
+      status: 403,
+      message: `This account does not belong to ${tenantOrganization.name}.`
+    };
+  }
+
+  return { allowed: true, organization: tenantOrganization };
+}
+
 const corsOptions = {
   origin: (origin, callback) => {
-    const allowed = [
-      FRONTEND_URL,
-      'https://ziyasuite.netlify.app',
-      'https://ziyasuite.com'
-    ];
-
-    if (!origin || allowed.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
       const err = new Error('CORS policy: origin not allowed');
@@ -417,6 +531,7 @@ app.options('/api/auth/login', cors(corsOptions), (req, res) => res.sendStatus(2
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Twilio webhooks are defined later in the file (see line ~2170)
 
@@ -539,7 +654,7 @@ voiceSyncService.syncAllProviders()
       console.warn(' Voice sync errors:', result.errors);
     }
   })
-  .catch(err => console.error('âŒ Initial voice sync failed:', err.message));
+  .catch(err => console.error(' Initial voice sync failed:', err.message));
 
 // Get user wallet balance
 app.get('/api/wallet/balance/:userId', async (req, res) => {
@@ -645,7 +760,7 @@ app.post('/api/admin/wallet/add-credits', async (req, res) => {
     const result = await walletService.addCredits(
       userId,
       amount,
-      description || `Admin added â‚¹${amount} INR`,
+      description || `Admin added ‚¹${amount} INR`,
       adminId
     );
 
@@ -654,7 +769,7 @@ app.post('/api/admin/wallet/add-credits', async (req, res) => {
       adminId,
       'add_wallet_credits',
       userId,
-      `Added â‚¹${amount} INR (â‰ˆ${result.creditsAdded} Credits) to wallet. Reason: ${description || 'N/A'}`,
+      `Added ‚¹${amount} INR (‰ˆ${result.creditsAdded} Credits) to wallet. Reason: ${description || 'N/A'}`,
       req.ip
     );
 
@@ -1203,12 +1318,12 @@ app.get('/api/voice-config-check', (req, res) => {
           result.apiTest = {
             status: testResponse.status,
             ok: testResponse.ok,
-            message: testResponse.ok ? 'API key is valid ' : 'API key is invalid âŒ'
+            message: testResponse.ok ? 'API key is valid ' : 'API key is invalid '
           };
         } catch (error) {
           result.apiTest = {
             error: error.message,
-            message: 'Failed to test API key âŒ'
+            message: 'Failed to test API key '
           };
         }
       }
@@ -1316,7 +1431,7 @@ app.get('/api/voice-config-check', (req, res) => {
     config.checks.appUrl.isPublic &&
     config.checks.mediaStreamHandler.initialized;
 
-  config.overallStatus = allConfigured ? 'READY ' : 'NOT READY âŒ';
+  config.overallStatus = allConfigured ? 'READY ' : 'NOT READY ';
   config.readyToMakeCalls = allConfigured;
 
   // Add missing items
@@ -1424,7 +1539,7 @@ app.get('/api/test-voice-pipeline', async (req, res) => {
     results.tests.elevenlabs.configured &&
     (!results.tests.elevenlabs.apiWorking || results.tests.elevenlabs.apiWorking === true);
 
-  results.overallStatus = allPassed ? 'ALL TESTS PASSED ' : 'SOME TESTS FAILED âŒ';
+  results.overallStatus = allPassed ? 'ALL TESTS PASSED ' : 'SOME TESTS FAILED ';
   results.readyForCalls = allPassed;
 
   res.json(results);
@@ -1475,7 +1590,7 @@ app.get('/api/test-deepgram-key', async (req, res) => {
         result.status = 'SUCCESS';
       } else {
         const errorText = await testResponse.text();
-        result.apiTest.message = 'âŒ API key is INVALID or EXPIRED';
+        result.apiTest.message = ' API key is INVALID or EXPIRED';
         result.apiTest.error = errorText;
         result.status = 'FAILED';
         result.recommendation = 'Create a new API key at https://console.deepgram.com/ and update DEEPGRAM_API_KEY in Railway';
@@ -1483,7 +1598,7 @@ app.get('/api/test-deepgram-key', async (req, res) => {
     } catch (error) {
       result.apiTest = {
         error: error.message,
-        message: 'âŒ Failed to connect to Deepgram API'
+        message: ' Failed to connect to Deepgram API'
       };
       result.status = 'ERROR';
     }
@@ -1501,7 +1616,7 @@ app.get('/api/test-deepgram-key', async (req, res) => {
 // User login
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, organizationSlug } = req.body;
     if (!email || !password) {
       return res.status(400).json({ success: false, message: 'Email and password are required' });
     }
@@ -1515,6 +1630,20 @@ app.post('/api/auth/login', async (req, res) => {
     if (user.status && user.status !== 'active') {
       const reason = user.status === 'locked' ? 'account is locked' : 'account is inactive';
       return res.status(403).json({ success: false, message: `Access denied: Your ${reason}` });
+    }
+
+    const loginContext = await validateLoginContext(user, organizationSlug);
+    if (!loginContext.allowed) {
+      return res.status(loginContext.status || 403).json({
+        success: false,
+        message: loginContext.message
+      });
+    }
+
+    if (loginContext.organization) {
+      user.organization_name = loginContext.organization.name;
+      user.organization_slug = loginContext.organization.slug;
+      user.organization_logo_url = loginContext.organization.logo_url || user.organization_logo_url || null;
     }
 
     // Default company check
@@ -1619,7 +1748,7 @@ async function enforceTrialValidity(req, res, next) {
 // User registration
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, username, password } = req.body;
+    const { email, username, password, organizationSlug } = req.body;
     if (!email || !username || !password) {
       return res.status(400).json({ success: false, message: 'Email, username, and password are required' });
     }
@@ -1640,7 +1769,23 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long' });
     }
 
-    const user = await authService.registerUser(email, username, password);
+    let organizationId = 5;
+    if (organizationSlug) {
+      const normalizedSlug = normalizeOrganizationSlug(organizationSlug);
+      const organization = await organizationService.getOrganizationBySlug(normalizedSlug);
+
+      if (!organization) {
+        return res.status(404).json({ success: false, message: 'Organization not found' });
+      }
+
+      if (organization.status !== 'active') {
+        return res.status(403).json({ success: false, message: 'This organization is inactive' });
+      }
+
+      organizationId = organization.id;
+    }
+
+    const user = await authService.registerUser(email, username, password, organizationId);
 
     // Default company creation
     const org = await organizationService.getOrganization(user.organization_id);
@@ -2229,6 +2374,36 @@ app.get('/api/superadmin/organizations', async (req, res) => {
   }
 });
 
+app.get('/api/public/organizations/resolve', async (req, res) => {
+  try {
+    const slug = normalizeOrganizationSlug(req.query.slug);
+
+    if (!slug) {
+      return res.status(400).json({ success: false, message: 'Organization slug is required' });
+    }
+
+    const organization = await organizationService.getOrganizationBySlug(slug);
+    if (!organization) {
+      return res.status(404).json({ success: false, message: 'Organization not found' });
+    }
+
+    res.json({
+      success: true,
+      organization: {
+        id: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+        logo_url: organization.logo_url || null,
+        status: organization.status,
+        is_platform_org: organizationService.isPlatformOrganization(organization)
+      }
+    });
+  } catch (err) {
+    console.error('Resolve organization error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // Create organization
 app.post('/api/superadmin/organizations', async (req, res) => {
   try {
@@ -2244,15 +2419,286 @@ app.post('/api/superadmin/organizations', async (req, res) => {
   }
 });
 
+const fetchJsonWithTimeout = async (url, options = {}, timeoutMs = 12000) => {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
+  try {
+    return await nodeFetch(url, controller ? { ...options, signal: controller.signal } : options);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
+const toSafeNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const buildMissingIntegration = (key, name, note) => ({
+  key,
+  name,
+  status: 'missing',
+  balance: null,
+  balanceLabel: 'Not configured',
+  unit: null,
+  source: null,
+  note,
+  lastChecked: new Date().toISOString()
+});
+
+async function getElevenLabsIntegrationBalance() {
+  const apiKey = process.env.ELEVEN_LABS_API_KEY;
+  if (!apiKey) {
+    return buildMissingIntegration(
+      'elevenlabs',
+      'ElevenLabs',
+      'Set ELEVEN_LABS_API_KEY to surface live quota from the subscription endpoint.'
+    );
+  }
+
+  const response = await fetchJsonWithTimeout('https://api.elevenlabs.io/v1/user/subscription', {
+    headers: {
+      'xi-api-key': apiKey
+    }
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`ElevenLabs API error: ${response.status} - ${errorText.substring(0, 200)}`);
+  }
+
+  const data = await response.json();
+  const used = toSafeNumber(data.character_count);
+  const limit = toSafeNumber(data.character_limit);
+  const remaining = Number.isFinite(limit) && limit > 0 ? Math.max(limit - used, 0) : null;
+
+  return {
+    key: 'elevenlabs',
+    name: 'ElevenLabs',
+    status: 'active',
+    balance: remaining,
+    balanceLabel: 'Characters Remaining',
+    total: limit || null,
+    used,
+    unit: 'characters',
+    source: 'https://api.elevenlabs.io/v1/user/subscription',
+    note: 'Live subscription quota pulled from ElevenLabs.',
+    lastChecked: new Date().toISOString()
+  };
+}
+
+async function getGeminiIntegrationBalance() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return buildMissingIntegration(
+      'gemini',
+      'Gemini',
+      'Set GEMINI_API_KEY to confirm live model availability.'
+    );
+  }
+
+  const response = await fetchJsonWithTimeout(
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API error: ${response.status} - ${errorText.substring(0, 200)}`);
+  }
+
+  const data = await response.json();
+  const modelCount = Array.isArray(data.models) ? data.models.length : 0;
+
+  return {
+    key: 'gemini',
+    name: 'Gemini',
+    status: 'active',
+    balance: null,
+    balanceLabel: 'Public balance unavailable',
+    total: modelCount,
+    used: modelCount,
+    unit: 'models',
+    source: 'https://generativelanguage.googleapis.com/v1beta/models',
+    note: 'Google Gemini does not expose a public prepaid balance endpoint. Live API reachability is confirmed instead.',
+    lastChecked: new Date().toISOString()
+  };
+}
+
+async function getDeepgramIntegrationBalance() {
+  const apiKey = process.env.DEEPGRAM_API_KEY;
+  if (!apiKey) {
+    return buildMissingIntegration(
+      'deepgram',
+      'Deepgram',
+      'Set DEEPGRAM_API_KEY to surface live project balances.'
+    );
+  }
+
+  const projectsResponse = await fetchJsonWithTimeout('https://api.deepgram.com/v1/projects', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Token ${apiKey}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!projectsResponse.ok) {
+    const errorText = await projectsResponse.text();
+    throw new Error(`Deepgram API error (projects): ${projectsResponse.status} - ${errorText.substring(0, 200)}`);
+  }
+
+  const projectsData = await projectsResponse.json();
+  const projects = Array.isArray(projectsData.projects) ? projectsData.projects : [];
+
+  const projectBalances = await Promise.allSettled(
+    projects.map(async (project) => {
+      const balancesResponse = await fetchJsonWithTimeout(`https://api.deepgram.com/v1/projects/${project.project_id}/balances`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Token ${apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!balancesResponse.ok) {
+        const errorText = await balancesResponse.text();
+        throw new Error(`Project ${project.project_id}: ${balancesResponse.status} - ${errorText.substring(0, 120)}`);
+      }
+
+      const balancesData = await balancesResponse.json();
+      const balanceTotal = Array.isArray(balancesData.balances)
+        ? balancesData.balances.reduce((sum, balance) => sum + toSafeNumber(balance.amount), 0)
+        : 0;
+
+      return {
+        project_id: project.project_id,
+        project_name: project.project_name || project.name || project.project_id,
+        balance: balanceTotal
+      };
+    })
+  );
+
+  const projectSummaries = projectBalances
+    .filter((entry) => entry.status === 'fulfilled')
+    .map((entry) => entry.value);
+  const totalBalance = projectSummaries.reduce((sum, project) => sum + toSafeNumber(project.balance), 0);
+
+  return {
+    key: 'deepgram',
+    name: 'Deepgram',
+    status: 'active',
+    balance: totalBalance,
+    balanceLabel: 'Project Balance',
+    total: totalBalance,
+    used: null,
+    unit: 'credits',
+    source: 'https://api.deepgram.com/v1/projects',
+    note: projectBalances.length
+      ? `Live balances from ${projectSummaries.length}/${projectBalances.length} Deepgram projects.`
+      : 'No Deepgram projects were returned for this API key.',
+    projects: projectSummaries,
+    lastChecked: new Date().toISOString()
+  };
+}
+
+async function getSarvamIntegrationBalance() {
+  const apiKey = process.env.SARVAM_API_KEY;
+  if (!apiKey) {
+    return buildMissingIntegration(
+      'sarvam',
+      'Sarvam',
+      'Set SARVAM_API_KEY to confirm the integration is active.'
+    );
+  }
+
+  return {
+    key: 'sarvam',
+    name: 'Sarvam',
+    status: 'active',
+    balance: null,
+    balanceLabel: 'Public balance unavailable',
+    total: null,
+    used: null,
+    unit: 'characters',
+    source: 'api.sarvam.ai',
+    note: 'Sarvam does not expose a public balance endpoint in the API flow used by this app.',
+    lastChecked: new Date().toISOString()
+  };
+}
+
+async function getOpenAIIntegrationBalance() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return buildMissingIntegration(
+      'openai',
+      'OpenAI',
+      'Set OPENAI_API_KEY to confirm the integration is active.'
+    );
+  }
+
+  return {
+    key: 'openai',
+    name: 'OpenAI',
+    status: 'active',
+    balance: null,
+    balanceLabel: 'Public balance unavailable',
+    total: null,
+    used: null,
+    unit: 'requests',
+    source: 'platform configuration',
+    note: 'OpenAI usage credits are not exposed through the standard API key flow used in this app.',
+    lastChecked: new Date().toISOString()
+  };
+}
+
 // Update organization
 app.put('/api/superadmin/organizations/:orgId', async (req, res) => {
   try {
     const { orgId } = req.params;
-    const { name, status, logo_url } = req.body;
-    const organization = await organizationService.updateOrganization(parseInt(orgId), { name, status, logo_url });
+    const { name, status, logo_url, slug } = req.body;
+    const organization = await organizationService.updateOrganization(parseInt(orgId), { name, status, logo_url, slug });
     res.json({ success: true, organization });
   } catch (err) {
     console.error('Update organization error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get('/api/superadmin/integrations/balances', async (req, res) => {
+  try {
+    const integrations = await Promise.allSettled([
+      getElevenLabsIntegrationBalance(),
+      getGeminiIntegrationBalance(),
+      getDeepgramIntegrationBalance(),
+      getSarvamIntegrationBalance(),
+      getOpenAIIntegrationBalance()
+    ]);
+
+    const data = integrations.map((entry) => {
+      if (entry.status === 'fulfilled') return entry.value;
+      return {
+        key: 'unknown',
+        name: 'Unknown Integration',
+        status: 'error',
+        balance: null,
+        balanceLabel: 'Unavailable',
+        total: null,
+        used: null,
+        unit: null,
+        source: null,
+        note: entry.reason?.message || 'Unable to load integration balance',
+        lastChecked: new Date().toISOString()
+      };
+    });
+
+    res.json({
+      success: true,
+      refreshedAt: new Date().toISOString(),
+      integrations: data
+    });
+  } catch (err) {
+    console.error('Super admin integrations balance error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -2331,6 +2777,11 @@ app.delete('/api/superadmin/organizations/:orgId', async (req, res) => {
     const { orgId } = req.params;
     const [rows] = await mysqlPool.execute('SELECT id FROM organizations WHERE id = ?', [orgId]);
     if (rows.length === 0) return res.status(404).json({ success: false, message: 'Organization not found' });
+
+    const organization = await organizationService.getOrganization(parseInt(orgId));
+    if (organizationService.isPlatformOrganization(organization)) {
+      return res.status(403).json({ success: false, message: 'The platform organization cannot be deleted.' });
+    }
     
     // First find all users in this org
     const [users] = await mysqlPool.execute('SELECT id FROM users WHERE organization_id = ?', [orgId]);
@@ -2376,6 +2827,19 @@ app.post('/api/superadmin/org-admins', async (req, res) => {
     res.json({ success: true, orgAdmin });
   } catch (err) {
     console.error('Create org admin error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Update org admin
+app.put('/api/superadmin/org-admins/:adminId', async (req, res) => {
+  try {
+    const { adminId } = req.params;
+    const { email, username, password, organization_id } = req.body;
+    const orgAdmin = await organizationService.updateOrgAdmin(adminId, { email, username, password, organization_id });
+    res.json({ success: true, orgAdmin });
+  } catch (err) {
+    console.error('Update org admin error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -2651,6 +3115,124 @@ app.post('/api/admin/users', async (req, res) => {
 // PROFILE & SETTINGS ENDPOINTS
 // ============================================================
 
+const orgBrandingUploadRoot = path.join(__dirname, 'uploads', 'org-branding');
+if (!fs.existsSync(orgBrandingUploadRoot)) {
+  fs.mkdirSync(orgBrandingUploadRoot, { recursive: true });
+}
+
+const sanitizeUploadFileName = (fileName = 'logo') =>
+  fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+
+const orgLogoUpload = multer({
+  storage: multer.diskStorage({
+    destination: async (req, file, cb) => {
+      try {
+        const adminId = req.body.adminId;
+        if (!adminId) {
+          return cb(new Error('adminId required'));
+        }
+
+        const [adminRows] = await mysqlPool.execute('SELECT organization_id FROM users WHERE id = ?', [adminId]);
+        if (adminRows.length === 0 || !adminRows[0].organization_id) {
+          return cb(new Error('Admin organization not found'));
+        }
+
+        const orgDir = path.join(orgBrandingUploadRoot, `org-${adminRows[0].organization_id}`);
+        fs.mkdirSync(orgDir, { recursive: true });
+        req.orgId = adminRows[0].organization_id;
+        cb(null, orgDir);
+      } catch (error) {
+        cb(error);
+      }
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
+      const baseName = path.basename(file.originalname || 'logo', ext);
+      cb(null, `${Date.now()}-${sanitizeUploadFileName(baseName)}${ext}`);
+    }
+  }),
+  limits: {
+    fileSize: 10 * 1024 * 1024
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml', 'image/webp'];
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(new Error('Only PNG, JPG, JPEG, SVG, and WEBP files are allowed'));
+    }
+    cb(null, true);
+  }
+});
+
+const getOrganizationSettingsByAdminId = async (adminId) => {
+  const [rows] = await mysqlPool.execute(
+    `SELECT o.id, o.name, o.logo_url
+     FROM users u
+     JOIN organizations o ON u.organization_id = o.id
+     WHERE u.id = ?
+     LIMIT 1`,
+    [adminId]
+  );
+  return rows[0] || null;
+};
+
+app.get('/api/admin/organization/settings', async (req, res) => {
+  try {
+    const { adminId } = req.query;
+    if (!adminId) return res.status(400).json({ success: false, message: 'adminId required' });
+
+    const organization = await getOrganizationSettingsByAdminId(adminId);
+    if (!organization) {
+      return res.status(404).json({ success: false, message: 'Organization not found' });
+    }
+
+    res.json({
+      success: true,
+      organization: {
+        id: organization.id,
+        name: organization.name || '',
+        logoUrl: organization.logo_url || ''
+      }
+    });
+  } catch (err) {
+    console.error('Organization settings fetch error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/admin/organization/update', async (req, res) => {
+  try {
+    const { adminId, organizationName } = req.body;
+    if (!adminId) return res.status(400).json({ success: false, message: 'adminId required' });
+    if (!organizationName || !organizationName.trim()) {
+      return res.status(400).json({ success: false, message: 'Organization name is required' });
+    }
+
+    const organization = await getOrganizationSettingsByAdminId(adminId);
+    if (!organization) {
+      return res.status(404).json({ success: false, message: 'Organization not found' });
+    }
+
+    await mysqlPool.execute(
+      'UPDATE organizations SET name = ? WHERE id = ?',
+      [organizationName.trim(), organization.id]
+    );
+
+    const updatedOrganization = await getOrganizationSettingsByAdminId(adminId);
+    res.json({
+      success: true,
+      message: 'Organization settings updated successfully',
+      organization: {
+        id: updatedOrganization.id,
+        name: updatedOrganization.name || '',
+        logoUrl: updatedOrganization.logo_url || ''
+      }
+    });
+  } catch (err) {
+    console.error('Organization update error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // POST /api/admin/profile/update” Update org admin profile (name, username)
 app.post('/api/admin/profile/update', async (req, res) => {
   try {
@@ -2681,7 +3263,7 @@ app.post('/api/admin/profile/update', async (req, res) => {
 // POST /api/admin/branding/update” Update org branding (logo URL, custom domain)
 app.post('/api/admin/branding/update', async (req, res) => {
   try {
-    const { adminId, logoUrl, customDomain } = req.body;
+    const { adminId, logoUrl } = req.body;
     if (!adminId) return res.status(400).json({ success: false, message: 'adminId required' });
 
     // Get org id for this admin
@@ -2693,23 +3275,76 @@ app.post('/api/admin/branding/update', async (req, res) => {
     const updates = [];
     const values = [];
     if (logoUrl !== undefined)      { updates.push('logo_url = ?');      values.push(logoUrl); }
-    if (customDomain !== undefined) { updates.push('custom_domain = ?'); values.push(customDomain); }
 
     if (updates.length > 0) {
       values.push(orgId);
       // Add columns if they don't exist (graceful)
       try {
         await mysqlPool.execute('ALTER TABLE organizations ADD COLUMN IF NOT EXISTS logo_url VARCHAR(512) DEFAULT NULL');
-        await mysqlPool.execute('ALTER TABLE organizations ADD COLUMN IF NOT EXISTS custom_domain VARCHAR(255) DEFAULT NULL');
       } catch (_) {}
       await mysqlPool.execute(`UPDATE organizations SET ${updates.join(', ')} WHERE id = ?`, values);
     }
 
-    res.json({ success: true, message: 'Branding settings updated!' });
+    const updatedOrganization = await getOrganizationSettingsByAdminId(adminId);
+    res.json({
+      success: true,
+      message: 'Branding settings updated!',
+      organization: {
+        id: updatedOrganization?.id,
+        name: updatedOrganization?.name || '',
+        logoUrl: updatedOrganization?.logo_url || ''
+      }
+    });
   } catch (err) {
     console.error('Branding update error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
+});
+
+app.post('/api/admin/branding/logo-upload', (req, res) => {
+  orgLogoUpload.single('logo')(req, res, async (error) => {
+    try {
+      if (error) {
+        if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ success: false, message: 'Logo size must be 10MB or less' });
+        }
+        return res.status(400).json({ success: false, message: error.message || 'Logo upload failed' });
+      }
+
+      const { adminId } = req.body;
+      if (!adminId) return res.status(400).json({ success: false, message: 'adminId required' });
+      if (!req.file) return res.status(400).json({ success: false, message: 'Logo file is required' });
+
+      const [adminRows] = await mysqlPool.execute('SELECT organization_id FROM users WHERE id = ?', [adminId]);
+      if (adminRows.length === 0 || !adminRows[0].organization_id) {
+        return res.status(404).json({ success: false, message: 'Organization not found' });
+      }
+
+      const relativeLogoPath = `/uploads/org-branding/org-${adminRows[0].organization_id}/${req.file.filename}`;
+      const publicBaseUrl = extractDomainFromUrl(getBackendUrl());
+      const publicLogoUrl = `${publicBaseUrl}${relativeLogoPath}`;
+
+      await mysqlPool.execute('UPDATE organizations SET logo_url = ? WHERE id = ?', [
+        publicLogoUrl,
+        adminRows[0].organization_id
+      ]);
+
+      const updatedOrganization = await getOrganizationSettingsByAdminId(adminId);
+      res.json({
+        success: true,
+        message: 'Logo updated successfully',
+        logoUrl: publicLogoUrl,
+        organization: {
+          id: updatedOrganization?.id,
+          name: updatedOrganization?.name || '',
+          logoUrl: updatedOrganization?.logo_url || publicLogoUrl
+        }
+      });
+    } catch (err) {
+      console.error('Branding logo upload error:', err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
 });
 
 // Auto-create platform_settings table
@@ -5252,7 +5887,7 @@ app.post('/api/twilio/voice', async (req, res) => {
       ).catch(err => console.error('Error updating call status:', err));
     }
   } catch (error) {
-    console.error('âŒ Voice webhook error:', error);
+    console.error(' Voice webhook error:', error);
 
     const VoiceResponse = require('twilio').twiml.VoiceResponse;
     const response = new VoiceResponse();
@@ -5334,7 +5969,7 @@ app.post('/api/twilio/callback', async (req, res) => {
 
     res.status(200).send('OK');
   } catch (error) {
-    console.error('âŒ Callback error:', error);
+    console.error(' Callback error:', error);
     res.status(500).send('Error');
   }
 });
@@ -5516,7 +6151,7 @@ app.get('/api/reports', async (req, res) => {
       FROM campaign_contacts cc
       JOIN campaigns c ON cc.campaign_id = c.id
       LEFT JOIN agents a ON c.agent_id = a.id
-      LEFT JOIN calls cl ON cc.call_id = cl.call_sid
+      LEFT JOIN calls cl ON cc.call_id = cl.id
       WHERE c.user_id = ?
     `;
 
@@ -5752,7 +6387,7 @@ app.get('/api/voices/elevenlabs/list', async (req, res) => {
     const apiKey = process.env.ELEVEN_LABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
 
     if (!apiKey) {
-      console.error('âŒ ElevenLabs API key not configured on server');
+      console.error(' ElevenLabs API key not configured on server');
       return res.status(500).json({
         success: false,
         message: 'ElevenLabs API key not configured on server. Please add ELEVEN_LABS_API_KEY to environment variables.'
@@ -5772,7 +6407,7 @@ app.get('/api/voices/elevenlabs/list', async (req, res) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('âŒ ElevenLabs API error:', response.status, errorText);
+      console.error(' ElevenLabs API error:', response.status, errorText);
 
       // Check if the response is HTML (error page)
       if (errorText.startsWith('<!DOCTYPE') || errorText.includes('<html')) {
@@ -5791,7 +6426,7 @@ app.get('/api/voices/elevenlabs/list', async (req, res) => {
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       const errorText = await response.text();
-      console.error('âŒ ElevenLabs API returned non-JSON response:', errorText.substring(0, 200));
+      console.error(' ElevenLabs API returned non-JSON response:', errorText.substring(0, 200));
       return res.status(500).json({
         success: false,
         message: 'ElevenLabs API returned invalid response format. Expected JSON.'
@@ -5814,7 +6449,7 @@ app.get('/api/voices/elevenlabs/list', async (req, res) => {
       }))
     });
   } catch (error) {
-    console.error('âŒ Error fetching ElevenLabs voices:', error);
+    console.error(' Error fetching ElevenLabs voices:', error);
     res.status(500).json({
       success: false,
       message: `Error fetching ElevenLabs voices: ${error.message}`
@@ -6713,7 +7348,7 @@ app.get('/api/admin/migrate-schema', async (req, res) => {
         await mysqlPool.execute(query);
         results.push(` Executed: ${query}`);
       } catch (alterErr) {
-        results.push(`âŒ Failed: ${query}” ${alterErr.message}`);
+        results.push(` Failed: ${query}” ${alterErr.message}`);
       }
     }
 
@@ -7269,6 +7904,7 @@ async function validateStartupDependencies() {
   }
 
   await validateDatabaseConnection();
+  await organizationService.ensureTenantSchema();
 
   if (!mediaStreamHandler) {
     throw new Error('MediaStreamHandler failed to initialize; refusing to accept traffic');

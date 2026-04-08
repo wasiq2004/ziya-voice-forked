@@ -13,6 +13,7 @@ export interface User {
   role?: string;
   organization_id?: number | null;
   organization_name?: string | null;
+  organization_slug?: string | null;
   organization_logo_url?: string | null;
   created_at?: string;
   updated_at?: string;
@@ -32,14 +33,14 @@ export interface Profile {
 
 export const authService = {
   // Authenticate user with email and password
-  async authenticateUser(email: string, password: string): Promise<User | null> {
+  async authenticateUser(email: string, password: string, organizationSlug?: string | null): Promise<User | null> {
     try {
       const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, organizationSlug: organizationSlug || null }),
       });
 
       const result = await response.json();
@@ -56,14 +57,14 @@ export const authService = {
   },
 
   // Register a new user
-  async registerUser(email: string, username: string, password: string): Promise<User | null> {
+  async registerUser(email: string, username: string, password: string, organizationSlug?: string | null): Promise<User | null> {
     try {
       const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, username, password }),
+        body: JSON.stringify({ email, username, password, organizationSlug: organizationSlug || null }),
       });
 
       const result = await response.json();

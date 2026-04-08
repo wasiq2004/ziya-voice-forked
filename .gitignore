@@ -23,12 +23,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-server/tmp-debug-params.js
-server/tmp-debug-sql.js
-server/tmp-reproduce-list-issue.js
 server/migrations/add_logo_url_to_organizations.js
+server/tmp-reproduce-list-issue.js
+server/tmp-debug-sql.js
+server/tmp-debug-params.js
 server/routes/uploads/support-tickets/382724bea2af7f4d/1775561796453-Gemini_Generated_Image_xwl7u0xwl7u0xwl7.png
 server/routes/uploads/support-tickets/583c1cf02acd32d5/1775556032578-Gemini_Generated_Image_xwl7u0xwl7u0xwl7.png
 server/routes/uploads/support-tickets/73a723382284a852/1775555486314-Gemini_Generated_Image_xwl7u0xwl7u0xwl7.png
-server/scripts/fix-support-tables.js
-server/scripts/test-support-system.js

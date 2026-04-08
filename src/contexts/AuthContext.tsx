@@ -4,8 +4,8 @@ import { authService, User } from '../services/authService';
 
 interface AuthContextType {
   user: User | null;
-  signIn: (email: string, password: string) => Promise<any>;
-  signUp: (email: string, username: string, password: string) => Promise<any>;
+  signIn: (email: string, password: string, organizationSlug?: string | null) => Promise<any>;
+  signUp: (email: string, username: string, password: string, organizationSlug?: string | null) => Promise<any>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   updateUser: (userData: Partial<User>) => Promise<any>;
@@ -53,9 +53,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     checkSession();
   }, [location, navigate]); // Re-run when location changes
 
-  const signIn = async (email: string, password: string) => {
+  useEffect(() => {
+    const syncUserFromStorage = (event?: Event) => {
+      if (event instanceof CustomEvent && event.detail) {
+        setUser(event.detail as User);
+        return;
+      }
+
+      const storedUser = localStorage.getItem('ziya-user');
+      setUser(storedUser ? JSON.parse(storedUser) : null);
+    };
+
+    window.addEventListener('ziya-user-updated', syncUserFromStorage as EventListener);
+    window.addEventListener('storage', syncUserFromStorage);
+
+    return () => {
+      window.removeEventListener('ziya-user-updated', syncUserFromStorage as EventListener);
+      window.removeEventListener('storage', syncUserFromStorage);
+    };
+  }, []);
+
+  const signIn = async (email: string, password: string, organizationSlug?: string | null) => {
     try {
-      const authenticatedUser = await authService.authenticateUser(email, password);
+      const authenticatedUser = await authService.authenticateUser(email, password, organizationSlug);
       if (authenticatedUser) {
         setUser(authenticatedUser);
         // Store user in localStorage for session persistence
@@ -78,9 +98,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const signUp = async (email: string, username: string, password: string) => {
+  const signUp = async (email: string, username: string, password: string, organizationSlug?: string | null) => {
     try {
-      const newUser = await authService.registerUser(email, username, password);
+      const newUser = await authService.registerUser(email, username, password, organizationSlug);
       if (newUser) {
         setUser(newUser);
         // Store user in localStorage for session persistence

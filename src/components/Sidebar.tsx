@@ -153,6 +153,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                 return '/superadmin/pricing';
             case Page.SuperAdminCredits:
                 return '/superadmin/credits';
+            case Page.SuperAdminIntegrations:
+                return '/superadmin/integrations';
             case Page.SuperAdminSupport:
                 return '/superadmin/support';
             case Page.SuperAdminSettings:
@@ -169,6 +171,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
         if (path.startsWith('/superadmin/organizations')) return Page.SuperAdminOrganizations;
         if (path.startsWith('/superadmin/pricing')) return Page.SuperAdminPricing;
         if (path.startsWith('/superadmin/credits')) return Page.SuperAdminCredits;
+        if (path.startsWith('/superadmin/integrations')) return Page.SuperAdminIntegrations;
         if (path.startsWith('/superadmin/support')) return Page.SuperAdminSupport;
         if (path.startsWith('/superadmin/settings')) return Page.SuperAdminSettings;
         // Admin routes
@@ -276,6 +279,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                                 case Page.AdminUsers: return 'Users';
                                 case Page.AdminCredits: return 'Credit Management';
                                 case Page.SuperAdminCredits: return 'Credit Management';
+                                case Page.SuperAdminIntegrations: return '3rd Party Integrations';
                                 case Page.AdminSupport: return 'Support';
                                 case Page.SuperAdminSupport: return 'Support Center';
                                 case Page.AdminSettings: return 'Settings';
@@ -291,7 +295,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setCollapsed }) => {
                         return (
                         <React.Fragment key={item.id}>
                             {/* Section Divider - Add after Dashboard and before Settings */}
-                            {(index === 1 || index === 5) && (
+                            {(index === 1 || index === 4) && (
                                 <li className="my-2">
                                     <div className="h-px bg-gradient-to-r from-transparent via-slate-700 to-transparent"></div>
                                 </li>

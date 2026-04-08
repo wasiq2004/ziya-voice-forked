@@ -73,21 +73,16 @@ class AdminService {
           u.status,
           u.plan_type,
           u.plan_valid_until,
-          COALESCE(uw.balance, 0) as credits_balance,
-          COALESCE(SUM(CASE WHEN wt.transaction_type = 'debit' THEN wt.amount ELSE 0 END), 0) as credits_used,
-          COUNT(DISTINCT ag.id) as agents_count,
-          COUNT(DISTINCT c.id) as companies_count,
-          COALESCE(SUM(CASE WHEN sur.service_name = 'elevenlabs' THEN sur.usage_amount ELSE 0 END), 0) as elevenlabs_usage,
-          COALESCE(SUM(CASE WHEN sur.service_name = 'gemini' THEN sur.usage_amount ELSE 0 END), 0) as gemini_usage,
-          COALESCE(SUM(CASE WHEN sur.service_name = 'deepgram' THEN sur.usage_amount ELSE 0 END), 0) as deepgram_usage
+          COALESCE((SELECT uw.balance FROM user_wallets uw WHERE uw.user_id = u.id LIMIT 1), 0) as credits_balance,
+          COALESCE((SELECT SUM(wt.amount) FROM wallet_transactions wt WHERE wt.user_id = u.id AND wt.transaction_type = 'debit'), 0) as credits_used,
+          COALESCE((SELECT COUNT(*) FROM agents ag WHERE ag.user_id = u.id), 0) as agents_count,
+          COALESCE((SELECT COUNT(*) FROM companies c WHERE c.user_id = u.id), 0) as companies_count,
+          COALESCE((SELECT COUNT(*) FROM campaigns cp WHERE cp.user_id = u.id), 0) as campaigns_count,
+          COALESCE((SELECT COUNT(*) FROM agents ag WHERE ag.user_id = u.id AND LOWER(COALESCE(ag.status, 'inactive')) IN ('active', 'running', 'live')), 0) as active_agents_count,
+          COALESCE((SELECT SUM(sur.usage_amount) FROM user_service_usage sur WHERE sur.user_id = u.id AND sur.service_name = 'elevenlabs' AND sur.period_start >= DATE_FORMAT(NOW(), '%Y-%m-01') AND sur.period_end <= LAST_DAY(NOW())), 0) as elevenlabs_usage,
+          COALESCE((SELECT SUM(sur.usage_amount) FROM user_service_usage sur WHERE sur.user_id = u.id AND sur.service_name = 'gemini' AND sur.period_start >= DATE_FORMAT(NOW(), '%Y-%m-01') AND sur.period_end <= LAST_DAY(NOW())), 0) as gemini_usage,
+          COALESCE((SELECT SUM(sur.usage_amount) FROM user_service_usage sur WHERE sur.user_id = u.id AND sur.service_name = 'deepgram' AND sur.period_start >= DATE_FORMAT(NOW(), '%Y-%m-01') AND sur.period_end <= LAST_DAY(NOW())), 0) as deepgram_usage
         FROM users u
-        LEFT JOIN user_wallets uw ON uw.user_id = u.id
-        LEFT JOIN wallet_transactions wt ON wt.user_id = u.id
-        LEFT JOIN agents ag ON ag.user_id = u.id
-        LEFT JOIN companies c ON c.user_id = u.id
-        LEFT JOIN user_service_usage sur ON u.id = sur.user_id
-          AND sur.period_start >= DATE_FORMAT(NOW(), '%Y-%m-01')
-          AND sur.period_end <= LAST_DAY(NOW())
       `;
 
       const params = [];
@@ -112,7 +107,7 @@ class AdminService {
       }
 
       // Use string interpolation for LIMIT and OFFSET since MySQL has issues with them as prepared statement params
-      query += ` GROUP BY u.id, u.email, u.username, u.created_at, u.role, u.status, u.plan_type, u.plan_valid_until, uw.balance ORDER BY u.created_at DESC LIMIT ${validLimit} OFFSET ${offset}`;
+      query += ` ORDER BY u.created_at DESC LIMIT ${validLimit} OFFSET ${offset}`;
 
       const [users] = await this.mysqlPool.execute(query, params);
 
@@ -605,9 +600,30 @@ class AdminService {
         GROUP BY usu.service_name
       `, orgParam);
 
+      const agentJoin = orgId ? 'JOIN users u ON u.id = ag.user_id AND u.organization_id = ?' : '';
+      const [agentStats] = await this.mysqlPool.execute(`
+        SELECT
+          COUNT(*) as totalAgents,
+          SUM(
+            CASE
+              WHEN LOWER(COALESCE(ag.status, 'inactive')) IN ('active', 'running', 'live')
+               AND (
+                 EXISTS (SELECT 1 FROM phone_numbers pn WHERE pn.agent_id = ag.id)
+                 OR EXISTS (SELECT 1 FROM user_twilio_numbers utn WHERE utn.agent_id = ag.id)
+               )
+              THEN 1
+              ELSE 0
+            END
+          ) as activeAgents
+        FROM agents ag
+        ${agentJoin}
+      `, orgParam);
+
       return {
         totalUsers: userCount[0].total,
         activeUsers: activeUsers[0].total,
+        totalAgents: Number(agentStats[0]?.totalAgents || 0),
+        activeAgents: Number(agentStats[0]?.activeAgents || 0),
         monthlyRevenue: revenue[0].total,
         pendingBilling: pending[0].total,
         serviceUsage

@@ -15,6 +15,8 @@ import ImportLeadsModal from '../components/ImportLeadsModal';
 import { fetchCampaign, startCampaign, stopCampaign, deleteRecord, addRecord, getApiBaseUrl, getApiPath, importCSV, setCallerPhone, updateCampaign } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 
+const normalizeLeadStatus = (status?: string | null) => (status || 'pending').trim().toLowerCase();
+
 const CampaignDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -309,18 +311,36 @@ const CampaignDetailPage: React.FC = () => {
     );
   }
 
-  // Compute stats from live leads data
-  const rejectedCount = leads.filter(l => l.status.toLowerCase() === 'rejected').length;
-  const oneOnOneCount = leads.filter(l => l.intent === '1_on_1_session_requested').length;
+  // Compute stats from live leads data so the UI updates as polling refreshes records.
+  const totalLeadCount = leads.length || campaign.total_contacts || 0;
+  const pendingCount = leads.filter((lead) => {
+    const status = normalizeLeadStatus(lead.status);
+    return ['pending', 'draft', 'queued'].includes(status);
+  }).length;
+  const activeCount = leads.filter((lead) => {
+    const status = normalizeLeadStatus(lead.status);
+    return ['calling', 'ringing', 'initiated', 'in-progress', 'in progress', 'processing'].includes(status);
+  }).length;
+  const completedCount = leads.filter((lead) => normalizeLeadStatus(lead.status) === 'completed').length;
+  const failedCount = leads.filter((lead) => {
+    const status = normalizeLeadStatus(lead.status);
+    return ['failed', 'busy', 'no-answer', 'no answer', 'canceled', 'cancelled'].includes(status);
+  }).length;
+  const rejectedCount = leads.filter((lead) => {
+    const status = normalizeLeadStatus(lead.status);
+    return status === 'rejected' || lead.intent === 'not_interested';
+  }).length;
+  const oneOnOneCount = leads.filter((lead) => lead.intent === '1_on_1_session_requested').length;
 
   const campaignStats = {
-    total: campaign.total_contacts || 0,
-    completed: campaign.completed_calls || 0,
-    failed: campaign.failed_calls || 0,
-    pending: Math.max(0, (campaign.total_contacts || 0) - (campaign.completed_calls || 0) - (campaign.failed_calls || 0)),
-    successful: campaign.successful_calls || 0,
-    rejected: campaign.rejected_count ?? rejectedCount,
-    oneOnOne: campaign.one_on_one_count ?? oneOnOneCount,
+    total: totalLeadCount,
+    draft: pendingCount,
+    active: activeCount,
+    completed: completedCount,
+    failed: failedCount,
+    pending: pendingCount,
+    rejected: rejectedCount,
+    oneOnOne: oneOnOneCount,
   };
 
   const isRunning = campaign.status === 'running';
@@ -371,14 +391,13 @@ const CampaignDetailPage: React.FC = () => {
       <div className="flex items-center gap-2">
         <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${isRunning ? 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-900/50' : 'bg-slate-50 dark:bg-slate-900/20 border-slate-100 dark:border-slate-800'}`}>
           <div className={`w-1 h-1 rounded-full ${isRunning ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`}></div>
-          <span className="text-[8px] uppercase font-black text-slate-500 dark:text-slate-400 tracking-wider">
-            {campaign.status || 'Draft'}
-          </span>
+          <span className="text-[8px] uppercase font-black text-slate-500 dark:text-slate-400 tracking-wider">Draft</span>
+          <span className="text-xs font-black text-slate-700 dark:text-slate-200">{campaignStats.draft}</span>
         </div>
         <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/50 rounded-lg">
           <div className="w-1 h-1 rounded-full bg-green-500"></div>
           <span className="text-[8px] uppercase font-black text-slate-500 dark:text-slate-400 tracking-wider">Active</span>
-          <span className="text-xs font-black text-green-600 dark:text-green-400">{campaignStats.successful}</span>
+          <span className="text-xs font-black text-green-600 dark:text-green-400">{campaignStats.active}</span>
         </div>
         <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 rounded-lg">
           <div className="w-1 h-1 rounded-full bg-red-500"></div>
@@ -516,7 +535,7 @@ const CampaignDetailPage: React.FC = () => {
 
         {/* KPI Section */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <KPICard title="Active" value={campaignStats.successful} color="green" />
+          <KPICard title="Active" value={campaignStats.active} color="green" />
           <KPICard title="Failed" value={campaignStats.failed} color="red" />
           <KPICard title="Rejected" value={campaignStats.rejected} color="gray" />
           <KPICard title="1 to 1 Scheduled" value={campaignStats.oneOnOne} color="blue" />
@@ -533,7 +552,7 @@ const CampaignDetailPage: React.FC = () => {
           stats={{
             completed: campaignStats.completed,
             failed: campaignStats.failed,
-            inProgress: 0,
+            inProgress: campaignStats.active,
             pending: campaignStats.pending
           }}
         />

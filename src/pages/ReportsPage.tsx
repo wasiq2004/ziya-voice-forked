@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import AppLayout from '../components/AppLayout';
 import {
     ArrowDownTrayIcon,
@@ -45,6 +45,8 @@ interface ReportData {
     recordingUrl: string | null;
 }
 
+const normalizeReportStatus = (status?: string | null) => (status || 'unknown').trim().toLowerCase();
+
 const ReportsPage: React.FC = () => {
     const { user } = useAuth();
     const [searchQuery, setSearchQuery] = useState('');
@@ -67,72 +69,93 @@ const ReportsPage: React.FC = () => {
     });
     const [openActionId, setOpenActionId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const hasLoadedReportsRef = useRef(false);
 
     useEffect(() => {
+        let isMounted = true;
+
         const fetchReports = async () => {
             if (!user?.id) return;
             try {
-                setIsLoading(true);
+                if (!hasLoadedReportsRef.current) {
+                    setIsLoading(true);
+                }
                 const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/reports?userId=${user.id}`);
                 const data = await response.json();
 
-                if (data.success) {
-                    const formattedData = data.data.map((row: any, index: number) => {
-                        const dateObj = new Date(row.created_at);
-                        return {
-                            id: row.id.toString(),
-                            sNo: index + 1,
-                            date: dateObj.toISOString().split('T')[0],
-                            day: dateObj.toLocaleDateString('en-US', { weekday: 'long' }),
-                            campaignId: row.campaignName || 'Unknown',
-                            agentName: row.agentName || 'Unknown Agent',
-                            calledNumber: row.calledNumber,
-                            type: row.type || 'Outbound',
-                            status: row.status || 'Unknown',
-                            result: row.result || 'Pending',
-                            firstCallTime: dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-                            followUpTime: row.schedule_time ? new Date(row.schedule_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'None',
-                            call_duration: row.call_duration || 0,
-                            recordingUrl: row.recording_url || null
-                        };
-                    });
-                    setReports(formattedData);
-
-                    // Calculate stats
-                    const total = formattedData.length;
-                    const completed = formattedData.filter((r: any) => ['completed', 'success', 'successful'].includes(r.status.toLowerCase())).length;
-                    const failed = total - completed;
-                    const interested = formattedData.filter((r: any) => ['interested', 'positive', 'success'].includes(r.result.toLowerCase())).length;
-
-                    // Calculate average duration from call_duration field
-                    let avgDuration = '0s';
-                    if (completed > 0) {
-                        const totalDuration = formattedData
-                            .filter((r: any) => ['completed', 'success', 'successful'].includes(r.status.toLowerCase()))
-                            .reduce((sum: number, r: any) => sum + (r.call_duration || 0), 0);
-                        const avgSeconds = Math.round(totalDuration / completed);
-                        const minutes = Math.floor(avgSeconds / 60);
-                        const seconds = avgSeconds % 60;
-                        avgDuration = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-                    }
-
-                    setStats({
-                        totalCalls: total,
-                        completedCalls: completed,
-                        failedCalls: failed,
-                        avgDuration: avgDuration,
-                        interestedLeads: interested
-                    });
+                if (!isMounted || !data.success) {
+                    return;
                 }
+
+                const formattedData = data.data.map((row: any, index: number) => {
+                    const dateObj = new Date(row.created_at);
+                    return {
+                        id: row.id.toString(),
+                        sNo: index + 1,
+                        date: dateObj.toISOString().split('T')[0],
+                        day: dateObj.toLocaleDateString('en-US', { weekday: 'long' }),
+                        campaignId: row.campaignName || 'Unknown',
+                        agentName: row.agentName || 'Unknown Agent',
+                        calledNumber: row.calledNumber,
+                        type: row.type || 'Outbound',
+                        status: row.status || 'Unknown',
+                        result: row.result || 'Pending',
+                        firstCallTime: dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                        followUpTime: row.schedule_time ? new Date(row.schedule_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'None',
+                        call_duration: row.call_duration || 0,
+                        recordingUrl: row.recording_url || null
+                    };
+                });
+                setReports(formattedData);
+
+                // Calculate stats from live data without treating in-progress calls as failures.
+                const total = formattedData.length;
+                const completed = formattedData.filter((report: any) =>
+                    ['completed', 'success', 'successful'].includes(normalizeReportStatus(report.status))
+                ).length;
+                const failed = formattedData.filter((report: any) =>
+                    ['failed', 'busy', 'no-answer', 'no answer', 'canceled', 'cancelled', 'rejected'].includes(normalizeReportStatus(report.status))
+                ).length;
+                const interested = formattedData.filter((report: any) =>
+                    ['interested', 'positive', 'success'].includes((report.result || '').toLowerCase())
+                ).length;
+
+                let avgDuration = '0s';
+                if (completed > 0) {
+                    const totalDuration = formattedData
+                        .filter((report: any) => ['completed', 'success', 'successful'].includes(normalizeReportStatus(report.status)))
+                        .reduce((sum: number, report: any) => sum + (report.call_duration || 0), 0);
+                    const avgSeconds = Math.round(totalDuration / completed);
+                    const minutes = Math.floor(avgSeconds / 60);
+                    const seconds = avgSeconds % 60;
+                    avgDuration = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+                }
+
+                setStats({
+                    totalCalls: total,
+                    completedCalls: completed,
+                    failedCalls: failed,
+                    avgDuration,
+                    interestedLeads: interested
+                });
+                hasLoadedReportsRef.current = true;
             } catch (error) {
                 console.error('Failed to fetch reports:', error);
             } finally {
-                setIsLoading(false);
+                if (isMounted) {
+                    setIsLoading(false);
+                }
             }
         };
 
         fetchReports();
-    }, [user]);
+        const intervalId = window.setInterval(fetchReports, 5000);
+
+        return () => {
+            isMounted = false;
+            window.clearInterval(intervalId);
+        };
+    }, [user?.id]);
 
     // Compute unique dropdown options from data
     const filterOptions = useMemo(() => {

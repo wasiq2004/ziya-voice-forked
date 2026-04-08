@@ -266,7 +266,7 @@ const AdminUsersPage: React.FC = () => {
             <table className="w-full text-left border-collapse min-w-[900px]">
               <thead>
                 <tr className="bg-slate-50/50 dark:bg-slate-900/50">
-                  <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Name / Email</th>
+                  <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Name / Email / ID</th>
                   <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Agents</th>
                   <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Companies</th>
                   <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Credits Left</th>
@@ -312,6 +312,7 @@ const AdminUsersPage: React.FC = () => {
                               {user.username || '—'}
                             </div>
                             <div className="text-[11px] text-slate-400 font-medium">{user.email}</div>
+                            <div className="text-[10px] text-slate-400 font-mono">ID: {user.id}</div>
                           </div>
                         </div>
                       </td>

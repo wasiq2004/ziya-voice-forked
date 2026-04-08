@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppLayout from '../components/AppLayout';
 import Skeleton from '../components/Skeleton';
 import KPICard from '../components/KPICard';
-import { getSuperAdminStats } from '../utils/superAdminApi';
+import { getSuperAdminStats, getSuperAdminIntegrationBalances } from '../utils/superAdminApi';
 import { getAuditLogs } from '../utils/adminApi';
 import {
     BuildingOfficeIcon,
@@ -15,7 +15,14 @@ import {
     ArrowTrendingUpIcon,
     CurrencyDollarIcon,
     PresentationChartBarIcon,
+    Squares2X2Icon,
+    SparklesIcon,
+    ExclamationTriangleIcon,
+    CloudIcon,
+    CpuChipIcon,
+    SpeakerWaveIcon,
 } from '@heroicons/react/24/outline';
+import { SuperAdminIntegrationBalance } from '../types';
 
 const SuperAdminDashboardPage: React.FC = () => {
     const navigate = useNavigate();
@@ -24,16 +31,31 @@ const SuperAdminDashboardPage: React.FC = () => {
     const [error, setError] = useState('');
     const [recentEvents, setRecentEvents] = useState<any[]>([]);
     const [eventsLoading, setEventsLoading] = useState(true);
+    const [integrations, setIntegrations] = useState<SuperAdminIntegrationBalance[]>([]);
+    const [integrationsLoading, setIntegrationsLoading] = useState(true);
 
     useEffect(() => {
-        // Verify super admin access
         const userStr = localStorage.getItem('ziya-user');
-        if (!userStr) { navigate('/login'); return; }
+        if (!userStr) {
+            navigate('/login');
+            return;
+        }
+
         const user = JSON.parse(userStr);
-        if (user.role !== 'super_admin') { navigate('/login'); return; }
-        fetchStats();
-        fetchRecentEvents();
+        if (user.role !== 'super_admin') {
+            navigate('/login');
+            return;
+        }
+
+        fetchAll();
+        const interval = window.setInterval(fetchAll, 60000);
+        return () => window.clearInterval(interval);
     }, [navigate]);
+
+    const fetchAll = async () => {
+        setError('');
+        await Promise.all([fetchStats(), fetchRecentEvents(), fetchIntegrations()]);
+    };
 
     const fetchStats = async () => {
         setLoading(true);
@@ -60,7 +82,13 @@ const SuperAdminDashboardPage: React.FC = () => {
                 const diff = Date.now() - new Date(log.created_at).getTime();
                 const mins = Math.floor(diff / 60000);
                 const hours = Math.floor(mins / 60);
-                const timeStr = hours > 24 ? `${Math.floor(hours / 24)}d ago` : hours > 0 ? `${hours}h ago` : mins > 0 ? `${mins}m ago` : 'Just now';
+                const timeStr = hours > 24
+                    ? `${Math.floor(hours / 24)}d ago`
+                    : hours > 0
+                        ? `${hours}h ago`
+                        : mins > 0
+                            ? `${mins}m ago`
+                            : 'Just now';
 
                 return {
                     event: log.action_type?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Admin Action',
@@ -72,24 +100,37 @@ const SuperAdminDashboardPage: React.FC = () => {
                 };
             });
             setRecentEvents(mapped);
-        } catch (_) {
+        } catch {
             setRecentEvents([]);
         } finally {
             setEventsLoading(false);
         }
     };
 
+    const fetchIntegrations = async () => {
+        setIntegrationsLoading(true);
+        try {
+            const data = await getSuperAdminIntegrationBalances();
+            setIntegrations(data.integrations || []);
+        } catch {
+            setIntegrations([]);
+        } finally {
+            setIntegrationsLoading(false);
+        }
+    };
 
     const kpis = [
         { label: 'Total Users', value: stats?.totalUsers ?? 0, icon: UsersIcon, color: 'blue' as const },
         { label: 'Total Agents', value: stats?.totalAgents ?? 0, icon: UserGroupIcon, color: 'purple' as const },
         { label: 'Total Organizations', value: stats?.totalOrganizations ?? 0, icon: BuildingOfficeIcon, color: 'green' as const },
         { label: 'Credit Usage', value: stats?.totalCreditsUsed ?? 0, icon: CircleStackIcon, color: 'red' as const, suffix: ' CR' },
-        { label: 'Credit Available', value: stats?.totalCreditsAvailable ?? 0, icon: CurrencyDollarIcon, color: 'blue' as const, suffix: ' CR' },
+        // { label: 'Credit Available', value: stats?.totalCreditsAvailable ?? 0, icon: CurrencyDollarIcon, color: 'blue' as const, suffix: ' CR' },
     ];
 
     const userStr = localStorage.getItem('ziya-user');
     const userData = userStr ? JSON.parse(userStr) : null;
+
+    const maxUsage = Math.max(...(stats?.serviceUsage || []).map((s: any) => Number(s.total_usage || 0)), 1);
 
     return (
         <AppLayout
@@ -98,7 +139,7 @@ const SuperAdminDashboardPage: React.FC = () => {
             pageDescription={`Platform-wide control center. Welcome, ${userData?.username || userData?.email || 'Super Admin'}`}
             primaryAction={
                 <button
-                    onClick={fetchStats}
+                    onClick={fetchAll}
                     className="flex items-center px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl transition-all font-bold text-sm shadow-sm"
                 >
                     <ArrowPathIcon className="w-4 h-4 mr-2" />
@@ -113,10 +154,9 @@ const SuperAdminDashboardPage: React.FC = () => {
                     </div>
                 )}
 
-                {/* KPI Snapboxes */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                     {kpis.map((kpi) => (
-                        <KPICard 
+                        <KPICard
                             key={kpi.label}
                             title={kpi.label}
                             value={`${kpi.value.toLocaleString()}${kpi.suffix || ''}`}
@@ -126,47 +166,64 @@ const SuperAdminDashboardPage: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Organization Overview Chart Placeholder */}
                     <div className="lg:col-span-2 bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm overflow-hidden flex flex-col">
                         <div className="flex items-center justify-between mb-8">
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-primary/10 rounded-xl">
                                     <PresentationChartBarIcon className="w-5 h-5 text-primary" />
                                 </div>
-                                <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Organization Growth</h3>
+                                <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Live Service Usage</h3>
                             </div>
                             <div className="flex gap-2">
-                                <span className="px-3 py-1 bg-slate-100 dark:bg-slate-900 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider">7 Days</span>
-                                <span className="px-3 py-1 bg-primary text-white rounded-lg text-[10px] font-bold uppercase tracking-wider">30 Days</span>
+                                <span className="px-3 py-1 bg-slate-100 dark:bg-slate-900 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider">This Month</span>
+                                <span className="px-3 py-1 bg-primary text-white rounded-lg text-[10px] font-bold uppercase tracking-wider">Live</span>
                             </div>
                         </div>
-                        
-                        {/* Mock Chart Area */}
-                        <div className="h-64 flex items-end justify-between gap-1 px-2 pt-4 relative">
-                            {/* Grid Lines */}
-                            <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-8">
-                                {[...Array(5)].map((_, i) => (
-                                    <div key={i} className="w-full h-px bg-slate-100 dark:bg-slate-800/50"></div>
-                                ))}
+
+                        {loading ? (
+                            <div className="space-y-3">
+                                {[...Array(5)].map((_, i) => <Skeleton key={i} height={44} className="rounded-xl" />)}
                             </div>
-                            {/* Bars */}
-                            {[40, 65, 45, 80, 55, 90, 70, 85, 60, 100, 75, 95].map((val, i) => (
-                                <div key={i} className="flex-1 flex flex-col items-center group h-full justify-end relative z-10 w-full">
-                                    <div 
-                                        className="w-full bg-primary/20 hover:bg-primary transition-all rounded-t-lg relative" 
-                                        style={{ height: `${val}%` }}
-                                    >
-                                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-black px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                                            {val}%
+                        ) : stats?.serviceUsage?.length ? (
+                            <div className="space-y-5">
+                                {stats.serviceUsage.map((service: any) => {
+                                    const pct = (Number(service.total_usage || 0) / maxUsage) * 100;
+                                    const colorMap: Record<string, string> = {
+                                        elevenlabs: 'bg-violet-500',
+                                        gemini: 'bg-blue-500',
+                                        deepgram: 'bg-emerald-500',
+                                        sarvam: 'bg-amber-500',
+                                    };
+
+                                    return (
+                                        <div key={service.service_name}>
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-sm font-bold text-slate-700 dark:text-slate-300 capitalize">{service.service_name}</span>
+                                                <div className="text-right">
+                                                    <span className="text-sm font-black text-slate-900 dark:text-white">
+                                                        {Number(service.total_usage || 0).toLocaleString()}
+                                                    </span>
+                                                    <span className="text-xs text-slate-400 ml-2 font-semibold">{service.user_count || 0} users</span>
+                                                </div>
+                                            </div>
+                                            <div className="h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full ${colorMap[service.service_name] || 'bg-primary'} rounded-full transition-all duration-700`}
+                                                    style={{ width: `${pct}%` }}
+                                                />
+                                            </div>
                                         </div>
-                                    </div>
-                                    <span className="text-[8px] font-bold text-slate-400 mt-2 uppercase">Jan</span>
-                                </div>
-                            ))}
-                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <div className="flex-1 flex flex-col items-center justify-center py-16 text-center">
+                                <ChartBarIcon className="w-10 h-10 text-slate-300 dark:text-slate-700" />
+                                <p className="mt-4 text-sm font-bold text-slate-500">No live service usage data yet.</p>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Top Organizations by Usage */}
                     <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm overflow-hidden">
                         <div className="flex items-center gap-3 mb-6">
                             <div className="p-2 bg-amber-500/10 rounded-xl">
@@ -190,7 +247,7 @@ const SuperAdminDashboardPage: React.FC = () => {
                                     </div>
                                     <div className="text-right">
                                         <p className="text-xs font-black text-primary">{(org.credits_used || 0).toLocaleString()} CR</p>
-                                        <p className="text-[8px] font-bold text-emerald-500 uppercase tracking-tighter">Usage +12%</p>
+                                        <p className="text-[8px] font-bold text-emerald-500 uppercase tracking-tighter">{org.admin_count || 0} admins</p>
                                     </div>
                                 </div>
                             )) || (
@@ -202,18 +259,87 @@ const SuperAdminDashboardPage: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Audit Log / Recent Events Placeholder */}
+                <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                    <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+                        <div className="flex items-center gap-3">
+                            <div className="p-1.5 bg-slate-200/50 dark:bg-slate-700/50 rounded-lg">
+                                <Squares2X2Icon className="w-4 h-4 text-slate-500" />
+                            </div>
+                            <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">3rd Party Integrations</h3>
+                        </div>
+                        <button
+                            onClick={() => navigate('/superadmin/integrations')}
+                            className="text-xs font-bold text-primary hover:underline underline-offset-4 decoration-primary/30 py-1 px-3 rounded-lg hover:bg-primary/5 transition-all"
+                        >
+                            Open Full Panel
+                        </button>
+                    </div>
+                    <div className="p-5">
+                        {integrationsLoading ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                                {[...Array(4)].map((_, i) => <Skeleton key={i} height={120} className="rounded-2xl" />)}
+                            </div>
+                        ) : integrations.length === 0 ? (
+                            <div className="p-6 text-center text-xs font-bold text-slate-400 uppercase tracking-widest">
+                                No integration data available
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                                {integrations.slice(0, 4).map((item) => {
+                                    const isLiveBalance = typeof item.balance === 'number';
+                                    const iconMap: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
+                                        elevenlabs: SpeakerWaveIcon,
+                                        gemini: SparklesIcon,
+                                        deepgram: CloudIcon,
+                                        sarvam: CpuChipIcon,
+                                        openai: CircleStackIcon,
+                                    };
+                                    const IntegrationIcon = iconMap[item.key] || ExclamationTriangleIcon;
+
+                                    return (
+                                        <div key={item.key} className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 p-4">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                                                        <IntegrationIcon className="w-5 h-5" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm font-black text-slate-800 dark:text-white">{item.name}</p>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.status}</p>
+                                                    </div>
+                                                </div>
+                                                <span className={`text-[10px] font-black uppercase tracking-widest ${isLiveBalance ? 'text-emerald-500' : 'text-slate-400'}`}>
+                                                    {isLiveBalance ? 'Live' : 'Status'}
+                                                </span>
+                                            </div>
+                                            <div className="mt-4">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.balanceLabel}</p>
+                                                <p className="mt-1 text-lg font-black text-slate-900 dark:text-white">
+                                                    {isLiveBalance ? item.balance!.toLocaleString() : 'N/A'}
+                                                    {isLiveBalance && item.unit ? <span className="text-xs ml-1 text-slate-400">{item.unit}</span> : null}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
                 <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden mt-8">
                     <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
                         <div className="flex items-center gap-3">
-                           <div className="p-1.5 bg-slate-200/50 dark:bg-slate-700/50 rounded-lg">
-                               <ChartBarIcon className="w-4 h-4 text-slate-500" />
-                           </div>
-                           <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Global Platform Events</h3>
+                            <div className="p-1.5 bg-slate-200/50 dark:bg-slate-700/50 rounded-lg">
+                                <ChartBarIcon className="w-4 h-4 text-slate-500" />
+                            </div>
+                            <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">Global Platform Events</h3>
                         </div>
-                        <button className="text-xs font-bold text-primary hover:underline underline-offset-4 decoration-primary/30 py-1 px-3 rounded-lg hover:bg-primary/5 transition-all">View All Activity</button>
+                        <button className="text-xs font-bold text-primary hover:underline underline-offset-4 decoration-primary/30 py-1 px-3 rounded-lg hover:bg-primary/5 transition-all">
+                            View All Activity
+                        </button>
                     </div>
-                     <div className="divide-y divide-slate-50 dark:divide-slate-800">
+                    <div className="divide-y divide-slate-50 dark:divide-slate-800">
                         {eventsLoading ? (
                             [...Array(4)].map((_, i) => (
                                 <div key={i} className="p-5 flex items-center gap-4 animate-pulse">
@@ -248,7 +374,7 @@ const SuperAdminDashboardPage: React.FC = () => {
                                 </div>
                             ))
                         )}
-                     </div>
+                    </div>
                 </div>
             </div>
         </AppLayout>

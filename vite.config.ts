@@ -5,12 +5,29 @@ import react from '@vitejs/plugin-react';
 export default defineConfig(({ command, mode }) => {
 
   const env = loadEnv(mode || 'development', process.cwd(), '');
+  let platformHost = '';
+
+  try {
+    const backendBaseUrl = env.VITE_API_BASE_URL || '';
+    if (backendBaseUrl) {
+      const parsed = new URL(backendBaseUrl);
+      const hostname = parsed.hostname.toLowerCase();
+      platformHost = hostname.startsWith('api.') ? hostname.slice(4) : hostname;
+    }
+  } catch {
+    platformHost = '';
+  }
+
+  const allowedHosts = ['localhost', '127.0.0.1', '.localhost'];
+  if (platformHost) {
+    allowedHosts.push(platformHost, `.${platformHost}`);
+  }
   
   return {
     server: {
       port: 3000,
       host: true,
-      allowedHosts: ['localhost', '127.0.0.1', 'ziyasuite.com'],
+      allowedHosts,
       proxy: {
         '/api': {
           target: env.VITE_API_BASE_URL,

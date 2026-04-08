@@ -29,6 +29,7 @@ import SuperAdminPricingPage from './pages/SuperAdminPricingPage';
 import SuperAdminCreditsPage from './pages/SuperAdminCreditsPage';
 import SuperAdminSupportPage from './pages/SuperAdminSupportPage';
 import SuperAdminSettingsPage from './pages/SuperAdminSettingsPage';
+import SuperAdminIntegrationsPage from './pages/SuperAdminIntegrationsPage';
 
 
 /** Guard for Org Admin routes (/admin/*) — checks role = org_admin in ziya-user */
@@ -66,6 +67,7 @@ const App: React.FC = () => {
                     <Route path="/superadmin/organizations" element={<SuperAdminRoute><SuperAdminOrganizationsPage /></SuperAdminRoute>} />
                     <Route path="/superadmin/pricing" element={<SuperAdminRoute><SuperAdminPricingPage /></SuperAdminRoute>} />
                     <Route path="/superadmin/credits" element={<SuperAdminRoute><SuperAdminCreditsPage /></SuperAdminRoute>} />
+                    <Route path="/superadmin/integrations" element={<SuperAdminRoute><SuperAdminIntegrationsPage /></SuperAdminRoute>} />
                     <Route path="/superadmin/support" element={<SuperAdminRoute><SuperAdminSupportPage /></SuperAdminRoute>} />
                     <Route path="/superadmin/settings" element={<SuperAdminRoute><SuperAdminSettingsPage /></SuperAdminRoute>} />
 

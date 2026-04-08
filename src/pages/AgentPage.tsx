@@ -246,7 +246,7 @@ const AgentPage: React.FC = () => {
             <AppLayout
                 breadcrumbs={[
                     { label: 'Dashboard', path: '/dashboard' },
-                    { label: 'Agents', path: '/agents' },
+                    { label: 'Agents', onClick: handleBackToList },
                     { label: selectedAgent.name }
                 ]}
                 pageTitle={selectedAgent.name}

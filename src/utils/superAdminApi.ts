@@ -1,5 +1,5 @@
 import { getApiBaseUrl, getApiPath } from './api';
-import { Organization, OrgAdmin } from '../types';
+import { Organization, OrgAdmin, SuperAdminIntegrationBalancesResponse } from '../types';
 
 const API_BASE_URL = `${getApiBaseUrl()}${getApiPath()}`;
 
@@ -7,12 +7,24 @@ const API_BASE_URL = `${getApiBaseUrl()}${getApiPath()}`;
 
 /** Get super admin dashboard stats */
 export const getSuperAdminStats = async () => {
-    const response = await fetch(`${API_BASE_URL}/superadmin/stats`);
+    const response = await fetch(`${API_BASE_URL}/superadmin/stats`, { cache: 'no-store' });
     const contentType = response.headers.get('content-type');
     if (!contentType?.includes('application/json')) throw new Error('Non-JSON response');
     if (!response.ok) {
         const e = await response.json();
         throw new Error(e.message || 'Failed to fetch super admin stats');
+    }
+    return response.json();
+};
+
+/** Get live third-party integration balances and statuses */
+export const getSuperAdminIntegrationBalances = async (): Promise<SuperAdminIntegrationBalancesResponse> => {
+    const response = await fetch(`${API_BASE_URL}/superadmin/integrations/balances`, { cache: 'no-store' });
+    const contentType = response.headers.get('content-type');
+    if (!contentType?.includes('application/json')) throw new Error('Non-JSON response');
+    if (!response.ok) {
+        const e = await response.json();
+        throw new Error(e.message || 'Failed to fetch integration balances');
     }
     return response.json();
 };
@@ -123,6 +135,28 @@ export const createOrgAdmin = async (payload: {
     if (!response.ok) {
         const e = await response.json();
         throw new Error(e.message || 'Failed to create org admin');
+    }
+    const data = await response.json();
+    return data.orgAdmin;
+};
+
+/** Update an org admin */
+export const updateOrgAdmin = async (adminId: string, payload: {
+    email?: string;
+    username?: string;
+    password?: string;
+    organization_id?: number;
+}): Promise<OrgAdmin> => {
+    const response = await fetch(`${API_BASE_URL}/superadmin/org-admins/${adminId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    const contentType = response.headers.get('content-type');
+    if (!contentType?.includes('application/json')) throw new Error('Non-JSON response');
+    if (!response.ok) {
+        const e = await response.json();
+        throw new Error(e.message || 'Failed to update org admin');
     }
     const data = await response.json();
     return data.orgAdmin;

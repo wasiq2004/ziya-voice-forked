@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppLayout from '../components/AppLayout';
 import {
@@ -9,9 +9,10 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   ArrowPathIcon,
+  MagnifyingGlassIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
-import { getWalletSummary, getWalletTransactions, addCredits } from '../utils/adminApi';
+import { getWalletSummary, getWalletTransactions, addCredits, getUsers } from '../utils/adminApi';
 
 const AdminCreditsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -19,6 +20,7 @@ const AdminCreditsPage: React.FC = () => {
   const [txLoading, setTxLoading] = useState(true);
   const [showAddFund, setShowAddFund] = useState(false);
   const [fundUserId, setFundUserId] = useState('');
+  const [fundUserEmail, setFundUserEmail] = useState('');
   const [fundAmount, setFundAmount] = useState('');
   const [fundDesc, setFundDesc] = useState('');
   const [processingFund, setProcessingFund] = useState(false);
@@ -27,6 +29,9 @@ const AdminCreditsPage: React.FC = () => {
   const [activeFilter, setActiveFilter] = useState('All');
   const [kpiData, setKpiData] = useState({ totalBalance: 0, totalDebited: 0, totalCredited: 0, totalUsers: 0 });
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [userSearchLoading, setUserSearchLoading] = useState(false);
+  const [userSearchResults, setUserSearchResults] = useState<any[]>([]);
+  const [showUserSuggestions, setShowUserSuggestions] = useState(false);
 
   const getAdmin = () => {
     const raw = localStorage.getItem('ziya-user');
@@ -70,9 +75,53 @@ const AdminCreditsPage: React.FC = () => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    if (!showAddFund) {
+      setUserSearchResults([]);
+      setShowUserSuggestions(false);
+      return;
+    }
+
+    const searchValue = fundUserEmail.trim();
+    if (searchValue.length < 2) {
+      setUserSearchResults([]);
+      return;
+    }
+
+    const admin = getAdmin();
+    if (!admin) return;
+
+    const orgId = admin.role === 'org_admin' ? admin.organization_id?.toString() : null;
+    const timeoutId = window.setTimeout(async () => {
+      setUserSearchLoading(true);
+      try {
+        const result = await getUsers(1, 8, searchValue, orgId);
+        setUserSearchResults(result.users || []);
+        setShowUserSuggestions(true);
+      } catch (err) {
+        console.error('User search error:', err);
+        setUserSearchResults([]);
+      } finally {
+        setUserSearchLoading(false);
+      }
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [fundUserEmail, showAddFund]);
+
+  const resetFundModal = () => {
+    setShowAddFund(false);
+    setFundUserId('');
+    setFundUserEmail('');
+    setFundAmount('');
+    setFundDesc('');
+    setUserSearchResults([]);
+    setShowUserSuggestions(false);
+  };
+
   const handleAddFund = async () => {
     if (!fundUserId || !fundAmount || isNaN(Number(fundAmount)) || Number(fundAmount) <= 0) {
-      setError('Please enter a valid User ID and credit amount.');
+      setError('Please select a valid user email and credit amount.');
       return;
     }
     const admin = getAdmin();
@@ -80,11 +129,8 @@ const AdminCreditsPage: React.FC = () => {
     setProcessingFund(true);
     try {
       await addCredits(fundUserId.trim(), parseFloat(fundAmount), fundDesc || 'Admin credit allocation', admin.id);
-      setSuccessMsg(`Successfully added ${fundAmount} credits to user ${fundUserId}`);
-      setShowAddFund(false);
-      setFundAmount('');
-      setFundUserId('');
-      setFundDesc('');
+      setSuccessMsg(`Successfully added ${fundAmount} credits to ${fundUserEmail}`);
+      resetFundModal();
       setTimeout(() => setSuccessMsg(''), 4000);
       fetchData();
     } catch (err: any) {
@@ -103,7 +149,7 @@ const AdminCreditsPage: React.FC = () => {
 
   const formatDate = (dateString: string) => dateString
     ? new Date(dateString).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-    : '—';
+    : '-';
 
   const formatCredits = (n: number) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n || 0);
 
@@ -144,13 +190,12 @@ const AdminCreditsPage: React.FC = () => {
           </div>
         )}
 
-        {/* KPIs */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[
-            { label: 'Total Balance (All Users)', value: loading ? '—' : formatCredits(kpiData.totalBalance) + ' CR', icon: <BanknotesIcon className="w-3.5 h-3.5" />, color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'hover:border-emerald-500/50' },
-            { label: 'Total Credits Used', value: loading ? '—' : formatCredits(kpiData.totalDebited) + ' CR', icon: <ArrowTrendingUpIcon className="w-3.5 h-3.5" />, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'hover:border-amber-500/50' },
-            { label: 'Total Credits Assigned', value: loading ? '—' : formatCredits(kpiData.totalCredited) + ' CR', icon: <CreditCardIcon className="w-3.5 h-3.5" />, color: 'text-indigo-500', bg: 'bg-indigo-500/10', border: 'hover:border-indigo-500/50' },
-            { label: 'Total Users', value: loading ? '—' : kpiData.totalUsers.toString(), icon: <ArrowTrendingUpIcon className="w-3.5 h-3.5" />, color: 'text-primary', bg: 'bg-primary/10', border: 'hover:border-primary/50' },
+            { label: 'Total Balance (All Users)', value: loading ? '-' : formatCredits(kpiData.totalBalance) + ' CR', icon: <BanknotesIcon className="w-3.5 h-3.5" />, color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'hover:border-emerald-500/50' },
+            { label: 'Total Credits Used', value: loading ? '-' : formatCredits(kpiData.totalDebited) + ' CR', icon: <ArrowTrendingUpIcon className="w-3.5 h-3.5" />, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'hover:border-amber-500/50' },
+            { label: 'Total Credits Assigned', value: loading ? '-' : formatCredits(kpiData.totalCredited) + ' CR', icon: <CreditCardIcon className="w-3.5 h-3.5" />, color: 'text-indigo-500', bg: 'bg-indigo-500/10', border: 'hover:border-indigo-500/50' },
+            { label: 'Total Users', value: loading ? '-' : kpiData.totalUsers.toString(), icon: <ArrowTrendingUpIcon className="w-3.5 h-3.5" />, color: 'text-primary', bg: 'bg-primary/10', border: 'hover:border-primary/50' },
           ].map((kpi, i) => (
             <div key={i} className={`bg-white dark:bg-slate-800/50 rounded-[1.5rem] p-4 border border-slate-200 dark:border-slate-700/50 shadow-sm relative overflow-hidden group ${kpi.border} transition-colors`}>
               <div className="flex items-center gap-2 mb-1">
@@ -164,7 +209,6 @@ const AdminCreditsPage: React.FC = () => {
           ))}
         </div>
 
-        {/* Transactions Table */}
         <div className="bg-white dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -210,7 +254,7 @@ const AdminCreditsPage: React.FC = () => {
                       {formatDate(txn.created_at)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-xs font-bold text-slate-800 dark:text-white">{txn.username || '—'}</div>
+                      <div className="text-xs font-bold text-slate-800 dark:text-white">{txn.username || '-'}</div>
                       <div className="text-[10px] text-slate-400">{txn.email || ''}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -224,7 +268,7 @@ const AdminCreditsPage: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm font-bold text-slate-500 dark:text-slate-400 max-w-[200px] truncate">
-                      {txn.description || txn.service_type || '—'}
+                      {txn.description || txn.service_type || '-'}
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-right text-sm font-black ${txn.transaction_type === 'credit' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-300'}`}>
                       {txn.transaction_type === 'credit' ? '+' : '-'}{formatCredits(parseFloat(txn.amount || '0'))}
@@ -240,7 +284,6 @@ const AdminCreditsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Assign Credits Modal */}
       {showAddFund && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl p-8 w-full max-w-sm mx-4 border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200">
@@ -251,18 +294,59 @@ const AdminCreditsPage: React.FC = () => {
                 </div>
                 <h3 className="text-xl font-black text-slate-900 dark:text-white">Assign Credits</h3>
               </div>
-              <button onClick={() => setShowAddFund(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+              <button onClick={resetFundModal} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
                 <XMarkIcon className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">User ID</label>
-                <input type="text" value={fundUserId} onChange={(e) => setFundUserId(e.target.value)}
-                  placeholder="Paste User ID here..."
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-mono text-sm text-slate-900 dark:text-white transition-all" />
-                <p className="text-[10px] text-slate-400 mt-1">Copy from the Customers page → View Details → System Identifier</p>
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">User Email</label>
+                <div className="relative">
+                  <MagnifyingGlassIcon className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={fundUserEmail}
+                    onChange={(e) => {
+                      setFundUserEmail(e.target.value);
+                      setFundUserId('');
+                      setShowUserSuggestions(true);
+                    }}
+                    onFocus={() => {
+                      if (userSearchResults.length > 0) setShowUserSuggestions(true);
+                    }}
+                    placeholder="Search by email..."
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-900 dark:text-white transition-all"
+                  />
+                  {showUserSuggestions && (fundUserEmail.trim().length >= 2 || userSearchLoading) && (
+                    <div className="absolute z-20 mt-2 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+                      {userSearchLoading ? (
+                        <div className="px-4 py-3 text-sm font-medium text-slate-500">Searching users...</div>
+                      ) : userSearchResults.length === 0 ? (
+                        <div className="px-4 py-3 text-sm font-medium text-slate-500">No matching users found.</div>
+                      ) : (
+                        userSearchResults.map((user) => (
+                          <button
+                            key={user.id}
+                            type="button"
+                            onClick={() => {
+                              setFundUserId(user.id);
+                              setFundUserEmail(user.email || '');
+                              setShowUserSuggestions(false);
+                            }}
+                            className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors border-b last:border-b-0 border-slate-100 dark:border-slate-700"
+                          >
+                            <div className="text-sm font-bold text-slate-900 dark:text-white">{user.email}</div>
+                            <div className="text-[11px] text-slate-400">
+                              {user.username || 'No username'} {user.id ? `• ${user.id.slice(0, 8)}` : ''}
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Start typing an email address and pick the correct user from the list.</p>
               </div>
               <div>
                 <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Amount (Credits)</label>

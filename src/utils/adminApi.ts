@@ -39,6 +39,13 @@ export interface UserListItem {
   created_at: string;
   role: string;
   status: 'active' | 'inactive' | 'locked';
+  plan_type?: string | null;
+  credits_balance?: number;
+  credits_used?: number;
+  agents_count?: number;
+  active_agents_count?: number;
+  companies_count?: number;
+  campaigns_count?: number;
   elevenlabs_usage: number;
   gemini_usage: number;
   deepgram_usage: number;
@@ -74,6 +81,8 @@ export interface BillingRecord {
 export interface DashboardStats {
   totalUsers: number;
   activeUsers: number;
+  totalAgents?: number;
+  activeAgents?: number;
   monthlyRevenue: number;
   pendingBilling: number;
   serviceUsage: {

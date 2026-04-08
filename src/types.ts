@@ -21,14 +21,41 @@ export enum Page {
     SuperAdminDashboard = 'Super Admin Dashboard',
     SuperAdminOrganizations = 'Super Admin Organizations',
     SuperAdminPricing = 'Super Admin Pricing',
+    SuperAdminIntegrations = 'Super Admin Integrations',
     SuperAdminSettings = 'Super Admin Settings',
     SuperAdminCredits = 'Super Admin Credit Management',
     SuperAdminSupport = 'Super Admin Support',
 }
 
+export interface SuperAdminIntegrationBalance {
+    key: string;
+    name: string;
+    status: 'active' | 'missing' | 'error' | 'unavailable' | 'warning';
+    balance: number | null;
+    balanceLabel: string;
+    total?: number | null;
+    used?: number | null;
+    unit?: string | null;
+    source?: string | null;
+    note?: string;
+    lastChecked?: string;
+    projects?: Array<{
+        project_id: string;
+        project_name: string;
+        balance: number;
+    }>;
+}
+
+export interface SuperAdminIntegrationBalancesResponse {
+    success: boolean;
+    refreshedAt?: string;
+    integrations: SuperAdminIntegrationBalance[];
+}
+
 export interface Organization {
     id: number;
     name: string;
+    slug?: string | null;
     logo_url?: string | null;
     created_by: number | null;
     status: 'active' | 'inactive';
@@ -45,6 +72,7 @@ export interface OrgAdmin {
     username: string;
     organization_id: number | null;
     organization_name?: string;
+    organization_slug?: string;
     role: 'org_admin';
     status: 'active' | 'inactive' | 'locked';
     created_at: string;
