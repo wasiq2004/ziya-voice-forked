@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import CampaignsPage from './pages/CampaignsPage';
 import CampaignDetailPage from './pages/CampaignDetailPage';
 import AgentPage from './pages/AgentPage';
@@ -61,6 +61,9 @@ const App: React.FC = () => {
                 <Routes>
                     {/* ── Public ───────────────────────────────────── */}
                     <Route path="/login" element={<LoginPage />} />
+                    <Route path="/signup" element={<LoginPage />} />
+                    <Route path="/:orgSlug/login" element={<LoginPage />} />
+                    <Route path="/:orgSlug/signup" element={<LoginPage />} />
 
                     {/* ── Super Admin Routes (/superadmin/*) ───────── */}
                     <Route path="/superadmin/dashboard" element={<SuperAdminRoute><SuperAdminDashboardPage /></SuperAdminRoute>} />

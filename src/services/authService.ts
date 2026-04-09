@@ -35,12 +35,13 @@ export const authService = {
   // Authenticate user with email and password
   async authenticateUser(email: string, password: string, organizationSlug?: string | null): Promise<User | null> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/auth/login`, {
+      const path = organizationSlug ? `/auth/${encodeURIComponent(organizationSlug)}/login` : '/auth/login';
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}${path}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, password, organizationSlug: organizationSlug || null }),
+        body: JSON.stringify({ email, password }),
       });
 
       const result = await response.json();
@@ -59,12 +60,13 @@ export const authService = {
   // Register a new user
   async registerUser(email: string, username: string, password: string, organizationSlug?: string | null): Promise<User | null> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/auth/register`, {
+      const path = organizationSlug ? `/auth/${encodeURIComponent(organizationSlug)}/signup` : '/auth/signup';
+      const response = await fetch(`${getApiBaseUrl()}${getApiPath()}${path}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, username, password, organizationSlug: organizationSlug || null }),
+        body: JSON.stringify({ email, username, password }),
       });
 
       const result = await response.json();

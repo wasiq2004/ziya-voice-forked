@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getApiBaseUrl, getApiPath } from '../utils/api';
-import { buildOrganizationLoginUrl, getOrganizationSlugFromHostname, getPlatformLoginHost, TenantOrganization } from '../utils/tenant';
+import { buildOrganizationLoginUrl, getOrganizationLoginPath, normalizeOrganizationSlug, TenantOrganization } from '../utils/tenant';
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -16,8 +17,11 @@ const LoginPage: React.FC = () => {
   const [tenantLoading, setTenantLoading] = useState(true);
 
   const { signIn, signUp, signInWithGoogle } = useAuth();
-  const organizationSlug = getOrganizationSlugFromHostname();
-  const platformLoginHost = getPlatformLoginHost();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug?: string }>();
+  const organizationSlug = orgSlug ? normalizeOrganizationSlug(orgSlug) : null;
+  const isSignUpRoute = location.pathname.endsWith('/signup') || location.pathname === '/signup';
 
   useEffect(() => {
     let ignore = false;
@@ -60,6 +64,18 @@ const LoginPage: React.FC = () => {
     };
   }, [organizationSlug]);
 
+  useEffect(() => {
+    setIsSignUp(isSignUpRoute);
+  }, [isSignUpRoute]);
+
+  const getAuthRoute = (signUpMode: boolean) => {
+    if (organizationSlug) {
+      return `/${organizationSlug}/${signUpMode ? 'signup' : 'login'}`;
+    }
+
+    return signUpMode ? '/signup' : '/login';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -73,7 +89,7 @@ const LoginPage: React.FC = () => {
         setShowSuccess(true);
         // Automatically switch to login mode after successful signup
         setTimeout(() => {
-          setIsSignUp(false);
+          navigate(getAuthRoute(false), { replace: true });
           setShowSuccess(false);
         }, 2000);
       } else {
@@ -275,7 +291,7 @@ const LoginPage: React.FC = () => {
               </p>
               {organizationSlug && (
                 <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-300/80">
-                  {tenantLoading ? 'Checking organization...' : platformLoginHost ? `${organizationSlug}.${platformLoginHost}` : organizationSlug}
+                  {tenantLoading ? 'Checking organization...' : `${organizationSlug}`}
                 </p>
               )}
             </div>
@@ -400,6 +416,7 @@ const LoginPage: React.FC = () => {
 
             <div className="animate-slide-up" style={{ animationDelay: isSignUp ? '0.8s' : '0.7s' }}>
               <button
+                type="button"
                 onClick={handleGoogleSignIn} disabled={loading}
                 className="w-full flex items-center justify-center gap-3 py-3.5 px-4 border border-white/10 rounded-xl text-sm font-bold text-slate-300 bg-white/5 hover:bg-white/10 transition-all duration-300 focus:ring-2 focus:ring-primary outline-none"
               >
@@ -421,7 +438,8 @@ const LoginPage: React.FC = () => {
                   ? (isSignUp ? 'Already have access? ' : 'Need an account? ')
                   : (isSignUp ? 'Already have access? ' : 'New to the platform? ')}
                 <button
-                  onClick={() => setIsSignUp(!isSignUp)}
+                  type="button"
+                  onClick={() => navigate(getAuthRoute(!isSignUp), { replace: true })}
                   className="font-bold text-primary hover:text-emerald-400 transition-colors outline-none border-b border-transparent hover:border-emerald-400 pb-0.5"
                 >
                   {isSignUp ? 'Login' : 'Sign Up'}
@@ -430,7 +448,7 @@ const LoginPage: React.FC = () => {
               {organizationSlug && (
                 <p className="text-sm text-slate-400 mt-3">
                   Organization URL:
-                  <span className="ml-2 font-bold text-cyan-300">{tenantOrg ? buildOrganizationLoginUrl(tenantOrg.slug) : platformLoginHost ? `${organizationSlug}.${platformLoginHost}/login` : '/login'}</span>
+                  <span className="ml-2 font-bold text-cyan-300">{tenantOrg ? buildOrganizationLoginUrl(tenantOrg.slug) : getOrganizationLoginPath(organizationSlug)}</span>
                 </p>
               )}
             </div>

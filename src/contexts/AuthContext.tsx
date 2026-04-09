@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { authService, User } from '../services/authService';
+import { getOrganizationLoginPath, getOrganizationSlugFromPath } from '../utils/tenant';
 
 interface AuthContextType {
   user: User | null;
@@ -131,8 +132,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUser(null);
       // Clear user from localStorage
       localStorage.removeItem('ziya-user');
-      // Navigate to login page after logout
-      navigate('/login');
+      // Navigate back to the matching login page after logout
+      const currentOrgSlug = getOrganizationSlugFromPath(window.location.pathname);
+      navigate(currentOrgSlug ? getOrganizationLoginPath(currentOrgSlug) : '/login');
     }
   };
 

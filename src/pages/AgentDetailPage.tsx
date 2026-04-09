@@ -838,7 +838,9 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
                                     const voiceId = editedAgent.voiceId || 'default';
                                     const agentId = editedAgent.id;
                                     const agentIdentity = encodeURIComponent(editedAgent.identity || '');
-                                    const wsUrl = `${wsProtocol}//${wsHost}/browser-voice-stream?voiceId=${encodeURIComponent(voiceId)}&agentId=${agentId}&identity=${agentIdentity}&userId=${userId || ''}`;
+                                    const encodedUserId = encodeURIComponent(userId || '');
+                                    const wsUrl = `${wsProtocol}//${wsHost}/browser-voice-stream?voiceId=${encodeURIComponent(voiceId)}&agentId=${encodeURIComponent(agentId)}&identity=${agentIdentity}&userId=${encodedUserId}`;
+                                    console.log('Browser voice WebSocket URL:', wsUrl);
                                     console.log('🌐 Connecting to Browser Voice Stream with voiceId:', voiceId, 'agentId:', agentId);
                                     webSocketRef.current = new WebSocket(wsUrl);
 
@@ -1007,7 +1009,9 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
                                                 const voiceId = editedAgent.voiceId || 'default';
                                                 const agentId = editedAgent.id;
                                                 const agentIdentity = encodeURIComponent(editedAgent.identity || '');
-                                                const wsUrl = `${wsProtocol}//${wsHost}/browser-voice-stream?voiceId=${encodeURIComponent(voiceId)}&agentId=${agentId}&identity=${agentIdentity}&userId=${userId || ''}`;
+                                                const encodedUserId = encodeURIComponent(userId || '');
+                                                const wsUrl = `${wsProtocol}//${wsHost}/browser-voice-stream?voiceId=${encodeURIComponent(voiceId)}&agentId=${encodeURIComponent(agentId)}&identity=${agentIdentity}&userId=${encodedUserId}`;
+                                                console.log('Browser voice WebSocket reconnect URL:', wsUrl);
                                                 webSocketRef.current = new WebSocket(wsUrl);
                                             }
                                         }, 1000);

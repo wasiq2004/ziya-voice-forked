@@ -76,16 +76,9 @@ console.log(' WebSocket with skipUTF8Validation enabled');
 
 const PLATFORM_PUBLIC_ORIGIN = getPublicOriginFromBackendUrl();
 const BACKEND_PUBLIC_ORIGIN = extractDomainFromUrl(getBackendUrl());
-let PLATFORM_PUBLIC_HOST = null;
-
-try {
-  PLATFORM_PUBLIC_HOST = PLATFORM_PUBLIC_ORIGIN ? new URL(PLATFORM_PUBLIC_ORIGIN).hostname.toLowerCase() : null;
-} catch (error) {
-  PLATFORM_PUBLIC_HOST = null;
-}
 
 const getOrganizationLoginUrl = (slug) => {
-  if (!slug || !PLATFORM_PUBLIC_ORIGIN || !PLATFORM_PUBLIC_HOST) {
+  if (!slug || !PLATFORM_PUBLIC_ORIGIN) {
     return '/login';
   }
 
@@ -94,8 +87,7 @@ const getOrganizationLoginUrl = (slug) => {
     return '/login';
   }
 
-  const protocol = PLATFORM_PUBLIC_ORIGIN.split('://')[0];
-  return `${protocol}://${normalizedSlug}.${PLATFORM_PUBLIC_HOST}/login`;
+  return `${PLATFORM_PUBLIC_ORIGIN.replace(/\/$/, '')}/${normalizedSlug}/login`;
 };
 
 const twilioCallWss = new WebSocketServer({
@@ -407,14 +399,6 @@ function isAllowedOrigin(origin) {
       return true;
     }
 
-    if (PLATFORM_PUBLIC_HOST && (hostname === PLATFORM_PUBLIC_HOST || hostname === `www.${PLATFORM_PUBLIC_HOST}`)) {
-      return true;
-    }
-
-    if (PLATFORM_PUBLIC_HOST && hostname.endsWith(`.${PLATFORM_PUBLIC_HOST}`)) {
-      return true;
-    }
-
     if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost')) {
       return true;
     }
@@ -430,6 +414,10 @@ async function validateLoginContext(user, tenantSlug) {
 
   if (!normalizedTenantSlug) {
     if (user.role === 'super_admin') {
+      return { allowed: true };
+    }
+
+    if (user.role === 'org_admin') {
       return { allowed: true };
     }
 
@@ -464,7 +452,7 @@ async function validateLoginContext(user, tenantSlug) {
     return {
       allowed: false,
       status: 404,
-      message: 'Organization login not found for this subdomain.'
+      message: 'Organization login not found for this path.'
     };
   }
 
@@ -505,8 +493,11 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
-// explicitly support OPTIONS for login (preflight)
+// explicitly support OPTIONS for login/signup (preflight)
 app.options('/api/auth/login', cors(corsOptions), (req, res) => res.sendStatus(204));
+app.options('/api/auth/signup', cors(corsOptions), (req, res) => res.sendStatus(204));
+app.options('/api/auth/:orgSlug/login', cors(corsOptions), (req, res) => res.sendStatus(204));
+app.options('/api/auth/:orgSlug/signup', cors(corsOptions), (req, res) => res.sendStatus(204));
 
 // Keep request logging focused on Twilio and voice pipeline traffic.
 // app.use((req, res, next) => {
@@ -1613,26 +1604,68 @@ app.get('/api/test-deepgram-key', async (req, res) => {
 });
 
 // Authentication endpoints
-// User login
-app.post('/api/auth/login', async (req, res) => {
+function getRequestedOrganizationSlug(req) {
+  const paramSlug = req.params?.orgSlug;
+  if (paramSlug) {
+    return normalizeOrganizationSlug(paramSlug);
+  }
+
+  const segments = String(req.path || req.originalUrl || '')
+    .split('?')[0]
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  const terminalSegment = segments[segments.length - 1];
+  if (['login', 'signup'].includes(terminalSegment) && segments.length >= 2) {
+    const candidateSlug = segments[segments.length - 2];
+    if (candidateSlug && candidateSlug !== 'auth') {
+      return normalizeOrganizationSlug(candidateSlug);
+    }
+  }
+
+  return null;
+}
+
+async function resolveOrganizationForRequest(req) {
+  const requestedSlug = getRequestedOrganizationSlug(req);
+  if (!requestedSlug) {
+    return null;
+  }
+
+  const organization = await organizationService.getOrganizationBySlug(requestedSlug);
+  if (!organization) {
+    const error = new Error('Organization not found');
+    error.status = 404;
+    throw error;
+  }
+
+  req.org = organization;
+  req.orgSlug = requestedSlug;
+  return organization;
+}
+
+async function handleLoginRequest(req, res) {
   try {
-    const { email, password, organizationSlug } = req.body;
+    const { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ success: false, message: 'Email and password are required' });
     }
+
+    const tenantOrganization = await resolveOrganizationForRequest(req);
+    const requestedSlug = tenantOrganization?.slug || getRequestedOrganizationSlug(req) || null;
 
     const user = await authService.authenticateUser(email, password);
     if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
-    // Check account status
     if (user.status && user.status !== 'active') {
       const reason = user.status === 'locked' ? 'account is locked' : 'account is inactive';
       return res.status(403).json({ success: false, message: `Access denied: Your ${reason}` });
     }
 
-    const loginContext = await validateLoginContext(user, organizationSlug);
+    const loginContext = await validateLoginContext(user, requestedSlug);
     if (!loginContext.allowed) {
       return res.status(loginContext.status || 403).json({
         success: false,
@@ -1640,13 +1673,12 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
-    if (loginContext.organization) {
-      user.organization_name = loginContext.organization.name;
-      user.organization_slug = loginContext.organization.slug;
-      user.organization_logo_url = loginContext.organization.logo_url || user.organization_logo_url || null;
+    if (tenantOrganization) {
+      user.organization_name = tenantOrganization.name;
+      user.organization_slug = tenantOrganization.slug;
+      user.organization_logo_url = tenantOrganization.logo_url || user.organization_logo_url || null;
     }
 
-    // Default company check
     if (!user.current_company_id) {
       const [companies] = await mysqlPool.execute('SELECT id FROM companies WHERE user_id = ?', [user.id]);
       if (companies.length === 0) {
@@ -1662,7 +1694,6 @@ app.post('/api/auth/login', async (req, res) => {
       }
     }
 
-    // Attach plan info so frontend can show trial banners
     const [planRows] = await mysqlPool.execute(
       'SELECT plan_type, plan_valid_until, trial_started_at FROM users WHERE id = ?',
       [user.id]
@@ -1676,9 +1707,12 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({ success: true, user });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(error.status || 500).json({ success: false, message: error.message });
   }
-});
+}
+
+app.post('/api/auth/login', handleLoginRequest);
+app.post('/api/auth/:orgSlug/login', handleLoginRequest);
 
 // ==================== TRIAL SYSTEM HELPER ====================
 /**
@@ -1745,10 +1779,9 @@ async function enforceTrialValidity(req, res, next) {
 
 // =============================================================
 
-// User registration
-app.post('/api/auth/register', async (req, res) => {
+async function handleSignupRequest(req, res) {
   try {
-    const { email, username, password, organizationSlug } = req.body;
+    const { email, username, password } = req.body;
     if (!email || !username || !password) {
       return res.status(400).json({ success: false, message: 'Email, username, and password are required' });
     }
@@ -1758,42 +1791,29 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid email format' });
     }
 
-    // Username validation (alphanumeric, 3-20 characters)
     const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
     if (!usernameRegex.test(username)) {
       return res.status(400).json({ success: false, message: 'Username must be 3-20 alphanumeric characters' });
     }
 
-    // Password strength validation (at least 6 characters)
     if (password.length < 6) {
       return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long' });
     }
 
-    let organizationId = 5;
-    if (organizationSlug) {
-      const normalizedSlug = normalizeOrganizationSlug(organizationSlug);
-      const organization = await organizationService.getOrganizationBySlug(normalizedSlug);
+    const tenantOrganization = await resolveOrganizationForRequest(req);
+    const organizationId = tenantOrganization ? tenantOrganization.id : 5;
 
-      if (!organization) {
-        return res.status(404).json({ success: false, message: 'Organization not found' });
-      }
-
-      if (organization.status !== 'active') {
-        return res.status(403).json({ success: false, message: 'This organization is inactive' });
-      }
-
-      organizationId = organization.id;
+    if (tenantOrganization && tenantOrganization.status !== 'active') {
+      return res.status(403).json({ success: false, message: 'This organization is inactive' });
     }
 
     const user = await authService.registerUser(email, username, password, organizationId);
 
-    // Default company creation
     const org = await organizationService.getOrganization(user.organization_id);
     const companyName = `${org.name} company`;
     const companyId = uuidv4();
     await mysqlPool.execute('INSERT INTO companies (id, user_id, name) VALUES (?, ?, ?)', [companyId, user.id, companyName]);
 
-    // Trial plan + 50 credits on sign-up
     const trialStart = new Date();
     const trialEnd = new Date(trialStart);
     trialEnd.setDate(trialEnd.getDate() + 14);
@@ -1807,17 +1827,15 @@ app.post('/api/auth/register', async (req, res) => {
     user.trial_started_at = trialStart;
     user.plan_valid_until = trialEnd;
 
-    // Create wallet with 50 trial credits
     const walletId = uuidv4();
     await mysqlPool.execute(
       'INSERT INTO user_wallets (id, user_id, balance) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE balance = balance',
       [walletId, user.id, TRIAL_CREDITS]
     );
-    // Record trial credit transaction
     const txId = uuidv4();
     await mysqlPool.execute(
       `INSERT INTO wallet_transactions (id, user_id, transaction_type, amount, balance_after, service_type, description, created_by)
-       VALUES (?, ?, 'credit', ?, ?, 'initial_credit', 'Free trial” 50 credits', NULL)`,
+       VALUES (?, ?, 'credit', ?, ?, 'initial_credit', 'Free trial 50 credits', NULL)`,
       [txId, user.id, TRIAL_CREDITS, TRIAL_CREDITS]
     );
 
@@ -1828,10 +1846,12 @@ app.post('/api/auth/register', async (req, res) => {
     if (error.message === 'User already exists') {
       return res.status(409).json({ success: false, message: 'User with this email or username already exists' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    res.status(error.status || 500).json({ success: false, message: error.message });
   }
-});
+}
 
+app.post('/api/auth/signup', handleSignupRequest);
+app.post('/api/auth/:orgSlug/signup', handleSignupRequest);
 
 // ==================== TRIAL / PLAN ENDPOINTS ====================
 
@@ -7923,3 +7943,4 @@ process.on('unhandledRejection', (error) => {
 process.on('uncaughtException', (error) => {
   console.error('[PROCESS] Uncaught exception:', error);
 });
+

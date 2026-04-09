@@ -111,11 +111,22 @@ class BrowserVoiceHandler {
         const voiceId = url.searchParams.get('voiceId') || 'default';
         const agentId = url.searchParams.get('agentId');
         const userId = url.searchParams.get('userId');
-        const identity = decodeURIComponent(url.searchParams.get('identity') || '');
+        // URLSearchParams already decodes query values, so avoid double-decoding here.
+        const identity = url.searchParams.get('identity') || '';
         const connectionId = `browser-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
         console.log(`🌐 New browser voice connection: ${connectionId}`);
         console.log(`   Voice ID: ${voiceId}, Agent ID: ${agentId}, User ID: ${userId}`);
+
+        const safeClose = (code = 1011, reason = 'Browser voice setup failed') => {
+            try {
+                if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) {
+                    ws.close(code, reason);
+                }
+            } catch (closeError) {
+                console.error(`❌ Failed to close browser voice socket (${connectionId}):`, closeError);
+            }
+        };
 
         (async () => {
             let agentPrompt = identity;
@@ -235,9 +246,20 @@ class BrowserVoiceHandler {
             });
 
             // Log call start
-            this.logCallStart(session);
+            void this.logCallStart(session);
 
-        })();
+        })().catch((error) => {
+            console.error(`❌ Unhandled browser voice setup error (${connectionId}):`, error);
+            try {
+                ws.send(JSON.stringify({
+                    event: 'error',
+                    message: 'Failed to initialize browser voice session'
+                }));
+            } catch (sendError) {
+                console.error(`❌ Failed to send setup error to client (${connectionId}):`, sendError);
+            }
+            safeClose(1011, 'Browser voice setup failed');
+        });
     }
 
     /**
