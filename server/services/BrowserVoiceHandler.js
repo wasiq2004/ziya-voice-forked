@@ -6,9 +6,19 @@ const CostCalculator = require('./costCalculator.js');
 const AgentService = require('./agentService.js');
 const ToolExecutionService = require('./toolExecutionService.js');
 const fetch = require('node-fetch');
+const WebSocket = require('ws');
 
 // Session management
 const sessions = new Map();
+const connectionAttempts = new Map();
+
+function getClientIp(req) {
+    const forwardedFor = req.headers['x-forwarded-for'];
+    if (Array.isArray(forwardedFor)) {
+        return forwardedFor[0];
+    }
+    return String(forwardedFor || req.socket?.remoteAddress || 'unknown');
+}
 
 class BrowserVoiceHandler {
     constructor(geminiApiKey, openaiApiKey, elevenLabsApiKey, sarvamApiKey, mysqlPool = null) {
@@ -29,6 +39,20 @@ class BrowserVoiceHandler {
         }
 
         console.log('✅ BrowserVoiceHandler initialized (Sarvam STT)');
+    }
+
+    safeSend(ws, payload, context = 'browser-voice') {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            return false;
+        }
+
+        try {
+            ws.send(JSON.stringify(payload));
+            return true;
+        } catch (error) {
+            console.error(`âŒ Failed to send ${context} message:`, error);
+            return false;
+        }
     }
 
     /**
@@ -63,6 +87,12 @@ class BrowserVoiceHandler {
             userSpeechBuffer: '',
             lastSpeechTime: Date.now(),
             isInterrupted: false,
+            rateLimit: {
+                windowMs: 60 * 1000,
+                maxTurns: 20,
+                turnCount: 0,
+                windowStart: Date.now(),
+            },
         };
 
         sessions.set(connectionId, session);
@@ -118,9 +148,44 @@ class BrowserVoiceHandler {
         console.log(`🌐 New browser voice connection: ${connectionId}`);
         console.log(`   Voice ID: ${voiceId}, Agent ID: ${agentId}, User ID: ${userId}`);
 
+        const clientIp = getClientIp(req);
+        const connectionKey = `${clientIp}:${userId || 'anonymous'}:${agentId || 'no-agent'}`;
+        const connectionPolicy = { windowMs: 60 * 1000, max: 8 };
+        const connectionNow = Date.now();
+        const connectionEntry = connectionAttempts.get(connectionKey);
+
+        if (!connectionEntry || connectionNow >= connectionEntry.resetAt) {
+            connectionAttempts.set(connectionKey, { count: 1, resetAt: connectionNow + connectionPolicy.windowMs });
+        } else if (connectionEntry.count >= connectionPolicy.max) {
+            console.warn(`⚠️ Browser voice connection rate limit exceeded for ${connectionKey}`);
+            try {
+                this.safeSend(ws, {
+                    event: 'error',
+                    message: 'Too many voice connection attempts. Please wait a moment and try again.'
+                }, 'connection-rate-limit');
+            } catch (sendError) {
+                console.error('Failed to send rate limit error:', sendError);
+            }
+            try {
+                ws.close(1013, 'Rate limit exceeded');
+            } catch (closeError) {
+                console.error('Failed to close rate-limited browser voice socket:', closeError);
+            }
+            return;
+        } else {
+            connectionEntry.count += 1;
+        }
+
+        setTimeout(() => {
+            const entry = connectionAttempts.get(connectionKey);
+            if (entry && Date.now() >= entry.resetAt) {
+                connectionAttempts.delete(connectionKey);
+            }
+        }, connectionPolicy.windowMs + 1000);
+
         const safeClose = (code = 1011, reason = 'Browser voice setup failed') => {
             try {
-                if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) {
+                if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
                     ws.close(code, reason);
                 }
             } catch (closeError) {
@@ -178,12 +243,12 @@ class BrowserVoiceHandler {
                     const balanceCheck = await this.walletService.checkBalanceForCall(userId, 0.10);
                     if (!balanceCheck.allowed) {
                         console.error(`❌ Insufficient balance for user ${userId}: ${balanceCheck.message}`);
-                        ws.send(JSON.stringify({
+                        this.safeSend(ws, {
                             event: 'error',
                             message: balanceCheck.message,
                             balance: balanceCheck.balance
-                        }));
-                        ws.close();
+                        }, 'balance-error');
+                        ws.close(1008, 'Insufficient balance');
                         return;
                     }
                     console.log(`✅ Balance check passed: $${balanceCheck.balance.toFixed(4)}`);
@@ -197,6 +262,13 @@ class BrowserVoiceHandler {
 
             // Add multilingual instruction to system prompt
             session.agentPrompt += `\n\nIMPORTANT: You must respond in the same language as the user's input. Do not translate unless explicitly requested. If the user speaks Hindi, reply in Hindi. If English, reply in English.`;
+
+            this.safeSend(ws, {
+                event: 'session-ready',
+                connectionId,
+                voiceId: agentVoiceId,
+                agentId
+            }, 'session-ready');
 
             // Send initial greeting if configured
             // Use the greeting from agent settings if available
@@ -214,7 +286,7 @@ class BrowserVoiceHandler {
                             break;
 
                         case 'ping':
-                            ws.send(JSON.stringify({ event: 'pong' }));
+                            this.safeSend(ws, { event: 'pong' }, 'pong');
                             break;
 
                         case 'stop-speaking':
@@ -227,10 +299,10 @@ class BrowserVoiceHandler {
                     }
                 } catch (error) {
                     console.error('Error processing browser message:', error);
-                    ws.send(JSON.stringify({
+                    this.safeSend(ws, {
                         event: 'error',
                         message: 'Failed to process message'
-                    }));
+                    }, 'browser-message-error');
                 }
             });
 
@@ -251,10 +323,10 @@ class BrowserVoiceHandler {
         })().catch((error) => {
             console.error(`❌ Unhandled browser voice setup error (${connectionId}):`, error);
             try {
-                ws.send(JSON.stringify({
+                this.safeSend(ws, {
                     event: 'error',
                     message: 'Failed to initialize browser voice session'
-                }));
+                }, 'setup-error');
             } catch (sendError) {
                 console.error(`❌ Failed to send setup error to client (${connectionId}):`, sendError);
             }
@@ -384,11 +456,11 @@ class BrowserVoiceHandler {
                 }
 
                 // Send user transcript to browser
-                session.ws.send(JSON.stringify({
+                this.safeSend(session.ws, {
                     event: 'transcript',
                     text: cleanTranscript,
                     isFinal: true
-                }));
+                }, 'transcript');
 
                 // Add to conversation history
                 this.appendToContext(session, cleanTranscript, 'user');
@@ -401,10 +473,10 @@ class BrowserVoiceHandler {
 
         } catch (error) {
             console.error('❌ Sarvam STT processing error:', error);
-            session.ws.send(JSON.stringify({
+            this.safeSend(session.ws, {
                 event: 'error',
                 message: 'Speech recognition failed'
-            }));
+            }, 'stt-error');
         }
     }
 
@@ -449,6 +521,22 @@ class BrowserVoiceHandler {
      * Process user input with LLM
      */
     async processUserInput(session, userInput) {
+        const now = Date.now();
+        if (now - session.rateLimit.windowStart >= session.rateLimit.windowMs) {
+            session.rateLimit.windowStart = now;
+            session.rateLimit.turnCount = 0;
+        }
+
+        session.rateLimit.turnCount += 1;
+        if (session.rateLimit.turnCount > session.rateLimit.maxTurns) {
+            console.warn(`⚠️ Voice turn rate limit exceeded for session ${session.connectionId}`);
+            this.safeSend(session.ws, {
+                event: 'error',
+                message: 'Too many voice turns in a short period. Please pause and try again.'
+            }, 'voice-turn-limit');
+            return;
+        }
+
         // Add to queue
         session.inputQueue.push(userInput);
 
@@ -472,18 +560,18 @@ class BrowserVoiceHandler {
                 if (fullResponse) {
                     // Conversation history already updated inside callLLMStream
                     // Send complete text to browser for transcript display
-                    session.ws.send(JSON.stringify({
+                    this.safeSend(session.ws, {
                         event: 'agent-response',
                         text: fullResponse
-                    }));
+                    }, 'agent-response');
                 }
 
             } catch (error) {
                 console.error('Error processing user input:', error);
-                session.ws.send(JSON.stringify({
+                this.safeSend(session.ws, {
                     event: 'error',
                     message: 'Failed to process your message'
-                }));
+                }, 'process-user-input-error');
             }
         }
 
@@ -619,10 +707,10 @@ class BrowserVoiceHandler {
 
         } catch (error) {
             console.error('Error synthesizing TTS:', error);
-            session.ws.send(JSON.stringify({
+            this.safeSend(session.ws, {
                 event: 'error',
                 message: 'Failed to generate speech'
-            }));
+            }, 'tts-error');
         }
     }
 
@@ -680,11 +768,11 @@ class BrowserVoiceHandler {
             }
             const audioBuffer = Buffer.concat(chunks);
 
-            session.ws.send(JSON.stringify({
+            this.safeSend(session.ws, {
                 event: 'audio',
                 audio: audioBuffer.toString('base64'),
                 format: 'mp3'
-            }));
+            }, 'elevenlabs-audio');
 
             console.log(`✅ [EL] Sent ${audioBuffer.length} bytes for: "${text.substring(0, 40)}"`);
 
@@ -742,11 +830,11 @@ class BrowserVoiceHandler {
             if (data.audios && data.audios.length > 0) {
                 const base64Audio = data.audios[0];
 
-                session.ws.send(JSON.stringify({
+                this.safeSend(session.ws, {
                     event: 'audio',
                     audio: base64Audio,
                     format: 'wav' // Sarvam returns WAV by default (base64 encoded)
-                }));
+                }, 'sarvam-audio');
 
                 console.log('✅ Sarvam TTS audio sent to browser');
             } else {
@@ -791,9 +879,9 @@ class BrowserVoiceHandler {
         session.isInterrupted = true;
 
         // Send stop signal to browser
-        session.ws.send(JSON.stringify({
+        this.safeSend(session.ws, {
             event: 'stop-audio'
-        }));
+        }, 'stop-audio');
 
         // Reset processing state
         session.isProcessing = false;
@@ -808,14 +896,32 @@ class BrowserVoiceHandler {
             const greetingText = customGreeting || "Hello! How can I help you today?";
 
             // Small delay to ensure connection is stable
-            setTimeout(async () => {
-                session.ws.send(JSON.stringify({
-                    event: 'agent-response',
-                    text: greetingText
-                }));
+            setTimeout(() => {
+                (async () => {
+                    if (session.ws.readyState !== WebSocket.OPEN) {
+                        console.warn(`Greeting skipped because socket is not open: ${session.connectionId}`);
+                        return;
+                    }
 
-                this.appendToContext(session, greetingText, 'assistant');
-                await this.synthesizeAndStreamTTS(session, greetingText);
+                    this.safeSend(session.ws, {
+                        event: 'agent-response',
+                        text: greetingText
+                    }, 'greeting-text');
+
+                    this.appendToContext(session, greetingText, 'assistant');
+
+                    try {
+                        await this.synthesizeAndStreamTTS(session, greetingText);
+                    } catch (ttsError) {
+                        console.error('Greeting TTS failed, keeping session alive:', ttsError);
+                        this.safeSend(session.ws, {
+                            event: 'error',
+                            message: 'Greeting audio could not be generated, but the session is still active.'
+                        }, 'greeting-error');
+                    }
+                })().catch((error) => {
+                    console.error('Unexpected greeting delivery error:', error);
+                });
             }, 500);
 
         } catch (error) {

@@ -98,6 +98,8 @@ const twilioCallWss = new WebSocketServer({
   skipUTF8Validation: true
 });
 
+let browserVoiceWss = null;
+
 // Initialize Support Chat WebSocket
 let supportChatWss = null;
 try {
@@ -113,6 +115,43 @@ try {
 server.on('upgrade', (req, socket, head) => {
   const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+  const isBrowserVoicePath =
+    requestUrl.pathname === '/browser-voice-stream' ||
+    requestUrl.pathname === '/api/browser-voice-stream';
+
+  if (isBrowserVoicePath) {
+    console.log('ℹ️ Browser voice WebSocket upgrade detected', {
+      path: requestUrl.pathname,
+      userAgent: req.headers['user-agent']?.substring(0, 50)
+    });
+
+    if (!browserVoiceWss) {
+      console.error('❌ Browser voice WebSocket server not initialized');
+      try {
+        socket.write('HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nBrowser voice is unavailable');
+      } catch (writeError) {
+        console.error('Failed to write browser voice unavailable response:', writeError);
+      }
+      socket.destroy();
+      return;
+    }
+
+    try {
+      browserVoiceWss.handleUpgrade(req, socket, head, (ws) => {
+        browserVoiceWss.emit('connection', ws, req);
+      });
+    } catch (error) {
+      console.error('❌ Error during browser voice WebSocket upgrade:', error);
+      try {
+        socket.write('HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n');
+      } catch (writeError) {
+        console.error('Failed to send browser voice upgrade error:', writeError);
+      }
+      socket.destroy();
+    }
+    return;
+  }
 
   // Only process Twilio media stream upgrade requests
   // Accept both /api/call and /api/call/.websocket (Twilio may append .websocket)
@@ -362,10 +401,18 @@ if (sarvamApiKey) {
       sarvamApiKey,
       mysqlPool
     );
-    app.ws('/browser-voice-stream', (ws, req) => {
+    browserVoiceWss = new WebSocketServer({
+      noServer: true,
+      perMessageDeflate: false,
+      clientTracking: true,
+      maxPayload: 100 * 1024 * 1024,
+      skipUTF8Validation: true
+    });
+    browserVoiceWss.on('connection', (ws, req) => {
       browserVoiceHandler.handleConnection(ws, req);
     });
-    console.log(' Browser Voice Handler initialized at /browser-voice-stream');
+    console.log(' Browser Voice Handler initialized with dedicated WebSocket server');
+    console.log(' Browser Voice Handler available at /browser-voice-stream and /api/browser-voice-stream');
     console.log('   - Sarvam STT:');
     console.log('   - Gemini LLM: ' + (geminiApiKey ? '' : ''));
     console.log('   - ElevenLabs TTS: ' + (elevenLabsApiKey ? '' : ''));
@@ -374,6 +421,28 @@ if (sarvamApiKey) {
   }
 } else {
   console.warn(' BrowserVoiceHandler not initialized (missing SARVAM_API_KEY)');
+  browserVoiceWss = new WebSocketServer({
+    noServer: true,
+    perMessageDeflate: false,
+    clientTracking: true,
+    maxPayload: 100 * 1024 * 1024,
+    skipUTF8Validation: true
+  });
+  browserVoiceWss.on('connection', (ws) => {
+    try {
+      ws.send(JSON.stringify({
+        event: 'error',
+        message: 'Browser voice is unavailable because SARVAM_API_KEY is not configured on the server.'
+      }));
+    } catch (sendError) {
+      console.error('Failed to send browser voice unavailable message:', sendError);
+    }
+    try {
+      ws.close(1011, 'Browser voice unavailable');
+    } catch (closeError) {
+      console.error('Failed to close unavailable browser voice socket:', closeError);
+    }
+  });
 }
 
 // === ADD THIS BLOCK ===
@@ -490,6 +559,114 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization"]
 };
 
+const rateLimitBuckets = new Map();
+const RATE_LIMIT_POLICIES = {
+  default: { windowMs: 15 * 60 * 1000, max: 300 },
+  auth: { windowMs: 15 * 60 * 1000, max: 10 },
+  voice: { windowMs: 60 * 1000, max: 45 },
+  heavy: { windowMs: 60 * 1000, max: 20 }
+};
+
+function getRateLimitClientKey(req) {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  const ip = Array.isArray(forwardedFor)
+    ? forwardedFor[0]
+    : String(forwardedFor || req.ip || req.socket?.remoteAddress || 'unknown');
+  const userId = req.user?.id || req.body?.userId || req.query?.userId || '';
+  return `${ip}:${userId}`;
+}
+
+function getRateLimitPolicy(pathname = '', method = 'GET') {
+  const normalizedPath = String(pathname || '').toLowerCase();
+  const normalizedMethod = String(method || 'GET').toUpperCase();
+
+  if (
+    normalizedPath === '/healthz' ||
+    normalizedPath === '/api/health' ||
+    normalizedPath === '/api/websocket-test'
+  ) {
+    return null;
+  }
+
+  if (
+    normalizedPath.startsWith('/api/auth/') ||
+    normalizedPath === '/api/admin/login' ||
+    normalizedPath === '/api/superadmin/impersonate'
+  ) {
+    return RATE_LIMIT_POLICIES.auth;
+  }
+
+  if (
+    normalizedPath.startsWith('/api/voices/') ||
+    normalizedPath === '/call/start' ||
+    normalizedPath === '/api/twilio/make-call' ||
+    normalizedPath === '/api/google-sheets/test' ||
+    normalizedPath === '/api/validate-api-key' ||
+    normalizedPath.startsWith('/api/test-') ||
+    normalizedPath === '/api/voices/elevenlabs/preview'
+  ) {
+    return RATE_LIMIT_POLICIES.heavy;
+  }
+
+  if (normalizedMethod === 'POST' || normalizedMethod === 'PUT' || normalizedMethod === 'PATCH' || normalizedMethod === 'DELETE') {
+    return RATE_LIMIT_POLICIES.voice;
+  }
+
+  return RATE_LIMIT_POLICIES.default;
+}
+
+function createRateLimitMiddleware() {
+  return (req, res, next) => {
+    const upgradeHeader = String(req.headers.upgrade || '').toLowerCase();
+    if (upgradeHeader === 'websocket') {
+      next();
+      return;
+    }
+
+    const pathname = req.originalUrl || req.url || '';
+    const policy = getRateLimitPolicy(pathname, req.method);
+
+    if (!policy) {
+      next();
+      return;
+    }
+
+    const now = Date.now();
+    const key = `${pathname.split('?')[0]}|${getRateLimitClientKey(req)}`;
+    const entry = rateLimitBuckets.get(key);
+
+    if (!entry || now >= entry.resetAt) {
+      rateLimitBuckets.set(key, { count: 1, resetAt: now + policy.windowMs });
+      res.setHeader('X-RateLimit-Limit', String(policy.max));
+      res.setHeader('X-RateLimit-Remaining', String(Math.max(policy.max - 1, 0)));
+      res.setHeader('X-RateLimit-Reset', String(Math.ceil((now + policy.windowMs) / 1000)));
+      next();
+      return;
+    }
+
+    if (entry.count >= policy.max) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+      res.setHeader('Retry-After', String(retryAfterSeconds));
+      res.setHeader('X-RateLimit-Limit', String(policy.max));
+      res.setHeader('X-RateLimit-Remaining', '0');
+      res.setHeader('X-RateLimit-Reset', String(Math.ceil(entry.resetAt / 1000)));
+      res.status(429).json({
+        success: false,
+        message: 'Rate limit exceeded. Please wait a moment and try again.',
+        retryAfterSeconds
+      });
+      return;
+    }
+
+    entry.count += 1;
+    rateLimitBuckets.set(key, entry);
+    res.setHeader('X-RateLimit-Limit', String(policy.max));
+    res.setHeader('X-RateLimit-Remaining', String(Math.max(policy.max - entry.count, 0)));
+    res.setHeader('X-RateLimit-Reset', String(Math.ceil(entry.resetAt / 1000)));
+    next();
+  };
+}
+
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
@@ -522,6 +699,7 @@ app.options('/api/auth/:orgSlug/signup', cors(corsOptions), (req, res) => res.se
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(createRateLimitMiddleware());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Twilio webhooks are defined later in the file (see line ~2170)
@@ -6530,6 +6708,62 @@ app.get('/api/call', (req, res) => {
     success: false,
     message: 'This endpoint requires a WebSocket upgrade.'
   });
+});
+
+app.post('/api/agent-chat', async (req, res) => {
+  try {
+    const {
+      model,
+      identity,
+      messages = [],
+      tools = [],
+    } = req.body || {};
+
+    if (!model || !identity) {
+      return res.status(400).json({
+        success: false,
+        message: 'Model and identity are required'
+      });
+    }
+
+    const contents = Array.isArray(messages)
+      ? messages
+          .filter((msg) => msg && msg.text)
+          .map((msg) => ({
+            role: msg.sender === 'agent' ? 'model' : 'user',
+            parts: [{ text: String(msg.text) }]
+          }))
+      : [];
+
+    let systemInstruction = String(identity);
+
+    if (Array.isArray(tools) && tools.length > 0) {
+      const toolDescriptions = tools.map((tool) =>
+        `- ${tool.name}: ${tool.description} (Parameters: ${tool.parameters?.map((p) => `${p.name} (${p.type})${p.required ? ' [required]' : ''}`).join(', ') || 'None'})`
+      ).join('\n');
+
+      systemInstruction += `\n\nAvailable Tools:\n${toolDescriptions}\n\nWhen you need to collect information from the user, ask for the required parameters. When all required information is collected, respond with a JSON object in the format: {"tool": "tool_name", "data": {"param1": "value1", "param2": "value2"}}`;
+    }
+
+    const result = await llmService.generateContent({
+      model,
+      contents,
+      config: {
+        systemInstruction
+      }
+    });
+
+    res.json({
+      success: true,
+      text: result.text || ''
+    });
+  } catch (error) {
+    console.error('Error in /api/agent-chat:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to generate chat response'
+    });
+  }
 });
 // WebSocket endpoint for voice stream (frontend voice chat + Twilio calls)
 app.ws('/voice-stream', async function (ws, req) {  //  ADDED async

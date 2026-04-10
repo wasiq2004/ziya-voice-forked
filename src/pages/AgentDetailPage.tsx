@@ -26,7 +26,7 @@ import {
 } from '../constants';
 import { PlusIcon, ArrowUpTrayIcon, DocumentTextIcon, XMarkIcon, StopIcon, PencilIcon } from '@heroicons/react/24/outline';
 import Modal from '../components/Modal';
-import { GoogleGenAI, Chat, Modality, LiveServerMessage, type Blob } from '@google/genai';
+import { type Blob } from '@google/genai';
 import { LLMService } from '../services/llmService';
 import { getApiBaseUrl, getApiPath } from '../utils/api';
 import { DocumentService } from '../services/documentService';
@@ -251,7 +251,6 @@ const VoiceSelectionModal: React.FC<{
 
 
 const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, onBack, updateAgent, onDuplicate, onDelete, userId }) => {
-    const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
     const [agent, setAgent] = useState<VoiceAgent>(initialAgent);
     const [editedAgent, setEditedAgent] = useState<VoiceAgent>(initialAgent);
     const [isEditingPrompt, setIsEditingPrompt] = useState(false);
@@ -292,8 +291,8 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
     const [chatMessages, setChatMessages] = useState<{ sender: 'user' | 'agent', text: string }[]>([]);
     const [currentMessage, setCurrentMessage] = useState('');
     const [isAgentReplying, setIsAgentReplying] = useState(false);
-    const [geminiChatSession, setGeminiChatSession] = useState<Chat | null>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
+    const chatSubmitCooldownRef = useRef<number>(0);
 
     // Conversation history for voice calls
     const conversationHistoryRef = useRef<{ role: string; text: string }[]>([]);
@@ -301,6 +300,9 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
     const sessionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const callActiveDebugRef = useRef<boolean>(false);
     const webSocketRef = useRef<WebSocket | null>(null);  // Add this line for WebSocket connection
+    const browserVoiceReadyRef = useRef<boolean>(false);
+    const browserVoiceReconnectAttemptsRef = useRef<number>(0);
+    const browserVoiceReconnectTimerRef = useRef<number | null>(null);
 
     const sessionPromiseRef = useRef<Promise<any> | null>(null);
     const inputAudioContextRef = useRef<AudioContext | null>(null);
@@ -351,39 +353,10 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
         }
     }, [chatMessages, isAgentReplying]);
     useEffect(() => {
-        // For Gemini models, we don't need a persistent chat session since it's stateless
-        const isGeminiModel = editedAgent.model.startsWith('gemini');
-
-        // Only initialize a real chat session for compatible Gemini models
-        if (editedAgent && editedAgent.identity && isGeminiModel) {
-            if (!API_KEY) {
-                setChatMessages([{ sender: 'agent' as const, text: 'The API_KEY is not configured. Chat and voice features are disabled.' }]);
-                setGeminiChatSession(null);
-                return;
-            }
-
-            try {
-                const ai = new GoogleGenAI({ apiKey: API_KEY });
-                const chat = ai.chats.create({
-                    model: editedAgent.model,
-                    config: { systemInstruction: editedAgent.identity },
-                    history: [],
-                });
-                setGeminiChatSession(chat);
-                setChatMessages([]); // Reset chat on agent/model change
-            } catch (error) {
-                console.error("Failed to initialize Gemini chat session:", error);
-                setChatMessages([{ sender: 'agent' as const, text: 'Error: Could not connect to the AI model.' }]);
-                setGeminiChatSession(null);
-            }
-        } else {
-            // For other models or when identity is missing
-            setGeminiChatSession(null);
-            setChatMessages([]);
-            // Clear conversation history
-            conversationHistoryRef.current = [];
-        }
-    }, [editedAgent.id, editedAgent.identity, editedAgent.model, API_KEY]);
+        // Chat is now served by the backend so we keep the local session state empty.
+        setChatMessages([]);
+        conversationHistoryRef.current = [];
+    }, [editedAgent.id, editedAgent.identity, editedAgent.model]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -731,13 +704,219 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
     const speechRecognitionMaxRetries = 5;
 
     // Function to initialize speech recognition
-    // NOTE: We're removing browser-based speech recognition and will use ElevenLabs STT through backend
+    // NOTE: Browser STT is handled in the backend with Sarvam, so there is no local speech recognizer here.
     const initializeSpeechRecognition = useCallback(() => {
-        // For ElevenLabs STT, we don't initialize browser speech recognition
-        // Instead, we'll handle audio streaming through WebSocket to backend
-        console.log('Using ElevenLabs STT through backend WebSocket connection');
+        // The microphone stream is sent to the backend WebSocket for Sarvam STT.
+        console.log('Using Sarvam STT through backend WebSocket connection');
         return null;
     }, [editedAgent]);
+
+    const buildBrowserVoiceSocketUrl = useCallback(() => {
+        const apiBaseUrl = getApiBaseUrl();
+        const apiPath = (getApiPath() || '').replace(/\/+$/, '');
+        const wsProtocol = apiBaseUrl.startsWith('https') ? 'wss:' : 'ws:';
+        const wsHost = new URL(apiBaseUrl).host;
+        const voiceId = editedAgent.voiceId || 'default';
+        const agentId = editedAgent.id;
+        const agentIdentity = encodeURIComponent(editedAgent.identity || '');
+        const encodedUserId = encodeURIComponent(userId || '');
+        const socketPath = `${apiPath}/browser-voice-stream`.replace(/\/{2,}/g, '/');
+
+        return `${wsProtocol}//${wsHost}${socketPath.startsWith('/') ? '' : '/'}${socketPath}?voiceId=${encodeURIComponent(voiceId)}&agentId=${encodeURIComponent(agentId)}&identity=${agentIdentity}&userId=${encodedUserId}`;
+    }, [editedAgent.id, editedAgent.identity, editedAgent.voiceId, userId]);
+
+    const setupBrowserVoiceSocket = useCallback((socket: WebSocket) => {
+        socket.onopen = () => {
+            console.log('WebSocket connection established successfully for voice stream');
+            console.log('WebSocket readyState:', socket.readyState);
+            speechRecognitionRetryCountRef.current = 0;
+            browserVoiceReadyRef.current = false;
+
+            if (scriptProcessorRef.current) {
+                scriptProcessorRef.current.onaudioprocess = (audioProcessingEvent) => {
+                    if (browserVoiceReadyRef.current && webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+                        const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+
+                        let hasAudio = false;
+                        for (let i = 0; i < inputData.length; i++) {
+                            if (Math.abs(inputData[i]) > 0.01) {
+                                hasAudio = true;
+                                break;
+                            }
+                        }
+
+                        if (hasAudio) {
+                            // Audio is flowing from the browser microphone into the live voice loop.
+                        }
+
+                        const int16Data = new Int16Array(inputData.length);
+                        for (let i = 0; i < inputData.length; i++) {
+                            int16Data[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
+                        }
+
+                        const uint8Array = new Uint8Array(int16Data.buffer);
+                        let binary = '';
+                        const chunkSize = 0x8000;
+                        for (let i = 0; i < uint8Array.length; i += chunkSize) {
+                            const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
+                            binary += String.fromCharCode.apply(null, Array.from(chunk));
+                        }
+
+                        webSocketRef.current.send(JSON.stringify({
+                            event: 'audio',
+                            data: btoa(binary)
+                        }));
+                    }
+                };
+                console.log('Audio processing enabled after WebSocket connected');
+            }
+
+            const heartbeatInterval = setInterval(() => {
+                if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+                    webSocketRef.current.send(JSON.stringify({ event: 'ping' }));
+                }
+            }, 10000);
+
+            (socket as any).heartbeatInterval = heartbeatInterval;
+        };
+
+        socket.onmessage = async (event) => {
+            const data = JSON.parse(event.data);
+            console.log('Received message from server:', data.event);
+
+            if (data.event === 'session-ready') {
+                browserVoiceReadyRef.current = true;
+                browserVoiceReconnectAttemptsRef.current = 0;
+                console.log('Browser voice session is ready');
+                return;
+            }
+
+            if (data.event === 'error') {
+                console.error('Server error:', data.message);
+                return;
+            }
+
+            if (data.event === 'ping') {
+                if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+                    webSocketRef.current.send(JSON.stringify({ event: 'pong' }));
+                }
+                return;
+            }
+
+            if (data.event === 'pong') {
+                return;
+            }
+
+            if (data.event === 'transcript' && data.text) {
+                console.log('User detected:', data.text);
+                setChatMessages(prev => [...prev, { sender: 'user', text: data.text }]);
+                conversationHistoryRef.current.push({ role: 'user', text: data.text });
+            } else if (data.event === 'agent-response' && data.text) {
+                console.log('Agent response:', data.text);
+                setChatMessages(prev => [...prev, { sender: 'agent', text: data.text }]);
+                conversationHistoryRef.current.push({ role: 'model', text: data.text });
+            } else if (data.event === 'stop-audio') {
+                if (audioSourcesRef.current) {
+                    audioSourcesRef.current.forEach(source => {
+                        try { source.stop(); } catch (e) { }
+                    });
+                    audioSourcesRef.current.clear();
+                }
+            } else if (data.event === 'audio' && data.audio) {
+                try {
+                    console.log('Playing agent response audio');
+
+                    if (!outputAudioContextRef.current) {
+                        outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+                    }
+
+                    const audioContext = outputAudioContextRef.current;
+                    const binary = atob(data.audio);
+                    const array = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) {
+                        array[i] = binary.charCodeAt(i);
+                    }
+
+                    const audioBuffer = await audioContext.decodeAudioData(array.buffer);
+                    const source = audioContext.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(audioContext.destination);
+
+                    audioSourcesRef.current.forEach(prevSource => {
+                        try {
+                            prevSource.stop();
+                        } catch (error) {
+                            console.error('Error stopping previous audio:', error);
+                        }
+                    });
+                    audioSourcesRef.current.clear();
+
+                    audioSourcesRef.current.add(source);
+                    source.start();
+                    console.log('Agent audio started playing');
+                } catch (error) {
+                    console.error('Error playing audio response:', error);
+                }
+            }
+        };
+
+        socket.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+
+        socket.onclose = (event) => {
+            console.log('WebSocket connection closed', event);
+            console.log('Close code:', event.code);
+            console.log('Close reason:', event.reason);
+            console.log('Was clean:', event.wasClean);
+
+            if ((socket as any).heartbeatInterval) {
+                clearInterval((socket as any).heartbeatInterval);
+            }
+
+            if (webSocketRef.current === socket) {
+                webSocketRef.current = null;
+            }
+
+            const wasBrowserVoiceReady = browserVoiceReadyRef.current;
+            browserVoiceReadyRef.current = false;
+
+            const isCallStillActive = isCallActive || callActiveDebugRef.current;
+            const shouldReconnect =
+                isCallStillActive &&
+                wasBrowserVoiceReady &&
+                event.code !== 1000 &&
+                event.code !== 1001 &&
+                browserVoiceReconnectAttemptsRef.current < 5;
+
+            if (shouldReconnect) {
+                const attempt = browserVoiceReconnectAttemptsRef.current + 1;
+                browserVoiceReconnectAttemptsRef.current = attempt;
+                const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+                console.log(`Attempting to reconnect WebSocket... attempt ${attempt} in ${backoffMs}ms`);
+
+                if (browserVoiceReconnectTimerRef.current) {
+                    window.clearTimeout(browserVoiceReconnectTimerRef.current);
+                }
+
+                browserVoiceReconnectTimerRef.current = window.setTimeout(() => {
+                    const stillActive = isCallActive || callActiveDebugRef.current;
+                    if (!stillActive) {
+                        return;
+                    }
+
+                    if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+                        return;
+                    }
+
+                    console.log('Reconnecting browser voice websocket now');
+                    const reconnectSocket = new WebSocket(buildBrowserVoiceSocketUrl());
+                    webSocketRef.current = reconnectSocket;
+                    setupBrowserVoiceSocket(reconnectSocket);
+                }, backoffMs);
+            }
+        };
+    }, [buildBrowserVoiceSocketUrl, isCallActive]);
 
     // Enhanced startCall function with BrowserVoiceHandler (all API keys handled on backend)
     const startCall = async () => {
@@ -748,6 +927,12 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
         // Set a flag to prevent immediate false setting
         callActiveDebugRef.current = true;
         setIsCallActive(true);
+        browserVoiceReadyRef.current = false;
+        browserVoiceReconnectAttemptsRef.current = 0;
+        if (browserVoiceReconnectTimerRef.current) {
+            window.clearTimeout(browserVoiceReconnectTimerRef.current);
+            browserVoiceReconnectTimerRef.current = null;
+        }
 
         // Clear any existing timeouts
         if (sessionTimeoutRef.current) {
@@ -780,12 +965,18 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
         }
 
         try {
-            // Set up audio processing for the live session
+            // Set up browser mic capture for the Sarvam STT -> Gemini -> TTS loop.
             console.log('Setting up audio processing for live session');
 
             let stream: MediaStream;
             try {
-                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
                 microphoneStreamRef.current = stream;
             } catch (error) {
                 console.error('Failed to get microphone access:', error);
@@ -803,10 +994,10 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
                 // AudioWorkletNode would provide better performance and is the recommended approach
                 scriptProcessorRef.current = inputAudioContextRef.current.createScriptProcessor(4096, 1, 1);
                 source.connect(scriptProcessorRef.current);
-                scriptProcessorRef.current.connect(inputAudioContextRef.current.destination);
-
-                // DO NOT set up audio processing yet - wait for WebSocket connection
-                // It will be set up after WebSocket connects
+                const silentGain = inputAudioContextRef.current.createGain();
+                silentGain.gain.value = 0;
+                scriptProcessorRef.current.connect(silentGain);
+                silentGain.connect(inputAudioContextRef.current.destination);
             } catch (error) {
                 console.error('Failed to create audio context:', error);
                 alert('Failed to initialize audio processing. Please try again.');
@@ -815,10 +1006,10 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
                 return;
             }
 
-            // Initialize WebSocket connection to backend for Google Voice Stream processing (STT + Gemini + TTS)
+            // Initialize WebSocket connection to backend for browser voice processing.
             try {
                 const isCallActuallyActive = isCallActive || callActiveDebugRef.current;
-                console.log('Initializing WebSocket connection for Google Voice Stream processing. isCallActuallyActive:', isCallActuallyActive);
+                console.log('Initializing WebSocket connection for browser voice processing. isCallActuallyActive:', isCallActuallyActive);
 
                 if (isCallActuallyActive) {
                     // Ensure we have microphone access before starting
@@ -830,205 +1021,12 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
                                 // Check if the call is still active before starting
                                 const isCallStillActive = isCallActive || callActiveDebugRef.current;
                                 if (isCallStillActive) {
-                                    // Establish WebSocket connection to backend using the new BrowserVoiceHandler
-                                    const apiBaseUrl = getApiBaseUrl();
-                                    const wsProtocol = apiBaseUrl.startsWith('https') ? 'wss:' : 'ws:';
-                                    const wsHost = new URL(apiBaseUrl).host;
-                                    // Pass the agent's voice ID and identity as query parameters
-                                    const voiceId = editedAgent.voiceId || 'default';
-                                    const agentId = editedAgent.id;
-                                    const agentIdentity = encodeURIComponent(editedAgent.identity || '');
-                                    const encodedUserId = encodeURIComponent(userId || '');
-                                    const wsUrl = `${wsProtocol}//${wsHost}/browser-voice-stream?voiceId=${encodeURIComponent(voiceId)}&agentId=${encodeURIComponent(agentId)}&identity=${agentIdentity}&userId=${encodedUserId}`;
+                                    const wsUrl = buildBrowserVoiceSocketUrl();
                                     console.log('Browser voice WebSocket URL:', wsUrl);
-                                    console.log('🌐 Connecting to Browser Voice Stream with voiceId:', voiceId, 'agentId:', agentId);
-                                    webSocketRef.current = new WebSocket(wsUrl);
-
-                                    webSocketRef.current.onopen = () => {
-                                        console.log('WebSocket connection established successfully for voice stream');
-                                        console.log('WebSocket readyState:', webSocketRef.current?.readyState);
-                                        // Reset retry count on successful start
-                                        speechRecognitionRetryCountRef.current = 0;
-
-                                        // NOW set up audio processing after WebSocket is connected
-                                        if (scriptProcessorRef.current) {
-                                            scriptProcessorRef.current.onaudioprocess = (audioProcessingEvent) => {
-                                                // Send audio data to backend via WebSocket for voice stream processing
-                                                if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-                                                    const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-
-                                                    // Check if there's actual audio data
-                                                    let hasAudio = false;
-                                                    for (let i = 0; i < inputData.length; i++) {
-                                                        if (Math.abs(inputData[i]) > 0.01) {
-                                                            hasAudio = true;
-                                                            break;
-                                                        }
-                                                    }
-
-                                                    if (hasAudio) {
-                                                        // console.log('Audio detected, sending to server');
-                                                    }
-
-                                                    // Convert float32 to int16
-                                                    const int16Data = new Int16Array(inputData.length);
-                                                    for (let i = 0; i < inputData.length; i++) {
-                                                        int16Data[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
-                                                    }
-
-                                                    // Send audio data as base64 (binary-safe encoding)
-                                                    const uint8Array = new Uint8Array(int16Data.buffer);
-                                                    let binary = '';
-                                                    const chunkSize = 0x8000; // Process in chunks to avoid call stack size exceeded
-                                                    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-                                                        const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
-                                                        binary += String.fromCharCode.apply(null, Array.from(chunk));
-                                                    }
-                                                    const base64Data = btoa(binary);
-                                                    webSocketRef.current.send(JSON.stringify({
-                                                        event: 'audio',
-                                                        data: base64Data
-                                                    }));
-                                                } else {
-                                                    console.log('WebSocket not ready for audio. State:', webSocketRef.current?.readyState);
-                                                }
-                                            };
-                                            console.log('Audio processing enabled after WebSocket connected');
-                                        }
-
-                                        // Set up heartbeat to keep connection alive
-                                        const heartbeatInterval = setInterval(() => {
-                                            if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-                                                webSocketRef.current.send(JSON.stringify({ event: 'ping' }));
-                                            }
-                                        }, 10000); // Send ping every 10 seconds
-
-                                        // Store interval ID so we can clear it later
-                                        (webSocketRef.current as any).heartbeatInterval = heartbeatInterval;
-                                    };
-
-                                    webSocketRef.current.onmessage = async (event) => {
-                                        const data = JSON.parse(event.data);
-                                        console.log('Received message from server:', data.event); // Log event only to reduce noise
-
-                                        // Handle error messages
-                                        if (data.event === 'error') {
-                                            console.error('Server error:', data.message);
-                                            return;
-                                        }
-
-                                        // Handle ping/pong messages
-                                        if (data.event === 'ping') {
-                                            if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-                                                webSocketRef.current.send(JSON.stringify({ event: 'pong' }));
-                                            }
-                                            return;
-                                        }
-
-                                        if (data.event === 'pong') {
-                                            return;
-                                        }
-
-                                        if (data.event === 'transcript' && data.text) {
-                                            // Update UI with user speech
-                                            console.log('User detected:', data.text);
-                                            setChatMessages(prev => [...prev, { sender: 'user', text: data.text }]);
-                                            conversationHistoryRef.current.push({ role: 'user', text: data.text });
-                                        }
-
-                                        else if (data.event === 'agent-response' && data.text) {
-                                            // Update UI with agent response
-                                            console.log('Agent response:', data.text);
-                                            setChatMessages(prev => [...prev, { sender: 'agent', text: data.text }]);
-                                            conversationHistoryRef.current.push({ role: 'model', text: data.text });
-                                        }
-
-                                        else if (data.event === 'stop-audio') {
-                                            // Interruption handling - stop current playback
-                                            if (audioSourcesRef.current) {
-                                                audioSourcesRef.current.forEach(source => {
-                                                    try { source.stop(); } catch (e) { }
-                                                });
-                                                audioSourcesRef.current.clear();
-                                            }
-                                        }
-
-                                        else if (data.event === 'audio' && data.audio) {
-                                            // Play audio response from backend
-                                            try {
-                                                console.log('Playing agent response audio');
-
-                                                // Use the output audio context we already have
-                                                if (!outputAudioContextRef.current) {
-                                                    outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-                                                }
-
-                                                const audioContext = outputAudioContextRef.current;
-                                                const binary = atob(data.audio);
-                                                const array = new Uint8Array(binary.length);
-                                                for (let i = 0; i < binary.length; i++) {
-                                                    array[i] = binary.charCodeAt(i);
-                                                }
-
-                                                const audioBuffer = await audioContext.decodeAudioData(array.buffer);
-                                                const source = audioContext.createBufferSource();
-                                                source.buffer = audioBuffer;
-                                                source.connect(audioContext.destination);
-
-                                                // Store reference to stop previous audio if needed
-                                                audioSourcesRef.current.forEach(prevSource => {
-                                                    try {
-                                                        prevSource.stop();
-                                                    } catch (error) {
-                                                        console.error('Error stopping previous audio:', error);
-                                                    }
-                                                });
-                                                audioSourcesRef.current.clear();
-
-                                                // Store this source and play it
-                                                audioSourcesRef.current.add(source);
-                                                source.start();
-                                                console.log('Agent audio started playing');
-                                            } catch (error) {
-                                                console.error('Error playing audio response:', error);
-                                            }
-                                        }
-                                    };
-
-                                    webSocketRef.current.onerror = (error) => {
-                                        console.error('WebSocket error:', error);
-                                        // Try to reconnect on error
-                                        setTimeout(() => {
-                                            const isCallStillActive = isCallActive || callActiveDebugRef.current;
-                                            if (isCallStillActive && !webSocketRef.current) {
-                                                console.log('Attempting to reconnect WebSocket...');
-                                                // Re-establish WebSocket connection
-                                                const apiBaseUrl = getApiBaseUrl();
-                                                const wsProtocol = apiBaseUrl.startsWith('https') ? 'wss:' : 'ws:';
-                                                const wsHost = new URL(apiBaseUrl).host;
-                                                const voiceId = editedAgent.voiceId || 'default';
-                                                const agentId = editedAgent.id;
-                                                const agentIdentity = encodeURIComponent(editedAgent.identity || '');
-                                                const encodedUserId = encodeURIComponent(userId || '');
-                                                const wsUrl = `${wsProtocol}//${wsHost}/browser-voice-stream?voiceId=${encodeURIComponent(voiceId)}&agentId=${encodeURIComponent(agentId)}&identity=${agentIdentity}&userId=${encodedUserId}`;
-                                                console.log('Browser voice WebSocket reconnect URL:', wsUrl);
-                                                webSocketRef.current = new WebSocket(wsUrl);
-                                            }
-                                        }, 1000);
-                                    };
-
-                                    webSocketRef.current.onclose = (event) => {
-                                        console.log('WebSocket connection closed', event);
-                                        console.log('Close code:', event.code);
-                                        console.log('Close reason:', event.reason);
-                                        console.log('Was clean:', event.wasClean);
-                                        // Clear heartbeat interval
-                                        if (webSocketRef.current && (webSocketRef.current as any).heartbeatInterval) {
-                                            clearInterval((webSocketRef.current as any).heartbeatInterval);
-                                        }
-                                        // Clear reference on close
-                                        webSocketRef.current = null;
-                                    };
+                                    console.log('🌐 Connecting to Browser Voice Stream with voiceId:', editedAgent.voiceId, 'agentId:', editedAgent.id);
+                                    const socket = new WebSocket(wsUrl);
+                                    webSocketRef.current = socket;
+                                    setupBrowserVoiceSocket(socket);
                                 } else {
                                     console.log('Skipping WebSocket connection - call no longer active');
                                 }
@@ -1062,27 +1060,42 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
         }
     };
 
-    // The Web Speech API is used for real-time speech recognition instead of ElevenLabs STT
-    // ElevenLabs STT is designed for file transcription, not real-time streaming
+    // Voice input is streamed to the backend where Sarvam STT, Gemini, and TTS are chained together.
 
     const stopCall = useCallback(() => {
         console.log('Stopping call...');
         console.log('Setting isCallActive to false');
         console.log('Call stack for setting isCallActive to false:', new Error().stack);
         setIsCallActive(false);
+        callActiveDebugRef.current = false;
         // Reset the greeting sent flag when stopping the call
         greetingSentRef.current = false;
+        browserVoiceReadyRef.current = false;
+        browserVoiceReconnectAttemptsRef.current = 0;
+        if (browserVoiceReconnectTimerRef.current) {
+            window.clearTimeout(browserVoiceReconnectTimerRef.current);
+            browserVoiceReconnectTimerRef.current = null;
+        }
 
         // Stop audio processing
         if (scriptProcessorRef.current) {
             scriptProcessorRef.current.onaudioprocess = null;
         }
 
+        if (microphoneStreamRef.current) {
+            try {
+                microphoneStreamRef.current.getTracks().forEach(track => track.stop());
+            } catch (error) {
+                console.error('Error stopping microphone stream:', error);
+            }
+        }
+        microphoneStreamRef.current = null;
+
         // Close WebSocket connection if active
         if (webSocketRef.current) {
             webSocketRef.current.close();
             webSocketRef.current = null;
-            console.log('Closed WebSocket connection for Google Voice Stream processing');
+            console.log('Closed WebSocket connection for browser voice processing');
         }
 
         // Reset speech recognition retry count
@@ -1107,6 +1120,15 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
             }
         }
         outputAudioContextRef.current = null;
+
+        if (inputAudioContextRef.current) {
+            try {
+                inputAudioContextRef.current.close();
+            } catch (error) {
+                console.error('Error closing input audio context:', error);
+            }
+        }
+        inputAudioContextRef.current = null;
 
         // Clear conversation history when call ends
         conversationHistoryRef.current = [];
@@ -1161,6 +1183,13 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
 
             // Reset the greeting sent flag
             greetingSentRef.current = false;
+            callActiveDebugRef.current = false;
+            browserVoiceReadyRef.current = false;
+            browserVoiceReconnectAttemptsRef.current = 0;
+            if (browserVoiceReconnectTimerRef.current) {
+                window.clearTimeout(browserVoiceReconnectTimerRef.current);
+                browserVoiceReconnectTimerRef.current = null;
+            }
 
             // Reset speech recognition retry count
             speechRecognitionRetryCountRef.current = 0;
@@ -1543,55 +1572,36 @@ When you need to collect information from the user, ask for the required paramet
         const message = currentMessage.trim();
         if (!message || isAgentReplying) return;
 
+        const now = Date.now();
+        if (now - chatSubmitCooldownRef.current < 1200) {
+            setChatMessages(prev => [...prev, { sender: 'agent' as const, text: 'Please wait a moment before sending another message.' }]);
+            return;
+        }
+        chatSubmitCooldownRef.current = now;
+
         const newMessages = [...chatMessages, { sender: 'user' as const, text: message }];
         setChatMessages(newMessages);
         setCurrentMessage('');
         setIsAgentReplying(true);
 
-        if (geminiChatSession) {
-            // Handle real Gemini chat session
-            try {
-                const stream = await geminiChatSession.sendMessageStream({ message });
-                let agentResponseText = '';
-                setChatMessages(prev => [...prev, { sender: 'agent' as const, text: '' }]);
+        try {
+            const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/agent-chat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: editedAgent.model,
+                    identity: editedAgent.identity,
+                    messages: newMessages,
+                    tools: editedAgent.settings.tools || []
+                })
+            });
 
-                for await (const chunk of stream) {
-                    agentResponseText += chunk.text;
-                    setChatMessages(prev => {
-                        const updatedMessages = [...prev];
-                        updatedMessages[updatedMessages.length - 1].text = agentResponseText;
-                        return updatedMessages;
-                    });
-                }
+            const result = await response.json().catch(() => null);
 
-                // Check if the response contains tool execution instructions
-                try {
-                    const jsonResponse = JSON.parse(agentResponseText);
-                    if (jsonResponse.tool && jsonResponse.data) {
-                        // Execute the tool
-                        const toolExecutionService = new ToolExecutionService();
-                        const tool = editedAgent.settings.tools.find(t => t.name === jsonResponse.tool);
-
-                        if (tool) {
-                            const success = await toolExecutionService.executeTool(tool, jsonResponse.data);
-
-                            const toolResponse = success
-                                ? `I've successfully collected that information and saved it to ${tool.name}.`
-                                : `I encountered an issue while saving your information to ${tool.name}. Let's try again.`;
-
-                            setChatMessages(prev => {
-                                const updatedMessages = [...prev];
-                                updatedMessages[updatedMessages.length - 1].text = toolResponse;
-                                return updatedMessages;
-                            });
-                        }
-                    }
-                } catch (e) {
-                    // Not a JSON response, continue with normal response
-                }
-            } catch (error) {
-                console.error("Gemini API call failed:", error);
-                const errorMsg = 'Sorry, an error occurred while trying to respond.';
+            if (!response.ok || !result?.success) {
+                const errorMsg = result?.message || 'Sorry, an error occurred while trying to respond.';
                 setChatMessages(prev => {
                     const updatedMessages = [...prev];
                     if (updatedMessages[updatedMessages.length - 1]?.sender === 'agent') {
@@ -1601,91 +1611,49 @@ When you need to collect information from the user, ask for the required paramet
                     }
                     return updatedMessages;
                 });
-            } finally {
-                setIsAgentReplying(false);
-            }
-        } else {
-            // Handle simulated chat for non-Gemini models using a one-off Gemini call
-            if (!API_KEY) {
-                setChatMessages(prev => [...prev, { sender: 'agent' as const, text: 'Cannot simulate response. API_KEY is not configured.' }]);
-                setIsAgentReplying(false);
                 return;
             }
+
+            const agentResponseText = result.text || '';
+            setChatMessages(prev => [...prev, { sender: 'agent' as const, text: agentResponseText }]);
+
             try {
-                // Prepare system instruction with tool information if tools are configured
-                let systemInstruction = `You are simulating an AI agent. The user has selected the model named '${editedAgent.model}'. Your instructions are defined by the following identity:\n\n${editedAgent.identity}`;
+                const jsonResponse = JSON.parse(agentResponseText);
+                if (jsonResponse.tool && jsonResponse.data) {
+                    const toolExecutionService = new ToolExecutionService();
+                    const tool = editedAgent.settings.tools.find(t => t.name === jsonResponse.tool);
 
-                // Add tool information to system instruction if tools are configured
-                if (editedAgent.settings.tools && editedAgent.settings.tools.length > 0) {
-                    const toolDescriptions = editedAgent.settings.tools.map(tool =>
-                        `- ${tool.name}: ${tool.description} (Parameters: ${tool.parameters?.map(p => `${p.name} (${p.type})${p.required ? ' [required]' : ''}`).join(', ') || 'None'})`
-                    ).join('\n');
+                    if (tool) {
+                        const success = await toolExecutionService.executeTool(tool, jsonResponse.data);
 
-                    systemInstruction += `
+                        const toolResponse = success
+                            ? `I've successfully collected that information and saved it to ${tool.name}.`
+                            : `I encountered an issue while saving your information to ${tool.name}. Let's try again.`;
 
-Available Tools:
-${toolDescriptions}
-
-When you need to collect information from the user, ask for the required parameters. When all required information is collected, respond with a JSON object in the format: {"tool": "tool_name", "data": {"param1": "value1", "param2": "value2"}}`;
-                }
-
-                const ai = new GoogleGenAI({ apiKey: API_KEY });
-                const contentsForApi = newMessages.map(msg => ({
-                    role: msg.sender === 'agent' ? 'model' : 'user',
-                    parts: [{ text: msg.text }]
-                }));
-
-                const stream = await ai.models.generateContentStream({
-                    model: 'gemini-2.0-flash',
-                    contents: contentsForApi,
-                    config: {
-                        systemInstruction
+                        setChatMessages(prev => {
+                            const updatedMessages = [...prev];
+                            updatedMessages[updatedMessages.length - 1].text = toolResponse;
+                            return updatedMessages;
+                        });
                     }
-                });
-
-                let agentResponseText = '';
-                setChatMessages(prev => [...prev, { sender: 'agent' as const, text: '' }]);
-
-                for await (const chunk of stream) {
-                    agentResponseText += chunk.text;
-                    setChatMessages(prev => {
-                        const updatedMessages = [...prev];
-                        updatedMessages[updatedMessages.length - 1].text = agentResponseText;
-                        return updatedMessages;
-                    });
                 }
-
-                // Check if the response contains tool execution instructions
-                try {
-                    const jsonResponse = JSON.parse(agentResponseText);
-                    if (jsonResponse.tool && jsonResponse.data) {
-                        // Execute the tool
-                        const toolExecutionService = new ToolExecutionService();
-                        const tool = editedAgent.settings.tools.find(t => t.name === jsonResponse.tool);
-
-                        if (tool) {
-                            const success = await toolExecutionService.executeTool(tool, jsonResponse.data);
-
-                            const toolResponse = success
-                                ? `I've successfully collected that information and saved it to ${tool.name}.`
-                                : `I encountered an issue while saving your information to ${tool.name}. Let's try again.`;
-
-                            setChatMessages(prev => {
-                                const updatedMessages = [...prev];
-                                updatedMessages[updatedMessages.length - 1].text = toolResponse;
-                                return updatedMessages;
-                            });
-                        }
-                    }
-                } catch (e) {
-                    // Not a JSON response, continue with normal response
-                }
-            } catch (error) {
-                console.error("Simulated API call failed:", error);
-                setChatMessages(prev => [...prev, { sender: 'agent' as const, text: 'Sorry, an error occurred during the simulation.' }]);
-            } finally {
-                setIsAgentReplying(false);
+            } catch (e) {
+                // Not a JSON response, continue with normal response
             }
+        } catch (error) {
+            console.error("Backend chat API call failed:", error);
+            const errorMsg = 'Sorry, an error occurred while trying to respond.';
+            setChatMessages(prev => {
+                const updatedMessages = [...prev];
+                if (updatedMessages[updatedMessages.length - 1]?.sender === 'agent') {
+                    updatedMessages[updatedMessages.length - 1].text = errorMsg;
+                } else {
+                    updatedMessages.push({ sender: 'agent' as const, text: errorMsg });
+                }
+                return updatedMessages;
+            });
+        } finally {
+            setIsAgentReplying(false);
         }
     };
 
@@ -2562,7 +2530,7 @@ When you need to collect information from the user, ask for the required paramet
                                             <button
                                                 type="submit"
                                                 className="p-3 bg-primary text-white rounded-xl hover:bg-primary-dark shadow-lg shadow-primary/20 disabled:opacity-50 transition-all"
-                                                disabled={isAgentReplying || !API_KEY}
+                                                disabled={isAgentReplying}
                                             >
                                                 <svg className="w-5 h-5 -rotate-45" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
