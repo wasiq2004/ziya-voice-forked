@@ -6,6 +6,14 @@ class WalletService {
     this.mysqlPool = mysqlPool;
   }
 
+  async syncUserCreditsBalance(userId, balance, connection = null) {
+    const executor = connection || this.mysqlPool;
+    await executor.execute(
+      'UPDATE users SET credits_balance = ? WHERE id = ?',
+      [parseFloat(balance) || 0, userId]
+    );
+  }
+
   /**
    * Get or create user wallet
    */
@@ -114,6 +122,7 @@ class WalletService {
         'UPDATE user_wallets SET balance = ?, updated_at = NOW() WHERE user_id = ?',
         [newBalance, userId]
       );
+      await this.syncUserCreditsBalance(userId, newBalance);
 
       // Validate adminId against admin_users FK constraint
       // SuperAdmin IDs are in the users table, NOT admin_users — check before inserting
@@ -188,6 +197,7 @@ class WalletService {
         'UPDATE user_wallets SET balance = ?, updated_at = NOW() WHERE user_id = ?',
         [newBalance, userId]
       );
+      await this.syncUserCreditsBalance(userId, newBalance, connection);
 
       // Record transaction
       const transactionId = uuidv4();

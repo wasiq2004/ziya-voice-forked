@@ -47,21 +47,32 @@ function configureGoogleAuth(mysqlPool, organizationService) {
                 } else {
                     // Create new user
                     const userId = uuidv4();
+                    const trialStart = new Date();
+                    const trialEnd = new Date(trialStart);
+                    trialEnd.setDate(trialEnd.getDate() + 14);
+                    const TRIAL_CREDITS = 50;
 
                     await mysqlPool.execute(
-                        `INSERT INTO users (id, email, username, google_id, password_hash, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'google-oauth', NOW(), NOW())`,
-                        [userId, email, username, googleId]
+                        `INSERT INTO users (id, email, username, google_id, password_hash, plan_type, trial_started_at, plan_valid_until, credits_balance, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'google-oauth', 'trial', ?, ?, ?, NOW(), NOW())`,
+                        [userId, email, username, googleId, trialStart, trialEnd, TRIAL_CREDITS]
                     );
 
-                    // Create wallet for new user
+                    // Create wallet for new user with trial credits
                     await mysqlPool.execute(
-                        'INSERT INTO user_wallets (id, user_id, balance) VALUES (?, ?, 0.00)',
-                        [uuidv4(), userId]
+                        'INSERT INTO user_wallets (id, user_id, balance) VALUES (?, ?, ?)',
+                        [uuidv4(), userId, TRIAL_CREDITS]
+                    );
+
+                    await mysqlPool.execute(
+                        `INSERT INTO wallet_transactions (id, user_id, transaction_type, amount, balance_after, service_type, description, created_by)
+                         VALUES (?, ?, 'credit', ?, ?, 'initial_credit', 'Free trial 50 credits', NULL)`,
+                        [uuidv4(), userId, TRIAL_CREDITS, TRIAL_CREDITS]
                     );
 
                     // Create default company for new user
-                    const org = await organizationService.getOrganization(user.organization_id);
+                    const defaultOrganization = await organizationService.getOrganization(5);
+                    const org = defaultOrganization || { name: 'Ziya Voice' };
                     const companyName = `${org.name} company`;
                     const companyId = uuidv4();
                     await mysqlPool.execute(
@@ -78,6 +89,10 @@ function configureGoogleAuth(mysqlPool, organizationService) {
                         email,
                         username,
                         google_id: googleId,
+                        plan_type: 'trial',
+                        trial_started_at: trialStart,
+                        plan_valid_until: trialEnd,
+                        credits_balance: TRIAL_CREDITS,
                         created_at: new Date(),
                         updated_at: new Date()
                     };

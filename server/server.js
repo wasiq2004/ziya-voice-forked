@@ -112,44 +112,28 @@ try {
 // ============ CONSOLIDATED WEBSOCKET UPGRADE HANDLER ============
 // CRITICAL: This is a SINGLE handler that consolidates what was previously two separate listeners
 // Reason: Multiple server.on('upgrade') listeners cause race conditions and conflicts
+const matchesBrowserVoicePath = (pathname = '') => {
+  const normalizedPath = String(pathname || '').replace(/\/+$/, '');
+  return (
+    normalizedPath === '/browser-voice-stream' ||
+    normalizedPath === '/api/browser-voice-stream' ||
+    normalizedPath === '/browser-voice-stream/.websocket' ||
+    normalizedPath === '/api/browser-voice-stream/.websocket'
+  );
+};
+
 server.on('upgrade', (req, socket, head) => {
   const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
-  const isBrowserVoicePath =
-    requestUrl.pathname === '/browser-voice-stream' ||
-    requestUrl.pathname === '/api/browser-voice-stream';
+  const isBrowserVoicePath = matchesBrowserVoicePath(requestUrl.pathname);
 
   if (isBrowserVoicePath) {
     console.log('ℹ️ Browser voice WebSocket upgrade detected', {
       path: requestUrl.pathname,
       userAgent: req.headers['user-agent']?.substring(0, 50)
     });
-
-    if (!browserVoiceWss) {
-      console.error('❌ Browser voice WebSocket server not initialized');
-      try {
-        socket.write('HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nBrowser voice is unavailable');
-      } catch (writeError) {
-        console.error('Failed to write browser voice unavailable response:', writeError);
-      }
-      socket.destroy();
-      return;
-    }
-
-    try {
-      browserVoiceWss.handleUpgrade(req, socket, head, (ws) => {
-        browserVoiceWss.emit('connection', ws, req);
-      });
-    } catch (error) {
-      console.error('❌ Error during browser voice WebSocket upgrade:', error);
-      try {
-        socket.write('HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n');
-      } catch (writeError) {
-        console.error('Failed to send browser voice upgrade error:', writeError);
-      }
-      socket.destroy();
-    }
+    console.log('ℹ️ Browser voice WebSocket upgrade detected; deferring to express-ws route handling');
     return;
   }
 
@@ -1918,24 +1902,27 @@ async function checkTrialValidity(userId) {
       }
     }
 
-    // Check credits_balance if it is set (i.e., user is on a plan)
-    if (credits_balance !== null && credits_balance !== undefined) {
-      const creditsNum = parseFloat(credits_balance);
-      if (!isNaN(creditsNum) && creditsNum <= 0) {
-        // Also check wallet balance as fallback
-        try {
-          const [walletRows] = await mysqlPool.execute('SELECT balance FROM user_wallets WHERE user_id = ?', [userId]);
-          const walletBalance = walletRows.length > 0 ? parseFloat(walletRows[0].balance) : 0;
-          if (walletBalance <= 0) {
-            return {
-              valid: false,
-              message: 'Plan expired or insufficient credits.'
-            };
-          }
-        } catch (e) {
-          // If wallet check fails, don't block
-        }
-      }
+    const userCredits = credits_balance !== null && credits_balance !== undefined
+      ? parseFloat(credits_balance)
+      : 0;
+    let walletBalance = 0;
+    try {
+      const [walletRows] = await mysqlPool.execute('SELECT balance FROM user_wallets WHERE user_id = ?', [userId]);
+      walletBalance = walletRows.length > 0 ? parseFloat(walletRows[0].balance) || 0 : 0;
+    } catch (e) {
+      // If wallet check fails, don't block
+    }
+
+    const effectiveCredits = Math.max(
+      Number.isFinite(userCredits) ? userCredits : 0,
+      Number.isFinite(walletBalance) ? walletBalance : 0
+    );
+
+    if (effectiveCredits <= 0) {
+      return {
+        valid: false,
+        message: 'Plan expired or insufficient credits.'
+      };
     }
 
     return { valid: true };
@@ -1997,13 +1984,14 @@ async function handleSignupRequest(req, res) {
     trialEnd.setDate(trialEnd.getDate() + 14);
     const TRIAL_CREDITS = 50;
     await mysqlPool.execute(
-      `UPDATE users SET current_company_id = ?, plan_type = 'trial', trial_started_at = ?, plan_valid_until = ? WHERE id = ?`,
-      [companyId, trialStart, trialEnd, user.id]
+      `UPDATE users SET current_company_id = ?, plan_type = 'trial', trial_started_at = ?, plan_valid_until = ?, credits_balance = ? WHERE id = ?`,
+      [companyId, trialStart, trialEnd, TRIAL_CREDITS, user.id]
     );
     user.current_company_id = companyId;
     user.plan_type = 'trial';
     user.trial_started_at = trialStart;
     user.plan_valid_until = trialEnd;
+    user.credits_balance = TRIAL_CREDITS;
 
     const walletId = uuidv4();
     await mysqlPool.execute(
@@ -2412,7 +2400,13 @@ app.get('/api/users/plan-access/:userId', async (req, res) => {
       if (walletRows.length > 0) walletBalance = parseFloat(walletRows[0].balance) || 0;
     } catch (e) { /* ignore */ }
 
-    const effectiveCredits = user.credits_balance !== null ? parseFloat(user.credits_balance) : walletBalance;
+    const userCredits = user.credits_balance !== null && user.credits_balance !== undefined
+      ? parseFloat(user.credits_balance)
+      : 0;
+    const effectiveCredits = Math.max(
+      Number.isFinite(userCredits) ? userCredits : 0,
+      Number.isFinite(walletBalance) ? walletBalance : 0
+    );
     const hasCredits = effectiveCredits > 0;
 
     // ACCESS RULE: Only check if user has credits (timing constraint removed)
@@ -6702,6 +6696,18 @@ app.ws('/api/call', function (ws, req) {
 });
 app.ws('/api/call/.websocket', function (ws, req) {
   attachTwilioMediaStreamConnection(ws, req, 'express-ws:/api/call/.websocket');
+});
+app.ws('/browser-voice-stream', function (ws, req) {
+  browserVoiceHandler.handleConnection(ws, req);
+});
+app.ws('/browser-voice-stream/.websocket', function (ws, req) {
+  browserVoiceHandler.handleConnection(ws, req);
+});
+app.ws('/api/browser-voice-stream', function (ws, req) {
+  browserVoiceHandler.handleConnection(ws, req);
+});
+app.ws('/api/browser-voice-stream/.websocket', function (ws, req) {
+  browserVoiceHandler.handleConnection(ws, req);
 });
 app.get('/api/call', (req, res) => {
   res.status(426).json({
