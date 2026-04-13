@@ -31,6 +31,19 @@ export interface Profile {
   avatar_url: string | null;
 }
 
+export interface AuthErrorData {
+  message: string;
+  passwordResetInitiated?: boolean;
+  passwordResetRequiresWait?: boolean;
+  email?: string;
+}
+
+export interface PasswordResetResponse {
+  success: boolean;
+  message: string;
+  email?: string;
+}
+
 export const authService = {
   // Authenticate user with email and password
   async authenticateUser(email: string, password: string, organizationSlug?: string | null): Promise<User | null> {
@@ -47,7 +60,14 @@ export const authService = {
       const result = await response.json();
 
       if (!result.success) {
-        throw new Error(result.message || 'Invalid credentials');
+        const authError = new Error(result.message || 'Invalid credentials') as Error & { data?: AuthErrorData };
+        authError.data = {
+          message: result.message || 'Invalid credentials',
+          passwordResetInitiated: result.passwordResetInitiated,
+          passwordResetRequiresWait: result.passwordResetRequiresWait,
+          email: result.email
+        };
+        throw authError;
       }
 
       return result.user;
@@ -80,6 +100,57 @@ export const authService = {
       console.error('Registration error:', error);
       throw new Error(error.message || 'Registration failed');
     }
+  },
+
+  async requestPasswordReset(email: string): Promise<PasswordResetResponse> {
+    const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/auth/password-reset/request`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.message || 'Failed to send password reset OTP');
+    }
+
+    return result;
+  },
+
+  async verifyPasswordResetOtp(email: string, otp: string): Promise<PasswordResetResponse> {
+    const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/auth/password-reset/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, otp }),
+    });
+
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.message || 'Failed to verify OTP');
+    }
+
+    return result;
+  },
+
+  async confirmPasswordReset(email: string, otp: string, newPassword: string): Promise<PasswordResetResponse> {
+    const response = await fetch(`${getApiBaseUrl()}${getApiPath()}/auth/password-reset/confirm`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, otp, newPassword }),
+    });
+
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.message || 'Failed to reset password');
+    }
+
+    return result;
   },
 
   // Sign in with Google

@@ -115,34 +115,77 @@ export const AVAILABLE_VOICES: { [key: string]: { id: string, name: string }[] }
         { id: 'eleven-indian-monika', name: 'Monika (Hindi)' },
         { id: 'eleven-indian-sagar', name: 'Sagar (Indian English)' },
     ],
+    'sarvam': [
+        { id: 'anushka', name: 'Anushka' },
+        { id: 'manisha', name: 'Manisha' },
+        { id: 'vidya', name: 'Vidya' },
+        { id: 'arya', name: 'Arya' },
+        { id: 'abhilash', name: 'Abhilash' },
+        { id: 'karun', name: 'Karun' },
+        { id: 'hitesh', name: 'Hitesh' },
+    ],
 };
 
 import { getApiBaseUrl, getApiPath } from './utils/api';
 
-// Function to fetch voices dynamically
-export const fetchAvailableVoices = async (): Promise<{ [key: string]: { id: string, name: string }[] }> => {
+const LANGUAGE_DISPLAY_NAMES: { [key: string]: string } = {
+    'MULTILINGUAL': 'Multilingual',
+    'en-US': 'English',
+    'es-ES': 'Spanish',
+    'fr-FR': 'French',
+    'de-DE': 'German',
+    'it-IT': 'Italian',
+    'pt-PT': 'Portuguese',
+    'en-IN': 'English (India)',
+    'hi': 'Hindi',
+    'ta': 'Tamil',
+    'te': 'Telugu',
+    'kn': 'Kannada',
+    'ml': 'Malayalam',
+    'bn': 'Bengali',
+    'mr': 'Marathi',
+    'gu': 'Gujarati',
+    'pa': 'Punjabi'
+};
+
+export const getLanguageDisplayName = (languageId: string): string => {
+    if (!languageId) return 'Unknown';
+    return LANGUAGE_DISPLAY_NAMES[languageId] || LANGUAGE_DISPLAY_NAMES[languageId.toUpperCase()] || languageId;
+};
+
+// Function to fetch voices dynamically from the shared backend voice API
+export const fetchAvailableVoices = async (): Promise<{ [key: string]: { id: string, name: string, language?: string }[] }> => {
     try {
         const apiBaseUrl = `${getApiBaseUrl()}${getApiPath()}`;
-        const response = await fetch(`${apiBaseUrl}/voices/elevenlabs`);
+        const response = await fetch(`${apiBaseUrl}/voices?provider=all`);
         const result = await response.json();
 
-        if (result.success) {
-            // Transform the fetched voices to match our format
-            const voices = result.voices.map((voice: any) => ({
-                id: voice.id,
-                name: voice.name
-            }));
-
-            return {
-                'eleven-labs': voices
+        if (result.success && Array.isArray(result.voices)) {
+            const voicesByProvider: { [key: string]: { id: string, name: string, language?: string }[] } = {
+                'eleven-labs': [],
+                'sarvam': []
             };
-        } else {
-            // Fallback to hardcoded voices if API call fails
-            return AVAILABLE_VOICES;
+
+            result.voices.forEach((voice: any) => {
+                const providerKey = voice.provider === 'elevenlabs' ? 'eleven-labs' : voice.provider;
+                const providerVoice = {
+                    id: voice.provider_voice_id,
+                    name: voice.display_name || voice.provider_voice_id,
+                    language: voice.language_code || voice.locale || undefined
+                };
+
+                if (!voicesByProvider[providerKey]) {
+                    voicesByProvider[providerKey] = [];
+                }
+                voicesByProvider[providerKey].push(providerVoice);
+            });
+
+            return voicesByProvider;
         }
+
+        return AVAILABLE_VOICES;
     } catch (error) {
         console.error('Error fetching voices:', error);
-        // Fallback to hardcoded voices if API call fails
         return AVAILABLE_VOICES;
     }
 };
@@ -190,23 +233,40 @@ export const AVAILABLE_MODELS = [
 ];
 
 export const AVAILABLE_LANGUAGES = [
-    { id: 'ENGLISH', name: 'English' },
-    { id: 'SPANISH', name: 'Spanish' },
-    { id: 'FRENCH', name: 'French' },
-    { id: 'GERMAN', name: 'German' },
-    { id: 'ITALIAN', name: 'Italian' },
-    { id: 'PORTUGUESE', name: 'Portuguese' },
+    { id: 'MULTILINGUAL', name: 'Multilingual' },
+    { id: 'en-US', name: 'English' },
+    { id: 'es-ES', name: 'Spanish' },
+    { id: 'fr-FR', name: 'French' },
+    { id: 'de-DE', name: 'German' },
+    { id: 'it-IT', name: 'Italian' },
+    { id: 'pt-PT', name: 'Portuguese' },
+    { id: 'en-IN', name: 'English (India)' },
+    { id: 'hi', name: 'Hindi' },
+    { id: 'ta', name: 'Tamil' },
+    { id: 'te', name: 'Telugu' },
+    { id: 'kn', name: 'Kannada' },
+    { id: 'ml', name: 'Malayalam' },
+    { id: 'bn', name: 'Bengali' },
+    { id: 'mr', name: 'Marathi' },
+    { id: 'gu', name: 'Gujarati' },
+    { id: 'pa', name: 'Punjabi' },
 ];
 
 export const AVAILABLE_LANGUAGES_BY_PROVIDER: { [key: string]: { id: string, name: string }[] } = {
     'millis-pro': [
-        { id: 'ENGLISH', name: 'English' },
-        { id: 'SPANISH', name: 'Spanish' },
+        { id: 'MULTILINGUAL', name: 'Multilingual' },
+        { id: 'en-US', name: 'English' },
+        { id: 'es-ES', name: 'Spanish' },
     ],
     'eleven-labs': AVAILABLE_LANGUAGES,
+    'sarvam': [
+        { id: 'MULTILINGUAL', name: 'Multilingual' },
+        { id: 'en-IN', name: 'English (India)' },
+    ],
     'google': [
-        { id: 'ENGLISH', name: 'English' },
-        { id: 'SPANISH', name: 'Spanish' },
-        { id: 'FRENCH', name: 'French' },
+        { id: 'MULTILINGUAL', name: 'Multilingual' },
+        { id: 'en-US', name: 'English' },
+        { id: 'es-ES', name: 'Spanish' },
+        { id: 'fr-FR', name: 'French' },
     ],
 };

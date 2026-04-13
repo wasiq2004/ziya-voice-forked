@@ -22,7 +22,8 @@ import {
     CheckIcon,
     MicrophoneIcon,
     getVoiceProviderById,
-    AVAILABLE_LANGUAGES_BY_PROVIDER
+    AVAILABLE_LANGUAGES_BY_PROVIDER,
+    getLanguageDisplayName
 } from '../constants';
 import { PlusIcon, ArrowUpTrayIcon, DocumentTextIcon, XMarkIcon, StopIcon, PencilIcon } from '@heroicons/react/24/outline';
 import Modal from '../components/Modal';
@@ -92,6 +93,22 @@ const SettingsToggle: React.FC<SettingsToggleProps> = ({ label, description, che
     </div>
 );
 
+const normalizeProviderKey = (provider: string) => {
+    if (!provider) return provider;
+    const normalized = provider.toLowerCase();
+    if (normalized === 'elevenlabs' || normalized === 'eleven-labs') return 'eleven-labs';
+    return normalized;
+};
+
+const getProviderFromVoiceId = (voiceId: string, voicesByProvider: { [key: string]: { id: string }[] }) => {
+    for (const providerId in voicesByProvider) {
+        if (voicesByProvider[providerId]?.some(v => v.id === voiceId)) {
+            return normalizeProviderKey(providerId);
+        }
+    }
+    return normalizeProviderKey(getVoiceProviderById(voiceId));
+};
+
 const VoiceSelectionModal: React.FC<{
     onClose: () => void;
     onSave: (voiceId: string) => void;
@@ -102,11 +119,10 @@ const VoiceSelectionModal: React.FC<{
     onPlayPreview: (voiceId: string) => void;
     onStopPreview: () => void;
 }> = ({ onClose, onSave, currentVoiceId, availableVoices, loadingVoices, playingVoiceId, onPlayPreview, onStopPreview }) => {
-    const [selectedProvider, setSelectedProvider] = useState(() => getVoiceProviderById(currentVoiceId));
-    const [selectedVoice, setSelectedVoice] = useState(currentVoiceId);
-
     // Use API-fetched voices or fallback to hardcoded ones
     const voicesToDisplay = Object.keys(availableVoices).length > 0 ? availableVoices : AVAILABLE_VOICES;
+    const [selectedProvider, setSelectedProvider] = useState(() => getProviderFromVoiceId(currentVoiceId, voicesToDisplay) || getVoiceProviderById(currentVoiceId));
+    const [selectedVoice, setSelectedVoice] = useState(currentVoiceId);
 
     useEffect(() => {
         const voicesForProvider = voicesToDisplay[selectedProvider] || [];
@@ -268,10 +284,23 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
 
     // Voice preview state
     // State for API-fetched voices
-    const [availableVoices, setAvailableVoices] = useState<{ [key: string]: { id: string, name: string }[] }>({});
+    const [availableVoices, setAvailableVoices] = useState<{ [key: string]: { id: string, name: string, language?: string }[] }>({});
+    const [availableLanguagesByProvider, setAvailableLanguagesByProvider] = useState<{ [key: string]: { id: string, name: string }[] }>({
+        'eleven-labs': AVAILABLE_LANGUAGES,
+        'sarvam': AVAILABLE_LANGUAGES_BY_PROVIDER['sarvam'] || [{ id: 'MULTILINGUAL', name: 'Multilingual' }, { id: 'en-IN', name: 'English (India)' }]
+    });
     const [loadingVoices, setLoadingVoices] = useState(false);
     const playingVoiceRef = useRef<string | null>(null); // Track which voice is playing without causing re-renders
     const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
+    const agentAudioRef = useRef<HTMLAudioElement | null>(null);
+    const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
+
+    const normalizeProviderKey = (provider: string) => provider === 'elevenlabs' ? 'eleven-labs' : provider;
+
+    const buildLanguageOptions = (codes: Set<string>) => [
+        { id: 'MULTILINGUAL', name: 'Multilingual' },
+        ...Array.from(codes).sort().map(code => ({ id: code, name: getLanguageDisplayName(code) }))
+    ];
 
     // Call Agent State
     const [callAgentTab, setCallAgentTab] = useState<'web' | 'chat'>('web');
@@ -405,41 +434,52 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
                 const data = await response.json();
                 console.log('✅ Voices data received:', data);
 
-                if (data.success && data.voices) {
-                    // Transform API response to match the expected format
-                    const voicesByProvider: { [key: string]: { id: string, name: string }[] } = {
+                if (data.success && Array.isArray(data.voices)) {
+                    const voicesByProvider: { [key: string]: { id: string, name: string, language?: string }[] } = {
                         'eleven-labs': [],
                         'sarvam': []
                     };
+                    const languageCodesByProvider: { [key: string]: Set<string> } = {
+                        'eleven-labs': new Set(),
+                        'sarvam': new Set()
+                    };
 
                     data.voices.forEach((voice: any) => {
-                        // Map backend provider names to frontend IDs
-                        if (voice.provider === 'elevenlabs') {
-                            voicesByProvider['eleven-labs'].push({
-                                id: voice.provider_voice_id,
-                                name: voice.display_name
-                            });
-                        } else if (voice.provider === 'sarvam') {
-                            voicesByProvider['sarvam'].push({
-                                // Sarvam voices might need a prefix or handled as is. 
-                                // Using provider_voice_id directly as that's what we likely store.
-                                id: voice.provider_voice_id,
-                                name: voice.display_name
-                            });
+                        const providerKey = normalizeProviderKey(voice.provider || '');
+                        if (!voicesByProvider[providerKey]) {
+                            voicesByProvider[providerKey] = [];
+                            languageCodesByProvider[providerKey] = new Set();
                         }
+
+                        const languageCode = voice.language_code || voice.locale || 'en-US';
+                        voicesByProvider[providerKey].push({
+                            id: voice.provider_voice_id,
+                            name: voice.display_name || voice.provider_voice_id,
+                            language: languageCode
+                        });
+                        languageCodesByProvider[providerKey].add(languageCode);
                     });
 
+                    const languagesByProvider: { [key: string]: { id: string, name: string }[] } = {
+                        'eleven-labs': buildLanguageOptions(languageCodesByProvider['eleven-labs']),
+                        'sarvam': buildLanguageOptions(languageCodesByProvider['sarvam']),
+                    };
+
                     console.log('✅ Transformed voices:', voicesByProvider);
+                    console.log('✅ Derived language options:', languagesByProvider);
                     setAvailableVoices(voicesByProvider);
+                    setAvailableLanguagesByProvider(languagesByProvider);
                 } else {
                     throw new Error('Invalid response format from API');
                 }
             } catch (error) {
                 console.error('❌ Error fetching voices:', error);
                 // Don't alert on error to avoid annoying the user if backend is down, just log it
-                // alert(`Failed to load voices: ${error.message}. Using default voices.`);
-                // Fallback to hardcoded voices if API fails
                 setAvailableVoices(AVAILABLE_VOICES);
+                setAvailableLanguagesByProvider({
+                    'eleven-labs': AVAILABLE_LANGUAGES,
+                    'sarvam': AVAILABLE_LANGUAGES_BY_PROVIDER['sarvam'] || [{ id: 'MULTILINGUAL', name: 'Multilingual' }, { id: 'en-IN', name: 'English (India)' }]
+                });
             } finally {
                 setLoadingVoices(false);
             }
@@ -525,7 +565,7 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
 
     // Function to convert text to speech using Eleven Labs
     const convertTextToSpeech = async (text: string) => {
-        try {
+        try {   
             // Get Eleven Labs API key from environment variables
             const elevenLabsApiKey = import.meta.env.VITE_ELEVEN_LABS_API_KEY;
             if (!elevenLabsApiKey) {
@@ -697,6 +737,101 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
         playingVoiceRef.current = null;
     };
 
+    const base64ToUint8Array = (base64: string) => {
+        const binary = atob(base64);
+        const array = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+            array[i] = binary.charCodeAt(i);
+        }
+        return array;
+    };
+
+    const uint8ArrayToBase64 = (uint8Array: Uint8Array) => {
+        let binary = '';
+        const chunkSize = 0x8000;
+        for (let i = 0; i < uint8Array.length; i += chunkSize) {
+            const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
+            binary += String.fromCharCode.apply(null, Array.from(chunk));
+        }
+        return btoa(binary);
+    };
+
+    const stopAgentAudioPlayback = () => {
+        if (agentAudioRef.current) {
+            try {
+                agentAudioRef.current.pause();
+            } catch (error) {
+                console.error('Error stopping fallback audio:', error);
+            }
+            agentAudioRef.current = null;
+        }
+
+        audioSourcesRef.current.forEach(source => {
+            try {
+                source.stop();
+            } catch (error) {
+                console.error('Error stopping audio source:', error);
+            }
+        });
+        audioSourcesRef.current.clear();
+        setIsAgentSpeaking(false);
+    };
+
+    const playAgentMessageAudio = async (base64Audio: string) => {
+        stopAgentAudioPlayback();
+
+        try {
+            if (!outputAudioContextRef.current) {
+                outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+            }
+            const audioContext = outputAudioContextRef.current;
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+
+            const audioData = base64ToUint8Array(base64Audio);
+            const decodedBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
+                audioContext.decodeAudioData(audioData.buffer, resolve, reject);
+            });
+
+            const source = audioContext.createBufferSource();
+            source.buffer = decodedBuffer;
+            source.connect(audioContext.destination);
+
+            source.onended = () => {
+                audioSourcesRef.current.delete(source);
+                if (audioSourcesRef.current.size === 0) {
+                    setIsAgentSpeaking(false);
+                }
+            };
+
+            audioSourcesRef.current.add(source);
+            setIsAgentSpeaking(true);
+            source.start();
+        } catch (decodeError) {
+            console.warn('Audio decode failed, using fallback HTMLAudio playback', decodeError);
+            try {
+                stopAgentAudioPlayback();
+                const audio = new Audio(`data:audio/mpeg;base64,${base64Audio}`);
+                agentAudioRef.current = audio;
+                audio.onended = () => {
+                    setIsAgentSpeaking(false);
+                    agentAudioRef.current = null;
+                };
+                audio.onerror = () => {
+                    console.error('Fallback audio playback failed');
+                    setIsAgentSpeaking(false);
+                    agentAudioRef.current = null;
+                };
+                await audio.play();
+                setIsAgentSpeaking(true);
+            } catch (playError) {
+                console.error('Fallback agent audio playback failed:', playError);
+                setIsAgentSpeaking(false);
+            }
+        }
+    };
+
     // Speech recognition reference
     const speechRecognitionRef = useRef<any>(null);
     // Speech recognition retry count for exponential backoff
@@ -713,62 +848,60 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
 
     const buildBrowserVoiceSocketUrl = useCallback(() => {
         const apiBaseUrl = getApiBaseUrl();
-        const apiPath = (getApiPath() || '').replace(/\/+$/, '');
         const wsProtocol = apiBaseUrl.startsWith('https') ? 'wss:' : 'ws:';
         const wsHost = new URL(apiBaseUrl).host;
         const voiceId = editedAgent.voiceId || 'default';
         const agentId = editedAgent.id;
         const agentIdentity = encodeURIComponent(editedAgent.identity || '');
         const encodedUserId = encodeURIComponent(userId || '');
-        const socketPath = `${apiPath}/browser-voice-stream`.replace(/\/{2,}/g, '/');
 
-        return `${wsProtocol}//${wsHost}${socketPath.startsWith('/') ? '' : '/'}${socketPath}?voiceId=${encodeURIComponent(voiceId)}&agentId=${encodeURIComponent(agentId)}&identity=${agentIdentity}&userId=${encodedUserId}`;
+        return `${wsProtocol}//${wsHost}/browser-voice-stream?voiceId=${encodeURIComponent(voiceId)}&agentId=${encodeURIComponent(agentId)}&identity=${agentIdentity}&userId=${encodedUserId}`;
     }, [editedAgent.id, editedAgent.identity, editedAgent.voiceId, userId]);
 
     const setupBrowserVoiceSocket = useCallback((socket: WebSocket) => {
         socket.onopen = () => {
-            console.log('WebSocket connection established successfully for voice stream');
-            console.log('WebSocket readyState:', socket.readyState);
+            console.log('WebSocket connection established');
             speechRecognitionRetryCountRef.current = 0;
             browserVoiceReadyRef.current = false;
 
+            const setupTimeout = window.setTimeout(() => {
+                if (!browserVoiceReadyRef.current) {
+                    console.warn('Session setup timed out, closing socket');
+                    socket.close(1000, 'Setup timeout');
+                }
+            }, 15000);
+
+            (socket as any).setupTimeout = setupTimeout;
+
             if (scriptProcessorRef.current) {
                 scriptProcessorRef.current.onaudioprocess = (audioProcessingEvent) => {
-                    if (browserVoiceReadyRef.current && webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-                        const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                    if (!browserVoiceReadyRef.current || !webSocketRef.current || webSocketRef.current.readyState !== WebSocket.OPEN) {
+                        return;
+                    }
 
-                        let hasAudio = false;
-                        for (let i = 0; i < inputData.length; i++) {
-                            if (Math.abs(inputData[i]) > 0.01) {
-                                hasAudio = true;
-                                break;
-                            }
-                        }
+                    const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                    const hasAudio = Array.from(inputData).some(sample => Math.abs(sample) > 0.01);
+                    if (!hasAudio) {
+                        return;
+                    }
 
-                        if (hasAudio) {
-                            // Audio is flowing from the browser microphone into the live voice loop.
-                        }
+                    const int16Data = new Int16Array(inputData.length);
+                    for (let i = 0; i < inputData.length; i += 1) {
+                        int16Data[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
+                    }
 
-                        const int16Data = new Int16Array(inputData.length);
-                        for (let i = 0; i < inputData.length; i++) {
-                            int16Data[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
-                        }
+                    const uint8Array = new Uint8Array(int16Data.buffer);
+                    const payload = uint8ArrayToBase64(uint8Array);
 
-                        const uint8Array = new Uint8Array(int16Data.buffer);
-                        let binary = '';
-                        const chunkSize = 0x8000;
-                        for (let i = 0; i < uint8Array.length; i += chunkSize) {
-                            const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
-                            binary += String.fromCharCode.apply(null, Array.from(chunk));
-                        }
-
+                    try {
                         webSocketRef.current.send(JSON.stringify({
                             event: 'audio',
-                            data: btoa(binary)
+                            data: payload
                         }));
+                    } catch (error) {
+                        console.error('Failed to send audio chunk:', error);
                     }
                 };
-                console.log('Audio processing enabled after WebSocket connected');
             }
 
             const heartbeatInterval = setInterval(() => {
@@ -784,9 +917,18 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
             const data = JSON.parse(event.data);
             console.log('Received message from server:', data.event);
 
+            if (data.event === 'connected') {
+                console.log('Browser voice socket acknowledged by server');
+                return;
+            }
+
             if (data.event === 'session-ready') {
                 browserVoiceReadyRef.current = true;
                 browserVoiceReconnectAttemptsRef.current = 0;
+                if ((webSocketRef.current as any)?.setupTimeout) {
+                    clearTimeout((webSocketRef.current as any).setupTimeout);
+                    (webSocketRef.current as any).setupTimeout = null;
+                }
                 console.log('Browser voice session is ready');
                 return;
             }
@@ -815,45 +957,15 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
                 console.log('Agent response:', data.text);
                 setChatMessages(prev => [...prev, { sender: 'agent', text: data.text }]);
                 conversationHistoryRef.current.push({ role: 'model', text: data.text });
+            } else if (data.event === 'message' && data.text) {
+                console.log('Agent message:', data.text);
+                setChatMessages(prev => [...prev, { sender: 'agent', text: data.text }]);
             } else if (data.event === 'stop-audio') {
-                if (audioSourcesRef.current) {
-                    audioSourcesRef.current.forEach(source => {
-                        try { source.stop(); } catch (e) { }
-                    });
-                    audioSourcesRef.current.clear();
-                }
+                stopAgentAudioPlayback();
             } else if (data.event === 'audio' && data.audio) {
                 try {
                     console.log('Playing agent response audio');
-
-                    if (!outputAudioContextRef.current) {
-                        outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-                    }
-
-                    const audioContext = outputAudioContextRef.current;
-                    const binary = atob(data.audio);
-                    const array = new Uint8Array(binary.length);
-                    for (let i = 0; i < binary.length; i++) {
-                        array[i] = binary.charCodeAt(i);
-                    }
-
-                    const audioBuffer = await audioContext.decodeAudioData(array.buffer);
-                    const source = audioContext.createBufferSource();
-                    source.buffer = audioBuffer;
-                    source.connect(audioContext.destination);
-
-                    audioSourcesRef.current.forEach(prevSource => {
-                        try {
-                            prevSource.stop();
-                        } catch (error) {
-                            console.error('Error stopping previous audio:', error);
-                        }
-                    });
-                    audioSourcesRef.current.clear();
-
-                    audioSourcesRef.current.add(source);
-                    source.start();
-                    console.log('Agent audio started playing');
+                    await playAgentMessageAudio(data.audio);
                 } catch (error) {
                     console.error('Error playing audio response:', error);
                 }
@@ -872,6 +984,10 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
 
             if ((socket as any).heartbeatInterval) {
                 clearInterval((socket as any).heartbeatInterval);
+            }
+
+            if ((socket as any).setupTimeout) {
+                clearTimeout((socket as any).setupTimeout);
             }
 
             if (webSocketRef.current === socket) {
@@ -1016,24 +1132,15 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
                     console.log('Starting WebSocket connection. Microphone stream available:', !!microphoneStreamRef.current);
                     if (microphoneStreamRef.current) {
                         // Add a small delay to ensure everything is ready
-                        setTimeout(() => {
-                            try {
-                                // Check if the call is still active before starting
-                                const isCallStillActive = isCallActive || callActiveDebugRef.current;
-                                if (isCallStillActive) {
-                                    const wsUrl = buildBrowserVoiceSocketUrl();
-                                    console.log('Browser voice WebSocket URL:', wsUrl);
-                                    console.log('🌐 Connecting to Browser Voice Stream with voiceId:', editedAgent.voiceId, 'agentId:', editedAgent.id);
-                                    const socket = new WebSocket(wsUrl);
-                                    webSocketRef.current = socket;
-                                    setupBrowserVoiceSocket(socket);
-                                } else {
-                                    console.log('Skipping WebSocket connection - call no longer active');
-                                }
-                            } catch (startError) {
-                                console.error('Error establishing WebSocket connection:', startError);
-                            }
-                        }, 750); // Increased delay to 750ms to ensure everything is ready
+                       try {
+                            const wsUrl = buildBrowserVoiceSocketUrl();
+                            console.log('Browser voice WebSocket URL:', wsUrl);
+                            const socket = new WebSocket(wsUrl);
+                            webSocketRef.current = socket;
+                            setupBrowserVoiceSocket(socket);
+                        } catch (startError) {
+                            console.error('Error establishing WebSocket connection:', startError);
+                        }// Increased delay to 750ms to ensure everything is ready
                     } else {
                         console.error('Cannot start WebSocket connection: No microphone stream available');
                     }
@@ -1097,6 +1204,8 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
             webSocketRef.current = null;
             console.log('Closed WebSocket connection for browser voice processing');
         }
+
+        stopAgentAudioPlayback();
 
         // Reset speech recognition retry count
         speechRecognitionRetryCountRef.current = 0;
@@ -1461,15 +1570,16 @@ When you need to collect information from the user, ask for the required paramet
         let updatedAgent = { ...editedAgent, voiceId: newVoiceId };
 
         // Auto-update language if the current one is not supported by the new voice provider
-        const newProviderId = getVoiceProviderById(newVoiceId);
-        const supportedLanguages = AVAILABLE_LANGUAGES_BY_PROVIDER[newProviderId] || AVAILABLE_LANGUAGES;
+        const newProviderId = getProviderFromVoiceId(newVoiceId, availableVoices) || getVoiceProviderById(newVoiceId);
+        const supportedLanguages = availableLanguagesByProvider[newProviderId] || AVAILABLE_LANGUAGES;
         const isCurrentLanguageSupported = supportedLanguages.some(lang => lang.id === updatedAgent.language);
 
         if (!isCurrentLanguageSupported) {
-            updatedAgent.language = supportedLanguages[0].id;
+            updatedAgent.language = supportedLanguages[0]?.id || 'MULTILINGUAL';
         }
 
         console.log('Updated Agent Voice ID:', updatedAgent.voiceId);
+        console.log('Updated Agent Language:', updatedAgent.language);
         console.log('===================');
 
         setEditedAgent(updatedAgent);
@@ -1737,7 +1847,7 @@ When you need to collect information from the user, ask for the required paramet
         voiceProviderId: string;
     }> = ({ onClose, onSave, currentLanguageId, voiceProviderId }) => {
         const [selectedLanguage, setSelectedLanguage] = useState(currentLanguageId);
-        const languagesToShow = AVAILABLE_LANGUAGES_BY_PROVIDER[voiceProviderId] || AVAILABLE_LANGUAGES;
+        const languagesToShow = availableLanguagesByProvider[voiceProviderId] || AVAILABLE_LANGUAGES;
 
         useEffect(() => {
             // If the currently selected language is not supported by the provider, default to the first available one.
@@ -2182,7 +2292,7 @@ When you need to collect information from the user, ask for the required paramet
                     onClose={() => setLanguageModalOpen(false)}
                     onSave={handleSaveLanguage}
                     currentLanguageId={editedAgent.language}
-                    voiceProviderId={getVoiceProviderById(editedAgent.voiceId)}
+                    voiceProviderId={getProviderFromVoiceId(editedAgent.voiceId, availableVoices)}
                 />
             )}
             {isGoogleSheetsSharingModalOpen && (
@@ -2305,7 +2415,7 @@ When you need to collect information from the user, ask for the required paramet
                                 action: () => setVoiceModalOpen(true),
                                 color: 'purple'
                             },
-                            { title: 'Language', value: AVAILABLE_LANGUAGES.find(l => l.id === editedAgent.language)?.name || editedAgent.language, icon: LanguageIcon, action: () => setLanguageModalOpen(true), color: 'emerald' },
+                            { title: 'Language', value: getLanguageDisplayName(editedAgent.language), icon: LanguageIcon, action: () => setLanguageModalOpen(true), color: 'emerald' },
                         ].map(item => (
                             <button
                                 onClick={item.action}
@@ -2483,7 +2593,10 @@ When you need to collect information from the user, ask for the required paramet
                                         </div>
                                         <div className="mt-6">
                                             <p className="font-black text-slate-800 dark:text-white uppercase tracking-wider">{isCallActive ? 'Call in Progress' : 'Ready to Test'}</p>
-                                            <p className="text-xs text-slate-500 mt-1">{isCallActive ? 'Agent is listening...' : 'Click to start a voice conversation'}</p>
+                                            <p className="text-xs text-slate-500 mt-1">{isCallActive ? (isAgentSpeaking ? 'Agent is speaking...' : 'Agent is listening...') : 'Click to start a voice conversation'}</p>
+                                            {isAgentSpeaking && isCallActive && (
+                                                <p className="text-[10px] text-primary mt-2 uppercase tracking-widest font-black">Speech playback active</p>
+                                            )}
                                         </div>
                                     </div>
                                 ) : (

@@ -9,6 +9,8 @@ const nodeFetch = require('node-fetch');
 const expressWs = require('express-ws');
 const { WebSocketServer } = require('ws');
 const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 
 // Debug: Log environment startup
 console.log('[STARTUP] 🔧 Environment loaded:');
@@ -42,6 +44,7 @@ const WalletService = require('./services/walletService.js');
 const CostCalculator = require('./services/costCalculator.js');
 const VoiceSyncService = require('./services/voiceSyncService.js');
 const VoiceWebSocketHandler = require('./services/voiceWebSocketHandler.js');
+const emailService = require('./services/emailService.js');
 const { router: voiceRouter, initVoiceSync } = require('./routes/voiceRoutes.js');
 const normalizeOrganizationSlug = OrganizationService.normalizeOrganizationSlug || ((value) => String(value || '').trim().toLowerCase());
 const PLATFORM_ORG_SLUG = OrganizationService.PLATFORM_ORG_SLUG || 'ziya';
@@ -62,7 +65,7 @@ app.locals.startupChecks = {
   ready: false,
   checkedAt: new Date().toISOString()
 };
-const PORT = Number(process.env.PORT) || 5000;
+const PORT = Number(process.env.PORT);
 const server = require('http').createServer(app);
 const expressWsInstance = expressWs(app, server, {
   wsOptions: {
@@ -76,6 +79,10 @@ console.log(' WebSocket with skipUTF8Validation enabled');
 
 const PLATFORM_PUBLIC_ORIGIN = getPublicOriginFromBackendUrl();
 const BACKEND_PUBLIC_ORIGIN = extractDomainFromUrl(getBackendUrl());
+const PASSWORD_RESET_OTP_LENGTH = 6;
+const PASSWORD_RESET_OTP_EXPIRY_MINUTES = 10;
+const PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS = 60;
+const PASSWORD_RESET_MAX_ATTEMPTS = 5;
 
 const getOrganizationLoginUrl = (slug) => {
   if (!slug || !PLATFORM_PUBLIC_ORIGIN) {
@@ -110,8 +117,6 @@ try {
 }
 
 // ============ CONSOLIDATED WEBSOCKET UPGRADE HANDLER ============
-// CRITICAL: This is a SINGLE handler that consolidates what was previously two separate listeners
-// Reason: Multiple server.on('upgrade') listeners cause race conditions and conflicts
 const matchesBrowserVoicePath = (pathname = '') => {
   const normalizedPath = String(pathname || '').replace(/\/+$/, '');
   return (
@@ -121,7 +126,6 @@ const matchesBrowserVoicePath = (pathname = '') => {
     normalizedPath === '/api/browser-voice-stream/.websocket'
   );
 };
-
 server.on('upgrade', (req, socket, head) => {
   const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
@@ -206,7 +210,6 @@ server.on('upgrade', (req, socket, head) => {
     socket.destroy();
   }
 });
-
 // ✅ Handle inbound socket connections (before they become WebSockets)
 server.on('clientError', (err, socket) => {
   console.error('❌ Socket client error:', {
@@ -220,7 +223,6 @@ server.on('clientError', (err, socket) => {
   socket.destroy();
 });
 
-// ADD THIS BLOCK HERE:
 console.log('=== ENVIRONMENT CHECK ===');
 console.log('APP_URL:', config.APP_URL);
 console.log('NODE_ENV:', process.env.NODE_ENV || 'NOT SET');
@@ -1807,6 +1809,187 @@ async function resolveOrganizationForRequest(req) {
   return organization;
 }
 
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function hashPasswordResetOtp(email, otp) {
+  return crypto
+    .createHash('sha256')
+    .update(`${normalizeEmail(email)}:${String(otp)}:${process.env.SESSION_SECRET || 'ziya-password-reset'}`)
+    .digest('hex');
+}
+
+function generatePasswordResetOtp() {
+  const min = 10 ** (PASSWORD_RESET_OTP_LENGTH - 1);
+  const max = (10 ** PASSWORD_RESET_OTP_LENGTH) - 1;
+  return String(crypto.randomInt(min, max + 1));
+}
+
+async function findAuthAccountByEmail(email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  const [userRows] = await mysqlPool.execute(
+    'SELECT id, email, role, status FROM users WHERE email = ? LIMIT 1',
+    [normalizedEmail]
+  );
+  if (userRows.length > 0) {
+    return {
+      id: userRows[0].id,
+      email: userRows[0].email,
+      role: userRows[0].role,
+      status: userRows[0].status || 'active',
+      accountType: 'user'
+    };
+  }
+
+  const [adminRows] = await mysqlPool.execute(
+    'SELECT id, email, role FROM admin_users WHERE email = ? LIMIT 1',
+    [normalizedEmail]
+  );
+  if (adminRows.length > 0) {
+    return {
+      id: adminRows[0].id,
+      email: adminRows[0].email,
+      role: adminRows[0].role,
+      status: 'active',
+      accountType: 'admin_user'
+    };
+  }
+
+  return null;
+}
+
+async function issuePasswordResetOtp(email, requestIp = null) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    return { passwordResetInitiated: false, email: normalizedEmail };
+  }
+
+  const account = await findAuthAccountByEmail(normalizedEmail);
+  if (!account) {
+    return { passwordResetInitiated: false, email: normalizedEmail };
+  }
+
+  if (account.status && account.status !== 'active') {
+    return {
+      passwordResetInitiated: false,
+      email: normalizedEmail,
+      message: account.status === 'locked' ? 'Account is locked' : 'Account is inactive'
+    };
+  }
+
+  await mysqlPool.execute(
+    `DELETE FROM password_reset_otps
+     WHERE expires_at < NOW() OR consumed_at IS NOT NULL`
+  );
+
+  const [recentRows] = await mysqlPool.execute(
+    `SELECT id, created_at
+     FROM password_reset_otps
+     WHERE email = ? AND account_type = ? AND user_id = ? AND consumed_at IS NULL
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [account.email, account.accountType, account.id]
+  );
+
+  if (recentRows.length > 0) {
+    const createdAt = new Date(recentRows[0].created_at).getTime();
+    const secondsSinceLastRequest = Math.floor((Date.now() - createdAt) / 1000);
+    if (secondsSinceLastRequest < PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS) {
+      return {
+        passwordResetInitiated: true,
+        cooldownActive: true,
+        email: account.email
+      };
+    }
+  }
+
+  await mysqlPool.execute(
+    `UPDATE password_reset_otps
+     SET consumed_at = NOW()
+     WHERE email = ? AND account_type = ? AND user_id = ? AND consumed_at IS NULL`,
+    [account.email, account.accountType, account.id]
+  );
+
+  const otp = generatePasswordResetOtp();
+  const otpHash = hashPasswordResetOtp(account.email, otp);
+  const resetId = uuidv4();
+
+  await mysqlPool.execute(
+    `INSERT INTO password_reset_otps
+      (id, email, user_id, account_type, otp_hash, requested_from_ip, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))`,
+    [resetId, account.email, account.id, account.accountType, otpHash, requestIp, PASSWORD_RESET_OTP_EXPIRY_MINUTES]
+  );
+
+  const emailSent = await emailService.sendPasswordResetOtp(account.email, otp, PASSWORD_RESET_OTP_EXPIRY_MINUTES);
+  if (!emailSent) {
+    await mysqlPool.execute('DELETE FROM password_reset_otps WHERE id = ?', [resetId]);
+    throw new Error('Unable to send password reset OTP email');
+  }
+
+  return {
+    passwordResetInitiated: true,
+    cooldownActive: false,
+    email: account.email
+  };
+}
+
+async function verifyPasswordResetOtp(email, otp) {
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedOtp = String(otp || '').trim();
+
+  if (!normalizedEmail || !normalizedOtp) {
+    return { success: false, message: 'Email and OTP are required' };
+  }
+
+  const account = await findAuthAccountByEmail(normalizedEmail);
+  if (!account) {
+    return { success: false, message: 'Invalid or expired OTP' };
+  }
+
+  const [rows] = await mysqlPool.execute(
+    `SELECT id, otp_hash, attempts, expires_at, consumed_at
+     FROM password_reset_otps
+     WHERE email = ? AND account_type = ? AND user_id = ?
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [account.email, account.accountType, account.id]
+  );
+
+  if (rows.length === 0) {
+    return { success: false, message: 'No active OTP found. Please request a new one.' };
+  }
+
+  const resetRequest = rows[0];
+  if (resetRequest.consumed_at) {
+    return { success: false, message: 'This OTP has already been used. Please request a new one.' };
+  }
+
+  if (new Date(resetRequest.expires_at).getTime() < Date.now()) {
+    return { success: false, message: 'OTP expired. Please request a new one.' };
+  }
+
+  if ((resetRequest.attempts || 0) >= PASSWORD_RESET_MAX_ATTEMPTS) {
+    return { success: false, message: 'Too many invalid OTP attempts. Please request a new OTP.' };
+  }
+
+  const expectedHash = hashPasswordResetOtp(account.email, normalizedOtp);
+  if (expectedHash !== resetRequest.otp_hash) {
+    await mysqlPool.execute(
+      'UPDATE password_reset_otps SET attempts = attempts + 1 WHERE id = ?',
+      [resetRequest.id]
+    );
+    return { success: false, message: 'Invalid OTP. Please try again.' };
+  }
+
+  return { success: true, account };
+}
+
 async function handleLoginRequest(req, res) {
   try {
     const { email, password } = req.body;
@@ -1819,7 +2002,20 @@ async function handleLoginRequest(req, res) {
 
     const user = await authService.authenticateUser(email, password);
     if (!user) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+      const resetState = await issuePasswordResetOtp(email, req.ip);
+      const message = resetState.cooldownActive
+        ? 'Invalid email or password. A recent OTP is still active in your email inbox.'
+        : resetState.passwordResetInitiated
+          ? 'Invalid email or password. We sent an OTP to your email so you can reset your password.'
+          : 'Invalid email or password';
+
+      return res.status(401).json({
+        success: false,
+        message,
+        passwordResetInitiated: resetState.passwordResetInitiated,
+        email: resetState.email,
+        passwordResetRequiresWait: resetState.cooldownActive || false
+      });
     }
 
     if (user.status && user.status !== 'active') {
@@ -1875,6 +2071,96 @@ async function handleLoginRequest(req, res) {
 
 app.post('/api/auth/login', handleLoginRequest);
 app.post('/api/auth/:orgSlug/login', handleLoginRequest);
+app.post('/api/auth/password-reset/request', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || !String(email).trim()) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+
+    const resetState = await issuePasswordResetOtp(email, req.ip);
+    if (resetState.cooldownActive) {
+      return res.status(429).json({
+        success: false,
+        message: `Please wait ${PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS} seconds before requesting another OTP.`,
+        email: resetState.email
+      });
+    }
+
+    if (!resetState.passwordResetInitiated) {
+      return res.json({
+        success: true,
+        message: 'If an account exists for this email, a password reset OTP will be sent shortly.',
+        email: normalizeEmail(email)
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `OTP sent successfully. It will expire in ${PASSWORD_RESET_OTP_EXPIRY_MINUTES} minutes.`,
+      email: resetState.email
+    });
+  } catch (error) {
+    console.error('Password reset request error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to send password reset OTP' });
+  }
+});
+
+app.post('/api/auth/password-reset/verify', async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({ success: false, message: 'Email and OTP are required' });
+    }
+
+    const verification = await verifyPasswordResetOtp(email, otp);
+    if (!verification.success) {
+      return res.status(400).json({ success: false, message: verification.message });
+    }
+
+    res.json({ success: true, message: 'OTP verified successfully.' });
+  } catch (error) {
+    console.error('Password reset verify error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to verify OTP' });
+  }
+});
+
+app.post('/api/auth/password-reset/confirm', async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Email, OTP, and new password are required' });
+    }
+
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+
+    const verification = await verifyPasswordResetOtp(email, otp);
+    if (!verification.success) {
+      return res.status(400).json({ success: false, message: verification.message });
+    }
+
+    const passwordHash = await bcrypt.hash(String(newPassword), 10);
+    if (verification.account.accountType === 'admin_user') {
+      await mysqlPool.execute('UPDATE admin_users SET password_hash = ? WHERE id = ?', [passwordHash, verification.account.id]);
+    } else {
+      await mysqlPool.execute('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, verification.account.id]);
+    }
+
+    await mysqlPool.execute(
+      `UPDATE password_reset_otps
+       SET consumed_at = NOW()
+       WHERE email = ? AND account_type = ? AND user_id = ? AND consumed_at IS NULL`,
+      [verification.account.email, verification.account.accountType, verification.account.id]
+    );
+
+    res.json({ success: true, message: 'Password updated successfully. Please log in with your new password.' });
+  } catch (error) {
+    console.error('Password reset confirm error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to reset password' });
+  }
+});
 
 // ==================== TRIAL SYSTEM HELPER ====================
 /**
@@ -3543,6 +3829,33 @@ app.post('/api/admin/branding/logo-upload', (req, res) => {
 (async () => {
   try {
     await mysqlPool.execute(`
+      CREATE TABLE IF NOT EXISTS password_reset_otps (
+        id VARCHAR(36) PRIMARY KEY,
+        email VARCHAR(255) NOT NULL,
+        user_id VARCHAR(36) NOT NULL,
+        account_type VARCHAR(20) NOT NULL,
+        otp_hash VARCHAR(255) NOT NULL,
+        attempts INT DEFAULT 0,
+        requested_from_ip VARCHAR(64) NULL,
+        expires_at DATETIME NOT NULL,
+        consumed_at DATETIME NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_password_reset_email (email),
+        INDEX idx_password_reset_account (user_id, account_type),
+        INDEX idx_password_reset_expires (expires_at)
+      )
+    `);
+    console.log('Password reset OTP table ready');
+  } catch (err) {
+    console.warn(' Could not create password_reset_otps table:', err.message);
+  }
+})();
+
+// Auto-create platform_settings table
+(async () => {
+  try {
+    await mysqlPool.execute(`
       CREATE TABLE IF NOT EXISTS platform_settings (
         id INT AUTO_INCREMENT PRIMARY KEY,
         setting_key VARCHAR(100) UNIQUE NOT NULL,
@@ -3644,12 +3957,7 @@ app.post('/api/superadmin/settings', async (req, res) => {
   }
 });
 
-// ============================================================
 // SUPPORT TICKET SYSTEM
-// ============================================================
-
-
-// Support Ticket Number Generator
 let nextSupportTicketNumber = null;
 
 const generateTicketNumber = async () => {
@@ -6012,7 +6320,6 @@ app.post('/api/twilio/voice', async (req, res) => {
 
     // Ensure appUrl has protocol
     appUrl = ensureHttpProtocol(appUrl);
-
     // Twilio Media Streams expect a plain WebSocket URL.
     // Dynamic values are passed via nested <Parameter> elements instead.
     // Allow a dedicated WS base URL so production can bypass a frontend proxy

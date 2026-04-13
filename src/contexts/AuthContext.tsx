@@ -95,7 +95,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw new Error('Invalid credentials');
       }
     } catch (error: any) {
-      return { data: null, error: { message: error.message || 'Sign in failed' } };
+      return { data: null, error: { message: error.message || 'Sign in failed', ...(error.data || {}) } };
     }
   };
 

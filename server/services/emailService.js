@@ -115,6 +115,62 @@ class EmailService {
         }
     }
 
+    async sendPasswordResetOtp(toEmail, otp, expiresInMinutes = 10) {
+        if (!toEmail || !otp) return false;
+
+        const mailOptions = {
+            from: `"Ziya Voice Agent" <${process.env.SMTP_USER || 'no-reply@ziyavoice.com'}>`,
+            to: toEmail,
+            subject: 'Your Ziya Voice password reset OTP',
+            text: `Your password reset OTP is ${otp}. It expires in ${expiresInMinutes} minutes. If you did not request this, you can ignore this email.`,
+            html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+                    <h2>Password Reset Request</h2>
+                    <p>Use the OTP below to reset your Ziya Voice password:</p>
+                    <div style="margin: 24px 0; padding: 16px; background: #f3f4f6; border-radius: 8px; text-align: center;">
+                        <span style="font-size: 32px; letter-spacing: 8px; font-weight: bold; color: #111827;">${otp}</span>
+                    </div>
+                    <p>This OTP expires in <strong>${expiresInMinutes} minutes</strong>.</p>
+                    <p style="font-size: 14px; color: #666;">If you did not request a password reset, you can safely ignore this email.</p>
+                </div>
+            `
+        };
+
+        if (this.transporter) {
+            try {
+                const info = await this.transporter.sendMail(mailOptions);
+                console.log(`Password reset OTP email sent to ${toEmail} | Message ID: ${info.messageId}`);
+                return true;
+            } catch (err) {
+                console.error(`Failed to send password reset OTP to ${toEmail}:`, err);
+                return false;
+            }
+        }
+
+        console.log('SMTP block missing in .env. Falling back to ethereal/test mode for password reset email...');
+        try {
+            const testAccount = await nodemailer.createTestAccount();
+            const testTransporter = nodemailer.createTransport({
+                host: 'smtp.ethereal.email',
+                port: 587,
+                secure: false,
+                auth: {
+                    user: testAccount.user,
+                    pass: testAccount.pass,
+                },
+            });
+
+            mailOptions.from = testAccount.user;
+            const info = await testTransporter.sendMail(mailOptions);
+            console.log(`TEST password reset email sent to ${toEmail}`);
+            console.log(`Preview your sent email here: ${nodemailer.getTestMessageUrl(info)}`);
+            return true;
+        } catch (err) {
+            console.error('Failed to use Ethereal mock email for password reset:', err);
+            return false;
+        }
+    }
+
     generateMeetLink() {
         const str = () => Math.random().toString(36).substring(2, 6);
         return `https://meet.google.com/ziya-${str()}-${str()}`;
