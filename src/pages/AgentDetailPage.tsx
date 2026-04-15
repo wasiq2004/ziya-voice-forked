@@ -33,6 +33,7 @@ import { getApiBaseUrl, getApiPath } from '../utils/api';
 import { DocumentService } from '../services/documentService';
 import { ToolExecutionService } from '../services/toolExecutionService';
 import { useAuth } from '../contexts/AuthContext';
+import { agentService } from '../services/agentService';
 import { encode, decode } from './audioHelpers';
 
 interface AgentDetailPageProps {
@@ -271,6 +272,11 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
     const [editedAgent, setEditedAgent] = useState<VoiceAgent>(initialAgent);
     const [isEditingPrompt, setIsEditingPrompt] = useState(false);
     const [isActionsDropdownOpen, setActionsDropdownOpen] = useState(false);
+    
+    // Save state management
+    const hasDirtyChangesRef = useRef<boolean>(false);
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+    const [saveMessage, setSaveMessage] = useState<string>('');
 
     const [isModelModalOpen, setModelModalOpen] = useState(false);
     const [isVoiceModalOpen, setVoiceModalOpen] = useState(false);
@@ -329,9 +335,17 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
     const sessionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const callActiveDebugRef = useRef<boolean>(false);
     const webSocketRef = useRef<WebSocket | null>(null);  // Add this line for WebSocket connection
-    const browserVoiceReadyRef = useRef<boolean>(false);
-    const browserVoiceReconnectAttemptsRef = useRef<number>(0);
-    const browserVoiceReconnectTimerRef = useRef<number | null>(null);
+    const audioBufferRef = useRef<Float32Array[]>([]);  // Collect audio chunks
+    const isRecordingRef = useRef<boolean>(false);  // Track recording state
+    const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);  // Silence detection timeout
+    const realtimeTranscribeTimerRef = useRef<number | null>(null);  // Real-time transcription timer (browser interval ID)
+
+    // Real-time conversation refs
+    const audioResponseQueueRef = useRef<string[]>([]);  // Queue of base64 audio to play
+    const isPlayingAudioRef = useRef<boolean>(false);  // Track if audio is currently playing
+    const currentAudioRef = useRef<HTMLAudioElement | null>(null);  // Currently playing audio element
+    const lastProcessedTranscriptRef = useRef<string>('');  // Track last sent transcript to avoid duplicates
+    const audioPlaybackTimerRef = useRef<number | null>(null);  // Timer for processing audio queue
 
     const sessionPromiseRef = useRef<Promise<any> | null>(null);
     const inputAudioContextRef = useRef<AudioContext | null>(null);
@@ -375,6 +389,15 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
     const [newToolFunctionType, setNewToolFunctionType] = useState<'Webhook' | 'WebForm' | 'GoogleSheets'>('GoogleSheets');
 
     const actionsDropdownRef = useRef<HTMLDivElement>(null);
+
+    // Sync agent changes and reset dirty state
+    useEffect(() => {
+        setAgent(initialAgent);
+        setEditedAgent(initialAgent);
+        hasDirtyChangesRef.current = false;
+        setSaveStatus('idle');
+        setSaveMessage('');
+    }, [initialAgent?.id]); // Reset when agent ID changes (different agent loaded)
 
     useEffect(() => {
         if (chatContainerRef.current) {
@@ -563,7 +586,171 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
         }, 150); // Small delay to ensure TTS has fully ended
     };
 
+    // Helper: Process audio response queue (plays queued audio sequentially)
+    const processAudioQueue = async () => {
+        if (isPlayingAudioRef.current || audioResponseQueueRef.current.length === 0) {
+            return;
+        }
+
+        isPlayingAudioRef.current = true;
+        const base64Audio = audioResponseQueueRef.current.shift();
+
+        if (!base64Audio) {
+            isPlayingAudioRef.current = false;
+            return;
+        }
+
+        try {
+            console.log('🔊 Playing queued audio...');
+            const audioBlob = new Blob(
+                [Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0))],
+                { type: 'audio/wav' }
+            );
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+            currentAudioRef.current = audio;
+
+            await new Promise<void>((resolve) => {
+                audio.onended = () => {
+                    URL.revokeObjectURL(audioUrl);
+                    isPlayingAudioRef.current = false;
+                    resolve();
+                };
+                audio.onerror = () => {
+                    URL.revokeObjectURL(audioUrl);
+                    isPlayingAudioRef.current = false;
+                    resolve();
+                };
+                audio.play().catch(err => {
+                    console.error('Audio play error:', err);
+                    URL.revokeObjectURL(audioUrl);
+                    isPlayingAudioRef.current = false;
+                    resolve();
+                });
+            });
+
+            // Process next in queue
+            processAudioQueue();
+        } catch (error) {
+            console.error('❌ Queue audio error:', error);
+            isPlayingAudioRef.current = false;
+            processAudioQueue();
+        }
+    };
+
+    // Helper: Queue audio response for playback
+    const queueAudioResponse = async (text: string) => {
+        try {
+            const voiceId = editedAgent.voiceId;
+            const isSarvamVoice = voiceId?.startsWith('sarvam-');
+            const isElevenLabsVoice = voiceId?.startsWith('eleven-');
+
+            if (isSarvamVoice) {
+                console.log('🔊 Queuing Sarvam TTS response...');
+                const apiBaseUrl = getApiBaseUrl();
+                const response = await fetch(`${apiBaseUrl}${getApiPath()}/simple-voice/tts-sarvam`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text,
+                        voiceId: voiceId.replace('sarvam-', ''),
+                        language: editedAgent.language || 'en-IN'
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`TTS API error: ${response.status}`);
+                }
+
+                const result = await response.json();
+                if (result.success && result.audio) {
+                    audioResponseQueueRef.current.push(result.audio);
+                    processAudioQueue();
+                }
+            } else if (isElevenLabsVoice) {
+                console.log('🔊 Queuing ElevenLabs TTS response...');
+                // For ElevenLabs, we'll play directly since we can't easily queue it
+                // This ensures ElevenLabs voices also get audio output
+                await playAgentResponse(text);
+            }
+        } catch (error) {
+            console.error('❌ Error queuing audio:', error);
+        }
+    };
+
     // Function to convert text to speech using Eleven Labs
+    // Helper: Determine TTS provider from voiceId and play response
+    const playAgentResponse = async (text: string) => {
+        try {
+            console.log('🔊 Playing agent response...');
+            
+            // Determine which TTS provider to use
+            const voiceId = editedAgent.voiceId;
+            const isSarvamVoice = voiceId?.startsWith('sarvam-');
+            const isElevenLabsVoice = voiceId?.startsWith('eleven-');
+
+            if (isSarvamVoice) {
+                // Use Sarvam TTS via backend
+                console.log('🔊 Using Sarvam TTS');
+                const apiBaseUrl = getApiBaseUrl();
+                const response = await fetch(`${apiBaseUrl}${getApiPath()}/simple-voice/tts-sarvam`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text,
+                        voiceId: voiceId.replace('sarvam-', ''),
+                        language: editedAgent.language || 'en-IN'
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`TTS API error: ${response.status}`);
+                }
+
+                const result = await response.json();
+                if (result.success && result.audio) {
+                    // Convert base64 audio to blob and play
+                    const audioBlob = new Blob(
+                        [Uint8Array.from(atob(result.audio), c => c.charCodeAt(0))],
+                        { type: result.mimeType || 'audio/wav' }
+                    );
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const audio = new Audio(audioUrl);
+                    
+                    return new Promise<void>((resolve) => {
+                        audio.onended = () => {
+                            URL.revokeObjectURL(audioUrl);
+                            resolve();
+                        };
+                        audio.onerror = () => {
+                            URL.revokeObjectURL(audioUrl);
+                            resolve();
+                        };
+                        audio.play().catch(err => {
+                            console.error('Audio play error:', err);
+                            URL.revokeObjectURL(audioUrl);
+                            resolve();
+                        });
+                    });
+                }
+            } else if (isElevenLabsVoice) {
+                // Use ElevenLabs TTS
+                console.log('🔊 Using ElevenLabs TTS');
+                await convertTextToSpeech(text);
+            } else {
+                // Default to ElevenLabs
+                console.log('🔊 Using default ElevenLabs TTS');
+                await convertTextToSpeech(text);
+            }
+        } catch (error) {
+            console.error('❌ Error playing response:', error);
+        }
+    };
+
     const convertTextToSpeech = async (text: string) => {
         try {   
             // Get Eleven Labs API key from environment variables
@@ -678,6 +865,11 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
             // Stop any currently playing preview
             if (previewAudioRef.current) {
                 previewAudioRef.current.pause();
+                previewAudioRef.current.currentTime = 0;
+                // Revoke old blob URL if exists
+                if (previewAudioRef.current.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(previewAudioRef.current.src);
+                }
                 previewAudioRef.current = null;
                 setPreviewAudio(null);
             }
@@ -694,36 +886,57 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
                 })
             });
 
-            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
 
-            if (result.success) {
-                // Create audio from base64 data
-                const audioSrc = result.audioData.startsWith('data:')
-                    ? result.audioData
-                    : `data:audio/mpeg;base64,${result.audioData}`;
-                const audio = new Audio(audioSrc);
-                previewAudioRef.current = audio;
-                setPreviewAudio(audio);
-                audio.play();
+            // Get the audio as a blob directly from the response
+            const audioBlob = await response.blob();
 
-                // Set up event listeners
-                audio.onended = () => {
+            if (!audioBlob.size) {
+                throw new Error('Empty audio response received');
+            }
+
+            // Create blob URL
+            const blobUrl = URL.createObjectURL(audioBlob);
+
+            // Create and play audio
+            const audio = new Audio(blobUrl);
+            previewAudioRef.current = audio;
+            setPreviewAudio(audio);
+
+            // Add error handling before playing
+            audio.onerror = (error) => {
+                console.error('Audio playback error:', error);
+                URL.revokeObjectURL(blobUrl);
+                alert('Failed to play audio. Please try again.');
+                playingVoiceRef.current = null;
+                setPreviewAudio(null);
+                previewAudioRef.current = null;
+            };
+
+            audio.onended = () => {
+                URL.revokeObjectURL(blobUrl);
+                playingVoiceRef.current = null;
+                setPreviewAudio(null);
+                previewAudioRef.current = null;
+            };
+
+            // Play the audio
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(err => {
+                    console.error('Play promise rejected:', err);
+                    URL.revokeObjectURL(blobUrl);
+                    alert('Unable to play audio. Please check browser permissions.');
                     playingVoiceRef.current = null;
                     previewAudioRef.current = null;
-                    setPreviewAudio(null);
-                };
-
-                audio.onerror = () => {
-                    playingVoiceRef.current = null;
-                    previewAudioRef.current = null;
-                    setPreviewAudio(null);
-                };
-            } else {
-                throw new Error(result.message || 'Failed to generate voice preview');
+                });
             }
         } catch (error) {
             console.error('Error playing voice preview:', error);
-            alert('Failed to play voice preview. Please try again.');
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            alert(`Failed to play voice preview: ${errorMessage}`);
             playingVoiceRef.current = null;
         }
     };
@@ -731,6 +944,13 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
     const stopVoicePreview = () => {
         if (previewAudioRef.current) {
             previewAudioRef.current.pause();
+            previewAudioRef.current.currentTime = 0;
+            
+            // Revoke blob URL to free memory
+            if (previewAudioRef.current.src.startsWith('blob:')) {
+                URL.revokeObjectURL(previewAudioRef.current.src);
+            }
+            
             previewAudioRef.current = null;
             setPreviewAudio(null);
         }
@@ -842,213 +1062,186 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
     // NOTE: Browser STT is handled in the backend with Sarvam, so there is no local speech recognizer here.
     const initializeSpeechRecognition = useCallback(() => {
         // The microphone stream is sent to the backend WebSocket for Sarvam STT.
-        console.log('Using Sarvam STT through backend WebSocket connection');
+        console.log('Using Sarvam STT through backend REST API');
         return null;
     }, [editedAgent]);
 
-    const buildBrowserVoiceSocketUrl = useCallback(() => {
-        const apiBaseUrl = getApiBaseUrl();
-        const wsProtocol = apiBaseUrl.startsWith('https') ? 'wss:' : 'ws:';
-        const wsHost = new URL(apiBaseUrl).host;
-        const voiceId = editedAgent.voiceId || 'default';
-        const agentId = editedAgent.id;
-        const agentIdentity = encodeURIComponent(editedAgent.identity || '');
-        const encodedUserId = encodeURIComponent(userId || '');
+    // Helper: Concatenate multiple Float32Arrays
+    const concatFloat32 = (chunks: Float32Array[]) => {
+        const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+        const result = new Float32Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+            result.set(chunk, offset);
+            offset += chunk.length;
+        }
+        return result;
+    };
 
-        return `${wsProtocol}//${wsHost}/browser-voice-stream?voiceId=${encodeURIComponent(voiceId)}&agentId=${encodeURIComponent(agentId)}&identity=${agentIdentity}&userId=${encodedUserId}`;
-    }, [editedAgent.id, editedAgent.identity, editedAgent.voiceId, userId]);
+    // Helper: Convert Float32Array to WAV format with proper headers
+    const floatToWav = (float32Array: Float32Array, sampleRate: number = 16000): ArrayBuffer => {
+        const buffer = new ArrayBuffer(44 + float32Array.length * 2);
+        const view = new DataView(buffer);
 
-    const setupBrowserVoiceSocket = useCallback((socket: WebSocket) => {
-        socket.onopen = () => {
-            console.log('WebSocket connection established');
-            speechRecognitionRetryCountRef.current = 0;
-            browserVoiceReadyRef.current = false;
-
-            const setupTimeout = window.setTimeout(() => {
-                if (!browserVoiceReadyRef.current) {
-                    console.warn('Session setup timed out, closing socket');
-                    socket.close(1000, 'Setup timeout');
-                }
-            }, 15000);
-
-            (socket as any).setupTimeout = setupTimeout;
-
-            if (scriptProcessorRef.current) {
-                scriptProcessorRef.current.onaudioprocess = (audioProcessingEvent) => {
-                    if (!browserVoiceReadyRef.current || !webSocketRef.current || webSocketRef.current.readyState !== WebSocket.OPEN) {
-                        return;
-                    }
-
-                    const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-                    const hasAudio = Array.from(inputData).some(sample => Math.abs(sample) > 0.01);
-                    if (!hasAudio) {
-                        return;
-                    }
-
-                    const int16Data = new Int16Array(inputData.length);
-                    for (let i = 0; i < inputData.length; i += 1) {
-                        int16Data[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
-                    }
-
-                    const uint8Array = new Uint8Array(int16Data.buffer);
-                    const payload = uint8ArrayToBase64(uint8Array);
-
-                    try {
-                        webSocketRef.current.send(JSON.stringify({
-                            event: 'audio',
-                            data: payload
-                        }));
-                    } catch (error) {
-                        console.error('Failed to send audio chunk:', error);
-                    }
-                };
-            }
-
-            const heartbeatInterval = setInterval(() => {
-                if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-                    webSocketRef.current.send(JSON.stringify({ event: 'ping' }));
-                }
-            }, 10000);
-
-            (socket as any).heartbeatInterval = heartbeatInterval;
-        };
-
-        socket.onmessage = async (event) => {
-            const data = JSON.parse(event.data);
-            console.log('Received message from server:', data.event);
-
-            if (data.event === 'connected') {
-                console.log('Browser voice socket acknowledged by server');
-                return;
-            }
-
-            if (data.event === 'session-ready') {
-                browserVoiceReadyRef.current = true;
-                browserVoiceReconnectAttemptsRef.current = 0;
-                if ((webSocketRef.current as any)?.setupTimeout) {
-                    clearTimeout((webSocketRef.current as any).setupTimeout);
-                    (webSocketRef.current as any).setupTimeout = null;
-                }
-                console.log('Browser voice session is ready');
-                return;
-            }
-
-            if (data.event === 'error') {
-                console.error('Server error:', data.message);
-                return;
-            }
-
-            if (data.event === 'ping') {
-                if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-                    webSocketRef.current.send(JSON.stringify({ event: 'pong' }));
-                }
-                return;
-            }
-
-            if (data.event === 'pong') {
-                return;
-            }
-
-            if (data.event === 'transcript' && data.text) {
-                console.log('User detected:', data.text);
-                setChatMessages(prev => [...prev, { sender: 'user', text: data.text }]);
-                conversationHistoryRef.current.push({ role: 'user', text: data.text });
-            } else if (data.event === 'agent-response' && data.text) {
-                console.log('Agent response:', data.text);
-                setChatMessages(prev => [...prev, { sender: 'agent', text: data.text }]);
-                conversationHistoryRef.current.push({ role: 'model', text: data.text });
-            } else if (data.event === 'message' && data.text) {
-                console.log('Agent message:', data.text);
-                setChatMessages(prev => [...prev, { sender: 'agent', text: data.text }]);
-            } else if (data.event === 'stop-audio') {
-                stopAgentAudioPlayback();
-            } else if (data.event === 'audio' && data.audio) {
-                try {
-                    console.log('Playing agent response audio');
-                    await playAgentMessageAudio(data.audio);
-                } catch (error) {
-                    console.error('Error playing audio response:', error);
-                }
+        // WAV header
+        const writeString = (offset: number, string: string) => {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
             }
         };
 
-        socket.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
+        writeString(0, 'RIFF');
+        view.setUint32(4, 36 + float32Array.length * 2, true);
+        writeString(8, 'WAVE');
+        writeString(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true); // PCM
+        view.setUint16(22, 1, true); // Mono
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeString(36, 'data');
+        view.setUint32(40, float32Array.length * 2, true);
 
-        socket.onclose = (event) => {
-            console.log('WebSocket connection closed', event);
-            console.log('Close code:', event.code);
-            console.log('Close reason:', event.reason);
-            console.log('Was clean:', event.wasClean);
+        // Convert float32 to int16
+        let offset = 44;
+        for (let i = 0; i < float32Array.length; i++) {
+            const s = Math.max(-1, Math.min(1, float32Array[i]));
+            view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+            offset += 2;
+        }
 
-            if ((socket as any).heartbeatInterval) {
-                clearInterval((socket as any).heartbeatInterval);
+        return buffer;
+    };
+
+    // Helper: Send user transcript to Gemini LLM for response (fire-and-forget)
+    const sendUserInputToLLM = async (userText: string) => {
+        try {
+            console.log('🤖 Sending to Gemini LLM...');
+
+            // Add user message to conversation history
+            conversationHistoryRef.current.push({ role: 'user', text: userText });
+
+            // Build conversation for Gemini
+            const contentsForApi = conversationHistoryRef.current.map(msg => ({
+                role: msg.role === 'agent' ? 'model' : 'user',
+                parts: [{ text: msg.text }]
+            }));
+
+            // Create LLM service with Gemini API key
+            const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
+            if (!geminiApiKey) {
+                throw new Error('Gemini API key not configured');
             }
 
-            if ((socket as any).setupTimeout) {
-                clearTimeout((socket as any).setupTimeout);
+            const llmService = new LLMService(geminiApiKey);
+
+            // Prepare system instruction with agent identity
+            let systemInstruction = editedAgent.identity || 'You are a helpful assistant.';
+
+            // Generate response using Gemini
+            const llmResponse = await llmService.generateContent({
+                model: editedAgent.model || 'gemini-pro',
+                contents: contentsForApi,
+                config: { systemInstruction }
+            });
+
+            const agentResponse = llmResponse.text;
+            
+            if (agentResponse) {
+                console.log('🤖 Agent response:', agentResponse);
+                
+                // Add agent response to conversation history
+                conversationHistoryRef.current.push({ role: 'agent', text: agentResponse });
+                
+                // Display agent response in chat immediately (don't wait for audio)
+                setChatMessages(prev => [...prev, { sender: 'agent', text: agentResponse }]);
+                
+                // Queue the response for audio playback (fire-and-forget, non-blocking)
+                queueAudioResponse(agentResponse);
+                
+                return agentResponse;
+            }
+        } catch (error) {
+            console.error('❌ LLM error:', error);
+        }
+        return null;
+    };
+
+    // Helper: Send audio to Sarvam for transcription (non-blocking)
+    const transcribeAudio = async (audioData: Float32Array) => {
+        try {
+            console.log('🎙️ Transcribing audio chunk...');
+            
+            // Convert to WAV
+            const wavBuffer = floatToWav(audioData);
+            
+            // Convert to base64
+            const uint8 = new Uint8Array(wavBuffer);
+            let binary = '';
+            for (let i = 0; i < uint8.length; i++) {
+                binary += String.fromCharCode(uint8[i]);
+            }
+            const base64Audio = btoa(binary);
+
+            // Send to backend
+            const apiBaseUrl = getApiBaseUrl();
+            const response = await fetch(`${apiBaseUrl}${getApiPath()}/simple-voice/transcribe`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ audio: base64Audio })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
             }
 
-            if (webSocketRef.current === socket) {
-                webSocketRef.current = null;
-            }
-
-            const wasBrowserVoiceReady = browserVoiceReadyRef.current;
-            browserVoiceReadyRef.current = false;
-
-            const isCallStillActive = isCallActive || callActiveDebugRef.current;
-            const shouldReconnect =
-                isCallStillActive &&
-                wasBrowserVoiceReady &&
-                event.code !== 1000 &&
-                event.code !== 1001 &&
-                browserVoiceReconnectAttemptsRef.current < 5;
-
-            if (shouldReconnect) {
-                const attempt = browserVoiceReconnectAttemptsRef.current + 1;
-                browserVoiceReconnectAttemptsRef.current = attempt;
-                const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
-                console.log(`Attempting to reconnect WebSocket... attempt ${attempt} in ${backoffMs}ms`);
-
-                if (browserVoiceReconnectTimerRef.current) {
-                    window.clearTimeout(browserVoiceReconnectTimerRef.current);
+            const result = await response.json();
+            console.log('✅ Transcription result:', result);
+            
+            if (result.success && result.transcript) {
+                console.log('👤 User said:', result.transcript);
+                
+                // Only send to LLM if it's a new transcript (avoid duplicates)
+                if (result.transcript !== lastProcessedTranscriptRef.current) {
+                    lastProcessedTranscriptRef.current = result.transcript;
+                    
+                    // Display user message
+                    setChatMessages(prev => [...prev, { sender: 'user', text: result.transcript }]);
+                    
+                    // Fire-and-forget: Send to Gemini LLM (don't await)
+                    // This allows transcription to continue while LLM processes
+                    sendUserInputToLLM(result.transcript).catch(err => 
+                        console.error('Background LLM processing error:', err)
+                    );
                 }
-
-                browserVoiceReconnectTimerRef.current = window.setTimeout(() => {
-                    const stillActive = isCallActive || callActiveDebugRef.current;
-                    if (!stillActive) {
-                        return;
-                    }
-
-                    if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-                        return;
-                    }
-
-                    console.log('Reconnecting browser voice websocket now');
-                    const reconnectSocket = new WebSocket(buildBrowserVoiceSocketUrl());
-                    webSocketRef.current = reconnectSocket;
-                    setupBrowserVoiceSocket(reconnectSocket);
-                }, backoffMs);
+                
+                return result.transcript;
             }
-        };
-    }, [buildBrowserVoiceSocketUrl, isCallActive]);
+        } catch (error) {
+            console.error('❌ Transcription error:', error);
+        }
+        return null;
+    };
 
-    // Enhanced startCall function with BrowserVoiceHandler (all API keys handled on backend)
+    // Browser voice WebSocket implementation removed - using simple REST API at /api/simple-voice instead
+
+    // Enhanced startCall function
     const startCall = async () => {
-        console.log('🎙️ Starting browser voice call...');
+        console.log('🎙️ Starting call...');
 
         console.log('Setting isCallActive to true');
         console.log('Call stack for setting isCallActive to true:', new Error().stack);
         // Set a flag to prevent immediate false setting
         callActiveDebugRef.current = true;
         setIsCallActive(true);
-        browserVoiceReadyRef.current = false;
-        browserVoiceReconnectAttemptsRef.current = 0;
-        if (browserVoiceReconnectTimerRef.current) {
-            window.clearTimeout(browserVoiceReconnectTimerRef.current);
-            browserVoiceReconnectTimerRef.current = null;
-        }
+
+        // Initialize conversation history for this call
+        conversationHistoryRef.current = [];
+        setChatMessages([]);
 
         // Clear any existing timeouts
         if (sessionTimeoutRef.current) {
@@ -1081,7 +1274,7 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
         }
 
         try {
-            // Set up browser mic capture for the Sarvam STT -> Gemini -> TTS loop.
+            // Set up browser mic capture
             console.log('Setting up audio processing for live session');
 
             let stream: MediaStream;
@@ -1114,6 +1307,35 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
                 silentGain.gain.value = 0;
                 scriptProcessorRef.current.connect(silentGain);
                 silentGain.connect(inputAudioContextRef.current.destination);
+
+                // Set up audio collection and real-time transcription
+                isRecordingRef.current = true;
+                audioBufferRef.current = [];
+
+                // Set up periodic transcription (every 500ms)
+                realtimeTranscribeTimerRef.current = window.setInterval(async () => {
+                    if (audioBufferRef.current.length > 0 && isRecordingRef.current) {
+                        // Concatenate all accumulated chunks
+                        const audioToTranscribe = concatFloat32(audioBufferRef.current);
+                        
+                        // Reset buffer for next batch
+                        audioBufferRef.current = [];
+                        
+                        // Send to Sarvam (don't await - send in background)
+                        transcribeAudio(audioToTranscribe).catch(err => console.error('Real-time transcription error:', err));
+                    }
+                }, 500); // Send chunks every 500ms
+
+                scriptProcessorRef.current.onaudioprocess = (event) => {
+                    if (!isRecordingRef.current) return;
+
+                    const inputData = event.inputBuffer.getChannelData(0);
+                    
+                    // Copy audio data to buffer - will be picked up by the periodic timer
+                    audioBufferRef.current.push(new Float32Array(inputData));
+                };
+
+                console.log('✅ Real-time audio processor configured (500ms intervals)');
             } catch (error) {
                 console.error('Failed to create audio context:', error);
                 alert('Failed to initialize audio processing. Please try again.');
@@ -1122,38 +1344,22 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
                 return;
             }
 
-            // Initialize WebSocket connection to backend for browser voice processing.
-            try {
-                const isCallActuallyActive = isCallActive || callActiveDebugRef.current;
-                console.log('Initializing WebSocket connection for browser voice processing. isCallActuallyActive:', isCallActuallyActive);
-
-                if (isCallActuallyActive) {
-                    // Ensure we have microphone access before starting
-                    console.log('Starting WebSocket connection. Microphone stream available:', !!microphoneStreamRef.current);
-                    if (microphoneStreamRef.current) {
-                        // Add a small delay to ensure everything is ready
-                       try {
-                            const wsUrl = buildBrowserVoiceSocketUrl();
-                            console.log('Browser voice WebSocket URL:', wsUrl);
-                            const socket = new WebSocket(wsUrl);
-                            webSocketRef.current = socket;
-                            setupBrowserVoiceSocket(socket);
-                        } catch (startError) {
-                            console.error('Error establishing WebSocket connection:', startError);
-                        }// Increased delay to 750ms to ensure everything is ready
-                    } else {
-                        console.error('Cannot start WebSocket connection: No microphone stream available');
-                    }
-                } else {
-                    console.log('WebSocket connection not started. Call active:', isCallActuallyActive);
-                }
-            } catch (error) {
-                console.error('Error initializing WebSocket connection:', error);
-                // Don't let connection errors kill the entire call
-                console.log('WebSocket connection failed to initialize, but continuing call');
-            };
-
             console.log('Audio processing started successfully');
+
+            // Play greeting line via TTS immediately after call initialization
+            if (editedAgent.settings.greetingLine && !greetingSentRef.current) {
+                try {
+                    console.log('🎤 Playing greeting line via TTS...');
+                    greetingSentRef.current = true;
+                    // Stream greeting directly using TTS without waiting
+                    playVoicePreview(editedAgent.voiceId, editedAgent.settings.greetingLine).catch(err => {
+                        console.error('Error playing greeting:', err);
+                        // Don't fail the entire call if greeting fails
+                    });
+                } catch (greetingError) {
+                    console.error('Greeting setup error:', greetingError);
+                }
+            }
         } catch (error) {
             console.error('Failed to start call:', error);
             alert('Could not start the call. Please ensure you have given microphone permissions.');
@@ -1167,7 +1373,7 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
         }
     };
 
-    // Voice input is streamed to the backend where Sarvam STT, Gemini, and TTS are chained together.
+    // Voice processing now uses simple REST API at /api/simple-voice
 
     const stopCall = useCallback(() => {
         console.log('Stopping call...');
@@ -1177,14 +1383,29 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
         callActiveDebugRef.current = false;
         // Reset the greeting sent flag when stopping the call
         greetingSentRef.current = false;
-        browserVoiceReadyRef.current = false;
-        browserVoiceReconnectAttemptsRef.current = 0;
-        if (browserVoiceReconnectTimerRef.current) {
-            window.clearTimeout(browserVoiceReconnectTimerRef.current);
-            browserVoiceReconnectTimerRef.current = null;
-        }
 
         // Stop audio processing
+        isRecordingRef.current = false;
+        
+        // Clear real-time transcription timer
+        if (realtimeTranscribeTimerRef.current) {
+            clearInterval(realtimeTranscribeTimerRef.current);
+            realtimeTranscribeTimerRef.current = null;
+        }
+        
+        if (silenceTimeoutRef.current) {
+            clearTimeout(silenceTimeoutRef.current);
+            silenceTimeoutRef.current = null;
+        }
+
+        // Transcribe any remaining audio before stopping
+        if (audioBufferRef.current.length > 0) {
+            console.log('📤 Call stopping, transcribing remaining audio...');
+            const fullAudio = concatFloat32(audioBufferRef.current);
+            transcribeAudio(fullAudio).catch(err => console.error('Error transcribing final audio:', err));
+            audioBufferRef.current = [];
+        }
+
         if (scriptProcessorRef.current) {
             scriptProcessorRef.current.onaudioprocess = null;
         }
@@ -1202,7 +1423,7 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
         if (webSocketRef.current) {
             webSocketRef.current.close();
             webSocketRef.current = null;
-            console.log('Closed WebSocket connection for browser voice processing');
+            console.log('Closed WebSocket connection');
         }
 
         stopAgentAudioPlayback();
@@ -1239,6 +1460,28 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
         }
         inputAudioContextRef.current = null;
 
+        // Clear audio response queue and stop playback
+        audioResponseQueueRef.current = [];
+        isPlayingAudioRef.current = false;
+        if (currentAudioRef.current) {
+            try {
+                currentAudioRef.current.pause();
+                currentAudioRef.current.src = '';
+            } catch (error) {
+                console.error('Error stopping audio playback:', error);
+            }
+            currentAudioRef.current = null;
+        }
+
+        // Clear audio playback timer
+        if (audioPlaybackTimerRef.current) {
+            clearInterval(audioPlaybackTimerRef.current);
+            audioPlaybackTimerRef.current = null;
+        }
+
+        // Clear last processed transcript to reset on next call
+        lastProcessedTranscriptRef.current = '';
+
         // Clear conversation history when call ends
         conversationHistoryRef.current = [];
     }, []);
@@ -1248,6 +1491,21 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
         return () => {
             // Cleanup when component unmounts
             console.log('Cleaning up voice call resources');
+
+            // Stop recording and clear audio buffers
+            isRecordingRef.current = false;
+            
+            // Clear real-time transcription timer
+            if (realtimeTranscribeTimerRef.current) {
+                clearInterval(realtimeTranscribeTimerRef.current);
+                realtimeTranscribeTimerRef.current = null;
+            }
+            
+            if (silenceTimeoutRef.current) {
+                clearTimeout(silenceTimeoutRef.current);
+                silenceTimeoutRef.current = null;
+            }
+            audioBufferRef.current = [];
 
             // Clear any existing timeouts
             if (sessionTimeoutRef.current) {
@@ -1293,12 +1551,28 @@ const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ agent: initialAgent, 
             // Reset the greeting sent flag
             greetingSentRef.current = false;
             callActiveDebugRef.current = false;
-            browserVoiceReadyRef.current = false;
-            browserVoiceReconnectAttemptsRef.current = 0;
-            if (browserVoiceReconnectTimerRef.current) {
-                window.clearTimeout(browserVoiceReconnectTimerRef.current);
-                browserVoiceReconnectTimerRef.current = null;
+
+            // Clear audio response queue and stop playback on unmount
+            audioResponseQueueRef.current = [];
+            isPlayingAudioRef.current = false;
+            if (currentAudioRef.current) {
+                try {
+                    currentAudioRef.current.pause();
+                    currentAudioRef.current.src = '';
+                } catch (error) {
+                    console.error('Error stopping audio playback on unmount:', error);
+                }
+                currentAudioRef.current = null;
             }
+
+            // Clear audio playback timer on unmount
+            if (audioPlaybackTimerRef.current) {
+                clearInterval(audioPlaybackTimerRef.current);
+                audioPlaybackTimerRef.current = null;
+            }
+
+            // Clear last processed transcript
+            lastProcessedTranscriptRef.current = '';
 
             // Reset speech recognition retry count
             speechRecognitionRetryCountRef.current = 0;
@@ -1394,6 +1668,26 @@ When you need to collect information from the user, ask for the required paramet
             });
 
             let agentResponse = result.text;
+
+            // Handle TTS for all voice types in voice conversation mode
+            try {
+                const voiceId = editedAgent.voiceId;
+                const isSarvamVoice = voiceId?.startsWith('sarvam-');
+                const isElevenLabsVoice = voiceId?.startsWith('eleven-');
+
+                if (isSarvamVoice) {
+                    console.log('🔊 Processing Sarvam TTS for voice conversation...');
+                    // Use the backend Sarvam TTS service
+                    await queueAudioResponse(agentResponse);
+                } else if (isElevenLabsVoice) {
+                    console.log('🔊 Processing ElevenLabs TTS for voice conversation...');
+                    // Use direct ElevenLabs for chat-based voice
+                    await playAgentResponse(agentResponse);
+                }
+            } catch (ttsError) {
+                console.error('❌ TTS error in voice conversation:', ttsError);
+                // Continue without audio playback
+            }
 
             // Check if the response contains tool execution instructions
             try {
@@ -1533,32 +1827,59 @@ When you need to collect information from the user, ask for the required paramet
                 currentLevel[finalKey] = value;
             }
 
-            // Update the agent with error handling
-            try {
-                updateAgent(newAgent);
-            } catch (error) {
-                console.error('Error updating agent settings:', error);
-                // Don't prevent the UI from updating even if the backend fails
-            }
+            // Mark as dirty
+            hasDirtyChangesRef.current = true;
+            setSaveStatus('idle');
+            setSaveMessage('');
 
             return newAgent;
         });
-    }, [updateAgent]);
+    }, []);
 
 
+
+    // Validation function for agent data before save
+    const validateAgentData = (agent: VoiceAgent): { valid: boolean; errors: string[] } => {
+        const errors: string[] = [];
+        
+        // Check required fields
+        if (!agent.id) errors.push('Agent ID is missing');
+        if (!agent.name || agent.name.trim() === '') errors.push('Agent name is required');
+        if (!agent.model) errors.push('Model is required');
+        if (!agent.voiceId) errors.push('Voice is required');
+        if (!agent.language) errors.push('Language is required');
+        
+        // Check settings object
+        if (!agent.settings) errors.push('Settings are missing');
+        if (agent.settings?.webhookEnabled && (!agent.settings.webhookUrl || agent.settings.webhookUrl.trim() === '')) {
+            errors.push('Webhook URL is required when webhook is enabled');
+        }
+        
+        // Validate webhook URL format if provided
+        if (agent.settings?.webhookUrl && agent.settings.webhookUrl.trim() !== '') {
+            try {
+                new URL(agent.settings.webhookUrl);
+            } catch {
+                errors.push('Webhook URL is not a valid URL');
+            }
+        }
+        
+        return {
+            valid: errors.length === 0,
+            errors
+        };
+    };
 
     const copyToClipboard = (text: string, type: string) => navigator.clipboard.writeText(text).then(() => alert(`${type} copied to clipboard!`));
 
-    const handleSavePrompt = () => {
-        setIsEditingPrompt(false);
-        updateAgent(editedAgent);
-    };
     const handleCancelPrompt = () => { setEditedAgent(p => ({ ...p, identity: agent.identity })); setIsEditingPrompt(false); };
 
     const handleSaveModel = (newModelId: string) => {
         const updatedAgent = { ...editedAgent, model: newModelId };
         setEditedAgent(updatedAgent);
-        updateAgent(updatedAgent);
+        hasDirtyChangesRef.current = true;
+        setSaveStatus('idle');
+        setSaveMessage('');
         setModelModalOpen(false);
     };
 
@@ -1583,14 +1904,18 @@ When you need to collect information from the user, ask for the required paramet
         console.log('===================');
 
         setEditedAgent(updatedAgent);
-        updateAgent(updatedAgent);
+        hasDirtyChangesRef.current = true;
+        setSaveStatus('idle');
+        setSaveMessage('');
         setVoiceModalOpen(false);
     };
 
     const handleSaveLanguage = (newLanguageId: string) => {
         const updatedAgent = { ...editedAgent, language: newLanguageId };
         setEditedAgent(updatedAgent);
-        updateAgent(updatedAgent);
+        hasDirtyChangesRef.current = true;
+        setSaveStatus('idle');
+        setSaveMessage('');
         setLanguageModalOpen(false);
     };
 
@@ -1622,7 +1947,9 @@ When you need to collect information from the user, ask for the required paramet
             : { ...editedAgent, settings: { ...editedAgent.settings, tools: [...editedAgent.settings.tools, finalTool] } };
 
         setEditedAgent(updatedAgent);
-        updateAgent(updatedAgent);
+        hasDirtyChangesRef.current = true;
+        setSaveStatus('idle');
+        setSaveMessage('');
         setToolsModalOpen(false);
         setNewTool(initialNewToolState);
         setEditingTool(null);
@@ -1652,7 +1979,9 @@ When you need to collect information from the user, ask for the required paramet
         if (window.confirm("Are you sure you want to delete this tool?")) {
             const updatedAgent = { ...editedAgent, settings: { ...editedAgent.settings, tools: editedAgent.settings.tools.filter(t => t.id !== toolId) } };
             setEditedAgent(updatedAgent);
-            updateAgent(updatedAgent);
+            hasDirtyChangesRef.current = true;
+            setSaveStatus('idle');
+            setSaveMessage('');
         }
     };
 
@@ -1726,6 +2055,14 @@ When you need to collect information from the user, ask for the required paramet
 
             const agentResponseText = result.text || '';
             setChatMessages(prev => [...prev, { sender: 'agent' as const, text: agentResponseText }]);
+
+            // Queue audio response for TTS in chat mode
+            try {
+                await queueAudioResponse(agentResponseText);
+            } catch (ttsError) {
+                console.error('❌ TTS error in chat mode:', ttsError);
+                // Continue without audio - not fatal
+            }
 
             try {
                 const jsonResponse = JSON.parse(agentResponseText);
@@ -2381,9 +2718,14 @@ When you need to collect information from the user, ask for the required paramet
                     userId={userId}
                     onSave={async (newSettings) => {
                         try {
-                            const updatedAgent = { ...editedAgent, settings: newSettings };
+                            // Merge knowledge settings properly to avoid losing other field changes
+                            const updatedAgent = { 
+                                ...editedAgent, 
+                                settings: { ...editedAgent.settings, ...newSettings }
+                            };
                             setEditedAgent(updatedAgent);
-                            await updateAgent(updatedAgent);
+                            hasDirtyChangesRef.current = true;
+                            setSaveStatus('idle');
                             setKnowledgeModalOpen(false);
                             // Refresh docs
                             const documentService = new DocumentService();
@@ -2453,11 +2795,80 @@ When you need to collect information from the user, ask for the required paramet
                             ) : (
                                 <div className="flex gap-2">
                                     <button onClick={handleCancelPrompt} className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-500">Cancel</button>
-                                    <button onClick={handleSavePrompt} className="text-[10px] font-black uppercase tracking-widest text-white bg-primary px-4 py-2 rounded-xl shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all">Save Changes</button>
+                                    <button 
+                                        onClick={async () => {
+                                            // Validate userId is available
+                                            if (!userId) {
+                                                setSaveStatus('error');
+                                                setSaveMessage('User session lost. Please refresh the page.');
+                                                return;
+                                            }
+                                            
+                                            // Validate agent data before saving
+                                            const validation = validateAgentData(editedAgent);
+                                            if (!validation.valid) {
+                                                setSaveStatus('error');
+                                                setSaveMessage(validation.errors[0] || 'Invalid agent configuration');
+                                                return;
+                                            }
+                                            
+                                            setSaveStatus('saving');
+                                            setSaveMessage('');
+                                            setIsEditingPrompt(false);
+                                            
+                                            try {
+                                                // Save to database
+                                                const savedAgent = await agentService.updateAgent(userId, editedAgent.id, editedAgent);
+                                                
+                                                if (!savedAgent) {
+                                                    throw new Error('No response from server');
+                                                }
+                                                
+                                                // Update local state
+                                                setAgent(savedAgent);
+                                                updateAgent(savedAgent);
+                                                
+                                                hasDirtyChangesRef.current = false;
+                                                setSaveStatus('success');
+                                                setSaveMessage('All changes saved successfully!');
+                                                
+                                                // Reset success message after 3 seconds
+                                                setTimeout(() => {
+                                                    setSaveStatus('idle');
+                                                    setSaveMessage('');
+                                                }, 3000);
+                                            } catch (error) {
+                                                console.error('Error saving agent changes:', error);
+                                                hasDirtyChangesRef.current = true; // Restore dirty state on error
+                                                setSaveStatus('error');
+                                                const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+                                                setSaveMessage(`Failed to save: ${errorMsg}`);
+                                            }
+                                        }} 
+                                        disabled={saveStatus === 'saving'}
+                                        className={`text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl shadow-lg transition-all ${
+                                            saveStatus !== 'saving'
+                                                ? 'text-white bg-primary hover:bg-primary-dark shadow-primary/20'
+                                                : 'text-slate-400 bg-slate-100 dark:bg-slate-800 cursor-not-allowed'
+                                        }`}
+                                    >
+                                        {saveStatus === 'saving' ? 'Saving...' : 'Save Changes'}
+                                    </button>
                                 </div>
                             )}
                         </div>
                         <div className="p-8">
+                            {saveStatus !== 'idle' && (
+                                <div className={`mb-4 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest text-center ${
+                                    saveStatus === 'saving' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400' :
+                                    saveStatus === 'success' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400' :
+                                    'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+                                }`}>
+                                    {saveStatus === 'saving' && '⏳ Saving...'}
+                                    {saveStatus === 'success' && '✓ ' + saveMessage}
+                                    {saveStatus === 'error' && '✗ ' + saveMessage}
+                                </div>
+                            )}
                             {isEditingPrompt ? (
                                 <textarea
                                     name="identity"

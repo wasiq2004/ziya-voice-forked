@@ -222,8 +222,8 @@ export const OpenAIIcon = (props: React.SVGProps<SVGSVGElement>) => (
 export const AVAILABLE_MODELS = [
     // Gemini Models
     { id: 'gemini-2.0-flash', name: 'Ziya-2.0-flash', description: 'Latest Gemini model, fast and efficient', icon: GoogleIcon, provider: 'gemini' },
-    { id: 'gemini-1.5-flash', name: 'Ziya-LLM', description: 'Previous generation, reliable and cost-effective', icon: GoogleIcon, provider: 'gemini' },
-    { id: 'gemini-1.5-pro', name: 'Salman-LLM(Highly Efficient)', description: 'More capable, better for complex tasks', icon: GoogleIcon, provider: 'gemini' },
+    { id: 'gemini-1.5-flash', name: 'Ziya-1.5-flash', description: 'Previous generation, reliable and cost-effective', icon: GoogleIcon, provider: 'gemini' },
+    { id: 'gemini-1.5-pro', name: 'Ziya-1.5-pro', description: 'More capable, better for complex tasks', icon: GoogleIcon, provider: 'gemini' },
 
     //     // OpenAI Models
     //     { id: 'gpt-4o', name: 'GPT-4o', description: 'Most capable OpenAI model, best quality', icon: OpenAIIcon, provider: 'openai' },

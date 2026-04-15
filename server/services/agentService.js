@@ -44,7 +44,7 @@ class AgentService {
                 model: agent.model || 'gpt-4',
                 voiceId: agent.voice_id || 'eleven-rachel',
                 language: agent.language || 'en-US',
-                settings: agent.settings ? this.parseJsonSafely(agent.settings) : this.getDefaultSettings(),
+                settings: agent.settings ? this.mergeWithDefaults(this.parseJsonSafely(agent.settings)) : this.getDefaultSettings(),
                 updatedDate: agent.updated_at || agent.created_at,
                 hasPhoneNumber: (parseInt(agent.phone_count || 0) + parseInt(agent.twilio_phone_count || 0)) > 0
             }));
@@ -76,7 +76,7 @@ class AgentService {
                 model: agent.model || 'gpt-4',
                 voiceId: agent.voice_id || 'eleven-rachel',
                 language: agent.language || 'en-US',
-                settings: agent.settings ? this.parseJsonSafely(agent.settings) : this.getDefaultSettings(),
+                settings: agent.settings ? this.mergeWithDefaults(this.parseJsonSafely(agent.settings)) : this.getDefaultSettings(),
                 updatedDate: agent.updated_at || agent.created_at
             };
         } catch (err) {
@@ -133,7 +133,7 @@ class AgentService {
                 model: data.model,
                 voiceId: data.voiceId,
                 language: data.language,
-                settings: this.parseJsonSafely(settingsJson),
+                settings: this.mergeWithDefaults(this.parseJsonSafely(settingsJson)),
                 updatedDate: createdAt
             };
         } catch (err) {
@@ -220,6 +220,11 @@ class AgentService {
         }
     }
 
+    mergeWithDefaults(savedSettings) {
+        if (!savedSettings) return this.getDefaultSettings();
+        return { ...this.getDefaultSettings(), ...savedSettings };
+    }
+
     getDefaultSettings() {
         return {
             userStartsFirst: false,
@@ -242,8 +247,12 @@ class AgentService {
             doNotCallDetection: true,
             prefetchDataWebhook: "",
             endOfCallWebhook: "",
+            dataCollectionSheetUrl: "",
             preActionPhrases: [],
-            tools: []
+            tools: [],
+            knowledgeDocIds: [],
+            webhookEnabled: false,
+            webhookUrl: ""
         };
     }
 }

@@ -45,26 +45,31 @@ class BrowserVoiceHandler {
 
     // ─── safe send ────────────────────────────────────────────────────────────
     safeSend(ws, payload) {
-        if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            console.warn(`⚠️ Cannot send - WebSocket not ready (state: ${ws?.readyState})`);
+            return false;
+        }
         try {
+            console.log(`📤 Sending:`, JSON.stringify(payload).substring(0, 100));
             ws.send(JSON.stringify(payload));
             return true;
         } catch (e) {
-            console.error('safeSend error:', e.message);
+            console.error('❌ safeSend error:', e.message);
             return false;
         }
     }
 
     // ─── main entry point ─────────────────────────────────────────────────────
     handleConnection(ws, req) {
-        const url = new URL(req.url, `http://${req.headers.host}`);
-        const voiceId = url.searchParams.get('voiceId') || 'default';
-        const agentId = url.searchParams.get('agentId');
-        const userId = url.searchParams.get('userId');
-        const identityFromQuery = url.searchParams.get('identity') || '';
-        const connectionId = `bv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        try {
+            const url = new URL(req.url, `http://${req.headers.host}`);
+            const voiceId = url.searchParams.get('voiceId') || 'default';
+            const agentId = url.searchParams.get('agentId');
+            const userId = url.searchParams.get('userId');
+            const identityFromQuery = url.searchParams.get('identity') || '';
+            const connectionId = `bv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-        console.log(`🌐 New connection: ${connectionId} | voice: ${voiceId} | agent: ${agentId} | user: ${userId}`);
+            console.log(`🌐 New connection: ${connectionId} | voice: ${voiceId} | agent: ${agentId} | user: ${userId}`);
 
         // ── Session object ────────────────────────────────────────────────────
         const session = {
@@ -101,55 +106,36 @@ class BrowserVoiceHandler {
 
         sessions.set(connectionId, session);
 
-        // ── STEP 1: Send session-ready IMMEDIATELY so client does not time out ─
-        this.safeSend(ws, { event: 'session-ready', connectionId });
-        console.log(`✅ session-ready sent immediately: ${connectionId}`);
+        // ── STEP 1: Wire ALL event handlers FIRST (before sending anything) ────
+        console.log(`⚙️ Setting up event handlers...`);
 
-        // ── STEP 2: Load agent from DB in background ──────────────────────────
-        this.loadAgentSetup(session, agentId, userId, voiceId).then(() => {
-            session.setupComplete = true;
-            console.log(`✅ Agent setup complete: ${connectionId}`);
-
-            // Process any audio that arrived before setup finished
-            if (session.pendingAudioChunks.length > 0) {
-                console.log(`🔄 Processing ${session.pendingAudioChunks.length} pending audio chunks`);
-                for (const chunk of session.pendingAudioChunks) {
-                    this.handleAudioChunk(session, chunk);
-                }
-                session.pendingAudioChunks = [];
-            }
-
-            // Send greeting
-            this.sendGreeting(session);
-
-            // Log call start
-            this.logCallStart(session).catch(e => console.error('logCallStart error:', e));
-
-        }).catch(err => {
-            console.error(`❌ Agent setup failed (${connectionId}):`, err);
-            // Still mark setup complete with defaults so pipeline works
-            session.setupComplete = true;
-            this.sendGreeting(session);
-        });
-
-        // ── STEP 3: Wire WebSocket message handler ────────────────────────────
         ws.on('message', (raw) => {
             try {
                 const data = JSON.parse(raw);
+                console.log(`📨 Message received [${connectionId}]:`, data.event, `| setupComplete: ${session.setupComplete}`);
+                
                 if (data.event === 'audio') {
                     if (!session.setupComplete) {
-                        // Queue audio until agent is loaded
+                        console.log(`📝 Queuing audio (setup pending) - queue size: ${session.pendingAudioChunks.length + 1}`);
                         session.pendingAudioChunks.push(data.data);
                     } else {
-                        this.handleAudioChunk(session, data.data);
+                        console.log(`🎙️ Processing audio chunk immediately`);
+                        try {
+                            this.handleAudioChunk(session, data.data);
+                        } catch (audioErr) {
+                            console.error(`❌ handleAudioChunk error [${connectionId}]:`, audioErr.message);
+                            this.safeSend(ws, { event: 'error', message: `Audio processing failed: ${audioErr.message}` });
+                        }
                     }
                 } else if (data.event === 'ping') {
                     this.safeSend(ws, { event: 'pong' });
                 } else if (data.event === 'stop-speaking') {
                     this.handleInterruption(session);
+                } else {
+                    console.log(`⚠️ Unknown event [${connectionId}]:`, data.event);
                 }
             } catch (e) {
-                console.error('Message parse error:', e.message);
+                console.error(`❌ Message parse/handle error [${connectionId}]:`, e.message);
             }
         });
 
@@ -159,7 +145,8 @@ class BrowserVoiceHandler {
         });
 
         ws.on('error', (err) => {
-            console.error(`❌ WS error (${connectionId}):`, err.message);
+            console.error(`❌ WS error (${connectionId}):`, err.message, err.code);
+            console.error('Error type:', err.constructor.name);
         });
 
         // Heartbeat to detect dead connections
@@ -171,6 +158,55 @@ class BrowserVoiceHandler {
             }
         }, 15000);
         ws.on('pong', () => { /* connection alive */ });
+
+        console.log(`✅ Event handlers registered`);
+
+        // ── STEP 2: Send session-ready AFTER all handlers are set up ──────────
+        console.log(`📤 Sending session-ready on state: ${ws.readyState}`);
+        this.safeSend(ws, { event: 'session-ready', connectionId });
+        console.log(`✅ session-ready sent: ${connectionId}`);
+
+        // ── STEP 3: Load agent from DB in background ──────────────────────────
+        console.log(`⏳ Starting agent setup in background...`);
+        this.loadAgentSetup(session, agentId, userId, voiceId).then(() => {
+            session.setupComplete = true;
+            console.log(`✅ Agent setup complete: ${connectionId}`);
+
+            // Process any audio that arrived before setup finished
+            if (session.pendingAudioChunks.length > 0) {
+                console.log(`🔄 Processing ${session.pendingAudioChunks.length} pending audio chunks`);
+                for (const chunk of session.pendingAudioChunks) {
+                    try {
+                        this.handleAudioChunk(session, chunk);
+                    } catch (err) {
+                        console.error(`❌ Error processing queued chunk:`, err.message);
+                    }
+                }
+                session.pendingAudioChunks = [];
+            }
+
+            // Send greeting
+            this.sendGreeting(session);
+
+            // Log call start
+            this.logCallStart(session).catch(e => console.error('logCallStart error:', e));
+
+        }).catch(err => {
+            console.error(`❌ Agent setup failed (${connectionId}):`, err.message);
+            // Still mark setup complete with defaults so pipeline works
+            session.setupComplete = true;
+            this.sendGreeting(session);
+        });
+
+        } catch (err) {
+            console.error(`❌ CRITICAL ERROR in handleConnection:`, err.message);
+            console.error('Stack:', err.stack);
+            try {
+                ws.close(1011, `Server error: ${err.message}`);
+            } catch (closeErr) {
+                console.error('Failed to close WebSocket:', closeErr.message);
+            }
+        }
     }
 
     // ─── load agent from database ─────────────────────────────────────────────
@@ -233,16 +269,23 @@ class BrowserVoiceHandler {
 
     // ─── send greeting ────────────────────────────────────────────────────────
     async sendGreeting(session) {
-        if (!session.ws || session.ws.readyState !== WebSocket.OPEN) return;
+        if (!session.ws || session.ws.readyState !== WebSocket.OPEN) {
+            console.warn(`⚠️ Cannot send greeting - WebSocket not ready (state: ${session.ws?.readyState})`);
+            return;
+        }
 
         const text = session.greetingMessage;
+        console.log(`📢 Sending greeting: "${text}"`);
         this.safeSend(session.ws, { event: 'agent-response', text });
         this.appendToHistory(session, text, 'assistant');
 
         try {
+            console.log(`🎙️ Starting TTS for greeting...`);
             await this.textToSpeech(session, text);
+            console.log(`✅ Greeting TTS complete`);
         } catch (err) {
-            console.error('Greeting TTS error:', err.message);
+            console.error('❌ Greeting TTS error:', err.message, err.stack);
+            this.safeSend(session.ws, { event: 'error', message: `Greeting TTS failed: ${err.message}` });
         }
     }
 
@@ -465,6 +508,7 @@ class BrowserVoiceHandler {
     async elevenLabsTTS(session, text) {
         if (!this.elevenLabsApiKey) throw new Error('ElevenLabs API key not configured');
 
+        console.log(`🔄 ElevenLabs TTS request - voice: ${session.voiceId}`);
         const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${session.voiceId}/stream`, {
             method: 'POST',
             headers: {
@@ -488,13 +532,20 @@ class BrowserVoiceHandler {
         const chunks = [];
         for await (const chunk of res.body) chunks.push(chunk);
         const audio = Buffer.concat(chunks);
+        
+        console.log(`✅ ElevenLabs audio received: ${audio.length} bytes`);
+
+        if (session.ws.readyState !== WebSocket.OPEN) {
+            console.warn(`⚠️ WebSocket not open (state: ${session.ws.readyState}) - cannot send audio`);
+            return;
+        }
 
         this.safeSend(session.ws, {
             event: 'audio',
             audio: audio.toString('base64'),
             format: 'mp3'
         });
-        console.log(`✅ ElevenLabs TTS: ${audio.length} bytes`);
+        console.log(`✅ Audio payload sent via WebSocket`);
     }
 
     // ─── Sarvam TTS ──────────────────────────────────────────────────────────
@@ -502,6 +553,7 @@ class BrowserVoiceHandler {
         if (!this.sarvamApiKey) throw new Error('Sarvam API key not configured');
 
         const speakerId = session.voiceId.replace(/^sarvam[:/]/i, '');
+        console.log(`🔄 Sarvam TTS request - speaker: ${speakerId}, language: ${session.detectedLanguage || 'en-IN'}`);
 
         const res = await fetch('https://api.sarvam.ai/text-to-speech', {
             method: 'POST',
@@ -530,12 +582,19 @@ class BrowserVoiceHandler {
         const data = await res.json();
         if (!data.audios?.[0]) throw new Error('No audio in Sarvam response');
 
+        console.log(`✅ Sarvam audio received`);
+        
+        if (session.ws.readyState !== WebSocket.OPEN) {
+            console.warn(`⚠️ WebSocket not open (state: ${session.ws.readyState}) - cannot send audio`);
+            return;
+        }
+
         this.safeSend(session.ws, {
             event: 'audio',
             audio: data.audios[0],
             format: 'wav'
         });
-        console.log('✅ Sarvam TTS sent');
+        console.log('✅ Audio payload sent via WebSocket');
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────

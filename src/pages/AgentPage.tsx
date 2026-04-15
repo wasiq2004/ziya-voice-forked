@@ -35,6 +35,7 @@ const AgentPage: React.FC = () => {
     const [agentToDelete, setAgentToDelete] = useState<VoiceAgent | null>(null);
     const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
     const [loading, setLoading] = useState(true);
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
     const { user } = useAuth();
     const { checkAccess, blockingReason, clearBlock } = usePlanAccess();
 
@@ -151,13 +152,20 @@ const AgentPage: React.FC = () => {
 
     const handleSaveAgent = async () => {
         if (!stagedAgent || !user) return;
+        setSaveStatus('saving');
         try {
             const agent = await agentService.updateAgent(user.id, stagedAgent.id, stagedAgent);
             setAgents(prev => prev.map(a => a.id === agent.id ? agent : a));
             setSelectedAgent(agent);
+            setStagedAgent(agent);
+            setSaveStatus('saved');
+            setTimeout(() => {
+                setSaveStatus('idle');
+            }, 2000);
         } catch (error) {
             console.error('Error saving agent:', error);
-            alert('Failed to save agent');
+            setSaveStatus('idle');
+            alert('Failed to save agent. Please try again.');
         }
     };
 
@@ -262,16 +270,13 @@ const AgentPage: React.FC = () => {
 
                         <button
                             onClick={handleSaveAgent}
-                            disabled={!stagedAgent || JSON.stringify(stagedAgent) === JSON.stringify(selectedAgent)}
-                            className={`px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all disabled:opacity-50 ${stagedAgent && JSON.stringify(stagedAgent) !== JSON.stringify(selectedAgent)
-                                    ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/25'
-                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                                }`}
+                            disabled={saveStatus === 'saving'}
+                            className={`px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all ${saveStatus === 'saving' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25 opacity-75' : saveStatus === 'saved' ? 'bg-green-500 text-white shadow-lg shadow-green-500/25' : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/25'}`}
                         >
-                            Save Changes
+                            {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved!' : 'Save Changes'}
                         </button>
 
-                        <div className="relative dropdown-trigger">
+                        {/* <div className="relative dropdown-trigger">
                             <button
                                 onClick={(e) => handleToggleDropdown(selectedAgent.id, e)}
                                 className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-6 py-2.5 rounded-xl font-black text-slate-700 dark:text-white flex items-center shadow-lg shadow-slate-200/50 dark:shadow-none hover:border-primary/30 transition-all uppercase tracking-wider text-xs"
@@ -279,7 +284,7 @@ const AgentPage: React.FC = () => {
                                 Agent Actions
                                 <EllipsisVerticalIcon className="w-4 h-4 ml-2" />
                             </button>
-                        </div>
+                        </div> */}
                     </div>
                 }
             >

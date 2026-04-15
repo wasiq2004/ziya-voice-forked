@@ -294,7 +294,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                                 </div>
 
                                 {/* Menu Items */}
-                                {/* <div className="p-2">
+                                <div className="p-2">
                                     {adminUser ? (
                                         adminUser.role === 'org_admin' && (
                                             <button
@@ -310,7 +310,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                                         )
                                     ) : (
                                         <>
-                                            <button
+                                            {/* <button
                                                 onClick={() => {
                                                     navigate('/settings');
                                                     setIsDropdownOpen(false);
@@ -319,7 +319,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                                             >
                                                 <UserCircleIcon className="h-5 w-5 text-slate-400" />
                                                 <span className="font-medium">My Profile</span>
-                                            </button>
+                                            </button> */}
 
                                             <button
                                                 onClick={() => {
@@ -344,7 +344,7 @@ const TopNavbar: React.FC<TopNavbarProps> = ({
                                             </button>
                                         </>
                                     )}
-                                </div> */}
+                                </div>
 
                                 {/* Logout Button */}
                                 <div className="p-2 border-t border-slate-100 dark:border-slate-700">

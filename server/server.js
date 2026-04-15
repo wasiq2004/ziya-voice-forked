@@ -105,7 +105,7 @@ const twilioCallWss = new WebSocketServer({
   skipUTF8Validation: true
 });
 
-let browserVoiceWss = null;
+
 
 // Initialize Support Chat WebSocket
 let supportChatWss = null;
@@ -118,13 +118,8 @@ try {
 
 // ============ CONSOLIDATED WEBSOCKET UPGRADE HANDLER ============
 const matchesBrowserVoicePath = (pathname = '') => {
-  const normalizedPath = String(pathname || '').replace(/\/+$/, '');
-  return (
-    normalizedPath === '/browser-voice-stream' ||
-    normalizedPath === '/api/browser-voice-stream' ||
-    normalizedPath === '/browser-voice-stream/.websocket' ||
-    normalizedPath === '/api/browser-voice-stream/.websocket'
-  );
+  // Browser voice removed - always return false
+  return false;
 };
 server.on('upgrade', (req, socket, head) => {
   const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -371,65 +366,8 @@ if (deepgramApiKey) {
   console.warn(' DeepgramBrowserHandler not initialized (missing API keys)');
 }
 
-// Initialize BrowserVoiceHandler for production-level browser voice interactions
-const { BrowserVoiceHandler } = require('./services/BrowserVoiceHandler.js');
-const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY;
-const sarvamApiKey = process.env.SARVAM_API_KEY;
-
-let browserVoiceHandler;
-// Initialize if Sarvam API key is available
-if (sarvamApiKey) {
-  try {
-    browserVoiceHandler = new BrowserVoiceHandler(
-      geminiApiKey,
-      openaiApiKey,
-      elevenLabsApiKey,
-      sarvamApiKey,
-      mysqlPool
-    );
-    browserVoiceWss = new WebSocketServer({
-      noServer: true,
-      perMessageDeflate: false,
-      clientTracking: true,
-      maxPayload: 100 * 1024 * 1024,
-      skipUTF8Validation: true
-    });
-    browserVoiceWss.on('connection', (ws, req) => {
-      browserVoiceHandler.handleConnection(ws, req);
-    });
-    console.log(' Browser Voice Handler initialized with dedicated WebSocket server');
-    console.log(' Browser Voice Handler available at /browser-voice-stream and /api/browser-voice-stream');
-    console.log('   - Sarvam STT:');
-    console.log('   - Gemini LLM: ' + (geminiApiKey ? '' : ''));
-    console.log('   - ElevenLabs TTS: ' + (elevenLabsApiKey ? '' : ''));
-  } catch (error) {
-    console.error('Failed to initialize BrowserVoiceHandler:', error.message);
-  }
-} else {
-  console.warn(' BrowserVoiceHandler not initialized (missing SARVAM_API_KEY)');
-  browserVoiceWss = new WebSocketServer({
-    noServer: true,
-    perMessageDeflate: false,
-    clientTracking: true,
-    maxPayload: 100 * 1024 * 1024,
-    skipUTF8Validation: true
-  });
-  browserVoiceWss.on('connection', (ws) => {
-    try {
-      ws.send(JSON.stringify({
-        event: 'error',
-        message: 'Browser voice is unavailable because SARVAM_API_KEY is not configured on the server.'
-      }));
-    } catch (sendError) {
-      console.error('Failed to send browser voice unavailable message:', sendError);
-    }
-    try {
-      ws.close(1011, 'Browser voice unavailable');
-    } catch (closeError) {
-      console.error('Failed to close unavailable browser voice socket:', closeError);
-    }
-  });
-}
+// Browser Voice Handler - removed, using simple REST API at /api/simple-voice instead
+// (See routes/simpleBrowserVoiceRoutes.js for microphone → Sarvam STT implementation)
 
 // === ADD THIS BLOCK ===
 if (!process.env.ELEVEN_LABS_API_KEY) {
@@ -693,6 +631,19 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Initialize and mount voice routes
 app.use('/api/voices', initVoiceSync(mysqlPool));
 console.log(' Voice API routes mounted at /api/voices');
+
+// Initialize and mount new REST-based browser voice routes
+const browserVoiceRestRoutes = require('./routes/browserVoiceRestRoutes.js');
+app.use('/api/browser-voice-rest', (req, res, next) => {
+    req.mysqlPool = mysqlPool; // Attach pool to request
+    next();
+}, browserVoiceRestRoutes);
+console.log(' Browser Voice REST API mounted at /api/browser-voice-rest');
+
+// Initialize and mount simple voice routes (basic mic + STT)
+const simpleBrowserVoiceRoutes = require('./routes/simpleBrowserVoiceRoutes.js');
+app.use('/api/simple-voice', simpleBrowserVoiceRoutes);
+console.log(' Simple Voice API mounted at /api/simple-voice');
 
 
 // ==================== SESSION & GOOGLE OAUTH ====================
@@ -7004,18 +6955,7 @@ app.ws('/api/call', function (ws, req) {
 app.ws('/api/call/.websocket', function (ws, req) {
   attachTwilioMediaStreamConnection(ws, req, 'express-ws:/api/call/.websocket');
 });
-app.ws('/browser-voice-stream', function (ws, req) {
-  browserVoiceHandler.handleConnection(ws, req);
-});
-app.ws('/browser-voice-stream/.websocket', function (ws, req) {
-  browserVoiceHandler.handleConnection(ws, req);
-});
-app.ws('/api/browser-voice-stream', function (ws, req) {
-  browserVoiceHandler.handleConnection(ws, req);
-});
-app.ws('/api/browser-voice-stream/.websocket', function (ws, req) {
-  browserVoiceHandler.handleConnection(ws, req);
-});
+// Browser voice WebSocket removed - using simple REST API instead
 app.get('/api/call', (req, res) => {
   res.status(426).json({
     success: false,

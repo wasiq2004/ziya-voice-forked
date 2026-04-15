@@ -125,20 +125,14 @@ router.post('/:id/preview', async (req, res) => {
         }
 
         const audioBuffer = await generateTTS(previewText, ttsOptions);
-        const base64Audio = audioBuffer.toString('base64');
 
-        const mimeType = 'audio/mpeg';
-        const dataUri = `data:${mimeType};base64,${base64Audio}`;
-
-        res.json({
-            success: true,
-            audioData: dataUri,
-            voice: {
-                id: voice.id,
-                name: voice.display_name,
-                provider: voice.provider
-            }
-        });
+        // Return audio as binary stream with proper headers
+        res.setHeader('Content-Type', 'audio/mpeg');
+        res.setHeader('Content-Length', audioBuffer.length);
+        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        
+        res.send(audioBuffer);
 
     } catch (error) {
         console.error('[VoiceAPI] Error generating preview:', error);
